@@ -746,6 +746,127 @@ button {
   background: var(--paper);
 }
 
+/* ---------- Phase 2: working binder, editor, welcome ---------- */
+
+.binder-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 0;
+}
+
+.binder {
+  padding: 0;
+}
+
+.binder-footer {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 2px solid var(--ink);
+  background-image: var(--dither-25);
+  background-size: 4px 4px;
+}
+
+.btn.small {
+  font-size: 9px;
+  padding: 3px 8px;
+}
+
+.binder-row .row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.binder-row.dim {
+  color: transparent;
+  background-image: var(--dither-50);
+  background-size: 2px 2px;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.binder-row .twist {
+  flex: none;
+  width: 10px;
+  font-size: 10px;
+  transition: none;
+}
+
+.binder-row .twist.open {
+  transform: rotate(90deg);
+}
+
+.binder-row.drop-before {
+  box-shadow:
+    0 -2px 0 0 var(--ink) inset,
+    0 2px 0 0 var(--ink);
+}
+
+.binder-row.drop-after {
+  box-shadow: 0 -2px 0 0 var(--ink);
+}
+
+.binder-row.drop-inside {
+  outline: 2px dashed var(--ink);
+  outline-offset: -2px;
+}
+
+.rename-input,
+.text-field {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 1px 4px;
+  outline: none;
+  min-width: 0;
+}
+
+.text-field {
+  flex: 1;
+  font-family: var(--font-prose);
+  font-size: 13px;
+  padding: 4px 6px;
+}
+
+.rename-input {
+  flex: 1;
+  font-size: 12px;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 400;
+}
+
+.dialog.welcome {
+  min-width: 460px;
+}
+
+/* TipTap host: the .page class is applied to the ProseMirror element itself */
+.editor-host {
+  display: contents;
+}
+
+.page.ProseMirror {
+  outline: none;
+  caret-color: var(--page-ink);
+  min-height: 100%;
+}
+
+.page ::selection,
+.page.ProseMirror::selection {
+  background: var(--page-ink);
+  color: var(--page-bg);
+}
+
+.page p.is-editor-empty:first-child::before {
+  content: '';
+}
+
 /* ---------- phosphor themes: whole-app monochrome CRT ---------- */
 
 /* A phosphor monitor doesn't spare the chrome: remap the global ink/paper
