@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
 import type { BinderNode, DocFile, ProjectInfo } from '../../shared/types'
 import { api } from './lib/api'
-import { docToMarkdown, markdownToDoc, countWords } from './lib/markdown'
+import { docToMarkdown, countWords } from './lib/markdown'
 import { findNode, firstDoc, moveNode, removeNode, type DropPosition } from './lib/tree'
 
 export type SaveState = 'saved' | 'dirty' | 'saving'
@@ -104,21 +104,17 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async selectDoc(id) {
-      const { project, activeId, editor } = get()
+      const { project, activeId } = get()
       if (!project || id === activeId) return
       await get().flushSave()
       const doc = await api.readDoc(project.path, id)
+      // The Editor component recreates its TipTap instance when activeId
+      // changes (fresh per-document undo history) and loads the body itself.
       set({ activeId: id, activeDoc: doc, saveState: 'saved', wordCount: countWords(doc.body) })
-      if (editor) {
-        editor.commands.setContent(markdownToDoc(doc.body))
-        editor.commands.focus('end')
-      }
     },
 
     setEditor(editor) {
       set({ editor })
-      const { activeDoc } = get()
-      if (editor && activeDoc) editor.commands.setContent(markdownToDoc(activeDoc.body))
     },
 
     editorChanged() {
