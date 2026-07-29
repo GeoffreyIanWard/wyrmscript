@@ -59,6 +59,19 @@ body {
   cursor: default;
 }
 
+/* Interactive chrome is real <button>s for a11y; strip UA styling so the
+   1-bit classes fully control the look. */
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  text-align: inherit;
+  letter-spacing: inherit;
+  cursor: inherit;
+  -webkit-font-smoothing: inherit;
+}
+
 /* ---------- screen = menu bar + desktop ---------- */
 
 .screen {
@@ -96,12 +109,17 @@ body {
   padding-left: 76px; /* clearance for macOS traffic lights (hiddenInset) */
 }
 
+.menu-slot {
+  display: flex;
+  align-items: stretch;
+  position: relative;
+}
+
 .menu-title {
   display: flex;
   align-items: center;
   padding: 0 14px;
   -webkit-app-region: no-drag;
-  position: relative;
   white-space: nowrap;
 }
 
@@ -165,7 +183,10 @@ body {
 .menu-overlay {
   position: fixed;
   inset: 0;
-  z-index: 150;
+  /* Must sit BELOW .menu-bar (z 100): the dropdown's z-index lives inside the
+     menu bar's stacking context, so an overlay above the bar would swallow
+     clicks on menu items. */
+  z-index: 90;
 }
 
 /* ---------- window chrome ---------- */
@@ -621,6 +642,15 @@ body {
   gap: 8px;
   padding: 3px 0;
   font-size: 12px;
+  width: 100%;
+}
+
+.control-row:disabled {
+  color: transparent;
+  background-image: var(--dither-50);
+  background-size: 2px 2px;
+  -webkit-background-clip: text;
+  background-clip: text;
 }
 
 /* Boxy 1-bit controls */
