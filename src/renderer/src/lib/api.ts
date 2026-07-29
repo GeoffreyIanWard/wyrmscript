@@ -1,16 +1,92 @@
-import type { BinderNode, DocFile, ProjectData, ProjectInfo, WyrmApi } from '../../../shared/types'
+import type {
+  BinderNode,
+  CommitInfo,
+  DocFile,
+  ProjectData,
+  ProjectInfo,
+  VariantInfo,
+  WyrmApi
+} from '../../../shared/types'
 
 /**
  * In Electron the preload script exposes the real filesystem/git API on
  * window.wyrm. In a plain browser (the dev preview pane) we substitute an
- * in-memory mock seeded with a demo project so the full UI stays exercisable.
+ * in-memory mock seeded with a demo project — including fake history and
+ * variants — so the full UI stays exercisable. Nothing here touches disk.
  */
 
 function id(): string {
   return Math.random().toString(36).slice(2, 10)
 }
 
-function demoProject(): { info: ProjectInfo; docs: Map<string, DocFile> } {
+const cloneDoc = (doc: DocFile): DocFile => ({ meta: { ...doc.meta }, body: doc.body })
+
+interface MockCommit extends CommitInfo {
+  snapshot: Map<string, DocFile>
+}
+
+interface MockProject {
+  info: ProjectInfo
+  docs: Map<string, DocFile>
+  commits: MockCommit[] // newest last
+  variants: Map<string, (VariantInfo & { doc: DocFile })[]>
+}
+
+function snapshotOf(docs: Map<string, DocFile>): Map<string, DocFile> {
+  return new Map([...docs].map(([k, v]) => [k, cloneDoc(v)]))
+}
+
+function commitInto(project: MockProject, message: string, timestamp = Date.now()): boolean {
+  const last = project.commits[project.commits.length - 1]
+  const same =
+    last &&
+    last.snapshot.size === project.docs.size &&
+    [...project.docs].every(([k, v]) => last.snapshot.get(k)?.body === v.body)
+  if (same) return false
+  project.commits.push({
+    oid: id() + id(),
+    message,
+    timestamp,
+    snapshot: snapshotOf(project.docs)
+  })
+  return true
+}
+
+function starterProject(title: string): MockProject {
+  const now = new Date().toISOString()
+  const docId = id()
+  const docs = new Map<string, DocFile>([
+    [
+      docId,
+      {
+        meta: { id: docId, title: 'First Scene', status: 'draft', created: now, modified: now },
+        body: ''
+      }
+    ]
+  ])
+  const info: ProjectInfo = {
+    path: `/demo/${title}.wyrm`,
+    data: {
+      version: 1,
+      title,
+      binder: [
+        {
+          id: id(),
+          type: 'folder',
+          title: 'Manuscript',
+          children: [{ id: docId, type: 'doc', title: 'First Scene' }]
+        },
+        { id: id(), type: 'folder', title: 'Notes', children: [] }
+      ],
+      trash: []
+    }
+  }
+  const project: MockProject = { info, docs, commits: [], variants: new Map() }
+  commitInto(project, `Create project “${title}”`)
+  return project
+}
+
+function demoProject(): MockProject {
   const now = new Date().toISOString()
   const docs = new Map<string, DocFile>()
   const mkDoc = (title: string, body: string): BinderNode => {
@@ -57,47 +133,53 @@ function demoProject(): { info: ProjectInfo; docs: Map<string, DocFile> } {
       trash: []
     }
   }
-  return { info, docs }
+
+  const project: MockProject = { info, docs, commits: [], variants: new Map() }
+
+  // Fabricate believable history for the demo: three drafts of scene2.
+  const hours = 3600_000
+  const knockId = scene2.id
+  const current = docs.get(knockId)!
+  const draft1 =
+    'The knock came after midnight. Elara Voss woke at once. Old habits from the war did not sleep.\n'
+  const draft2 =
+    'The knock came an hour past midnight, three slow raps. Elara Voss was awake before the third. Old habits from the war did not sleep, even when she did.\n\nShe lit no candle. The wyrmlight in the window-glass gave enough of a glow to dress by.\n'
+
+  docs.set(knockId, { ...current, body: draft1 })
+  commitInto(project, 'First pass at the opening', Date.now() - 26 * hours)
+  docs.set(knockId, { ...current, body: draft2 })
+  commitInto(project, 'Slower rhythm on the knocks', Date.now() - 20 * hours)
+  docs.set(knockId, current)
+  commitInto(project, 'Finished second draft of the confrontation scene', Date.now() - 2 * hours)
+
+  return project
 }
 
-function createMockApi(): WyrmApi {
+export function createMockApi(): WyrmApi {
   const demo = demoProject()
-  const projects = new Map<string, { info: ProjectInfo; docs: Map<string, DocFile> }>([
-    [demo.info.path, demo]
-  ])
+  const projects = new Map<string, MockProject>([[demo.info.path, demo]])
+
+  const mustGet = (path: string): MockProject => {
+    const project = projects.get(path)
+    if (!project) throw new Error(`No such project: ${path}`)
+    return project
+  }
+
+  const findAtRef = (project: MockProject, docId: string, ref: string): DocFile | null => {
+    const commit = project.commits.find((c) => c.oid === ref)
+    if (commit) return commit.snapshot.get(docId) ?? null
+    for (const list of project.variants.values()) {
+      const variant = list.find((v) => v.branch === ref)
+      if (variant) return cloneDoc(variant.doc)
+    }
+    return null
+  }
 
   return {
     async createProject(title: string): Promise<ProjectInfo> {
-      const now = new Date().toISOString()
-      const docId = id()
-      const docs = new Map<string, DocFile>([
-        [
-          docId,
-          {
-            meta: { id: docId, title: 'First Scene', status: 'draft', created: now, modified: now },
-            body: ''
-          }
-        ]
-      ])
-      const info: ProjectInfo = {
-        path: `/demo/${title}.wyrm`,
-        data: {
-          version: 1,
-          title,
-          binder: [
-            {
-              id: id(),
-              type: 'folder',
-              title: 'Manuscript',
-              children: [{ id: docId, type: 'doc', title: 'First Scene' }]
-            },
-            { id: id(), type: 'folder', title: 'Notes', children: [] }
-          ],
-          trash: []
-        }
-      }
-      projects.set(info.path, { info, docs })
-      return info
+      const project = starterProject(title || 'Untitled Novel')
+      projects.set(project.info.path, project)
+      return project.info
     },
     async openProject(): Promise<ProjectInfo> {
       return demo.info
@@ -110,18 +192,89 @@ function createMockApi(): WyrmApi {
       if (project) project.info = { path, data }
     },
     async readDoc(path: string, docId: string): Promise<DocFile> {
-      const doc = projects.get(path)?.docs.get(docId)
+      const doc = mustGet(path).docs.get(docId)
       if (!doc) throw new Error(`No such document: ${docId}`)
       return doc
     },
     async writeDoc(path: string, doc: DocFile): Promise<void> {
-      projects.get(path)?.docs.set(doc.meta.id, doc)
+      mustGet(path).docs.set(doc.meta.id, cloneDoc(doc))
     },
-    async commit(): Promise<boolean> {
-      return true
+    async commit(path: string, message: string): Promise<boolean> {
+      return commitInto(mustGet(path), message)
     },
     async getLastProjectPath(): Promise<string | null> {
       return demo.info.path
+    },
+
+    async log(path: string, docId?: string): Promise<CommitInfo[]> {
+      const project = mustGet(path)
+      const all = [...project.commits].reverse()
+      if (!docId) return all.map(({ oid, message, timestamp }) => ({ oid, message, timestamp }))
+      // Keep only commits where this doc changed relative to its parent.
+      const result: CommitInfo[] = []
+      for (let i = 0; i < project.commits.length; i++) {
+        const cur = project.commits[i].snapshot.get(docId)
+        const prev = i > 0 ? project.commits[i - 1].snapshot.get(docId) : undefined
+        if (cur && cur.body !== prev?.body) {
+          const { oid, message, timestamp } = project.commits[i]
+          result.unshift({ oid, message, timestamp })
+        }
+      }
+      return result
+    },
+    async readDocAtRef(path: string, docId: string, ref: string): Promise<DocFile | null> {
+      return findAtRef(mustGet(path), docId, ref)
+    },
+    async restoreDocToRef(
+      path: string,
+      docId: string,
+      ref: string,
+      label: string
+    ): Promise<DocFile> {
+      const project = mustGet(path)
+      const doc = findAtRef(project, docId, ref)
+      if (!doc) throw new Error(`Document ${docId} does not exist at ${ref}`)
+      commitInto(project, 'Auto: before restore')
+      project.docs.set(docId, cloneDoc(doc))
+      commitInto(project, label)
+      return doc
+    },
+    async createVariant(path: string, docId: string, name: string): Promise<VariantInfo> {
+      const project = mustGet(path)
+      commitInto(project, `Snapshot for variant “${name}”`)
+      const doc = project.docs.get(docId)
+      if (!doc) throw new Error(`No such document: ${docId}`)
+      const slug =
+        name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'variant'
+      const variant = {
+        branch: `variant/${docId}/${slug}-${id()}`,
+        name,
+        createdAt: Date.now(),
+        oid: project.commits[project.commits.length - 1].oid,
+        doc: cloneDoc(doc)
+      }
+      const list = project.variants.get(docId) ?? []
+      list.push(variant)
+      project.variants.set(docId, list)
+      return { branch: variant.branch, name, createdAt: variant.createdAt, oid: variant.oid }
+    },
+    async listVariants(path: string, docId: string): Promise<VariantInfo[]> {
+      const list = mustGet(path).variants.get(docId) ?? []
+      return [...list]
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map(({ branch, name, createdAt, oid }) => ({ branch, name, createdAt, oid }))
+    },
+    async deleteVariant(path: string, branch: string): Promise<void> {
+      const project = mustGet(path)
+      for (const [docId, list] of project.variants) {
+        project.variants.set(
+          docId,
+          list.filter((v) => v.branch !== branch)
+        )
+      }
     }
   }
 }

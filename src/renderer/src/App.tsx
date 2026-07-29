@@ -5,6 +5,7 @@ import { Binder } from './components/Binder'
 import { Editor } from './components/Editor'
 import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog } from './components/Dialogs'
+import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { useWyrm } from './store'
 import { isElectron } from './lib/api'
 
@@ -56,6 +57,7 @@ function App(): JSX.Element {
   const [terminal, setTerminal] = useState<TerminalTheme>('paper')
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
 
   const project = useWyrm((s) => s.project)
   const booted = useWyrm((s) => s.booted)
@@ -71,7 +73,12 @@ function App(): JSX.Element {
       const state = useWyrm.getState()
       if (e.key === 's') {
         e.preventDefault()
-        void state.commitNow('Checkpoint')
+        if (state.project) {
+          void state.flushSave().then(() => setVersionDialog('commit'))
+        }
+      } else if (e.key === 'y' && state.activeDoc) {
+        e.preventDefault()
+        void state.flushSave().then(() => setVersionDialog('history'))
       } else if (e.key === 'n' && !e.shiftKey && state.project) {
         e.preventDefault()
         void state.addDoc(null)
@@ -93,7 +100,16 @@ function App(): JSX.Element {
       data-accents={accents}
       data-terminal={terminal}
     >
-      <MenuBar onAbout={() => setAboutOpen(true)} onPreferences={() => setPrefsOpen(true)} />
+      <MenuBar
+        onAbout={() => setAboutOpen(true)}
+        onPreferences={() => setPrefsOpen(true)}
+        onVersionDialog={(dialog) => {
+          void useWyrm
+            .getState()
+            .flushSave()
+            .then(() => setVersionDialog(dialog))
+        }}
+      />
       <div className="desktop">
         {project ? (
           <div className="mac-window main-window">
@@ -121,6 +137,9 @@ function App(): JSX.Element {
           />
         )}
         {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
+        {versionDialog === 'commit' && <CommitDialog onClose={() => setVersionDialog(null)} />}
+        {versionDialog === 'history' && <HistoryDialog onClose={() => setVersionDialog(null)} />}
+        {versionDialog === 'variants' && <VariantsDialog onClose={() => setVersionDialog(null)} />}
       </div>
     </div>
   )
