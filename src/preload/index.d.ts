@@ -1,8 +1,10 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
+import type { WyrmApi } from '../shared/types'
 
 declare global {
   interface Window {
-    electron: ElectronAPI
-    api: unknown
+    /** Present only inside Electron; the browser dev preview runs on a mock. */
+    wyrm?: WyrmApi
   }
 }
+
+export {}

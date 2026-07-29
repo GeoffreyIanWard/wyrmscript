@@ -1,22 +1,15 @@
-import { contextBridge } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
+import { contextBridge, ipcRenderer } from 'electron'
+import type { DocFile, ProjectData, WyrmApi } from '../shared/types'
 
-// Custom APIs for renderer
-const api = {}
-
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
-if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
-  } catch (error) {
-    console.error(error)
-  }
-} else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
-  // @ts-ignore (define in dts)
-  window.api = api
+const api: WyrmApi = {
+  createProject: (title) => ipcRenderer.invoke('project:create', title),
+  openProject: () => ipcRenderer.invoke('project:open'),
+  openProjectPath: (path) => ipcRenderer.invoke('project:openPath', path),
+  saveProject: (path, data: ProjectData) => ipcRenderer.invoke('project:save', path, data),
+  readDoc: (path, id) => ipcRenderer.invoke('doc:read', path, id),
+  writeDoc: (path, doc: DocFile) => ipcRenderer.invoke('doc:write', path, doc),
+  commit: (path, message) => ipcRenderer.invoke('git:commit', path, message),
+  getLastProjectPath: () => ipcRenderer.invoke('settings:lastProject')
 }
+
+contextBridge.exposeInMainWorld('wyrm', api)
