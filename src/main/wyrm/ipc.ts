@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { app, ipcMain, dialog, BrowserWindow } from 'electron'
 import { existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import type { DocFile, ProjectData } from '../../shared/types'
@@ -20,7 +20,9 @@ export function registerIpc(): void {
     if (!win) return null
     const result = await dialog.showSaveDialog(win, {
       title: 'New Wyrmscript Project',
-      defaultPath: `${title || 'My Novel'}.wyrm`,
+      // Absolute default: a relative path would resolve against the app's
+      // working directory (the repo, in dev) instead of somewhere sensible.
+      defaultPath: join(app.getPath('documents'), `${title || 'My Novel'}.wyrm`),
       buttonLabel: 'Create',
       properties: ['createDirectory']
     })

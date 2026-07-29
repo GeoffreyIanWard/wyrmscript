@@ -171,8 +171,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
       }
       setProject({ ...project })
       await persistProject()
-      await get().selectDoc(meta.id)
+      // Rename mode is set before the doc switch so the recreated editor
+      // sees it and leaves focus on the rename field.
       get().startRename(meta.id)
+      await get().selectDoc(meta.id)
     },
 
     async addFolder(parentId) {
