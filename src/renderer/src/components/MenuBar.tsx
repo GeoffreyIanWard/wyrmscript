@@ -93,19 +93,30 @@ export function MenuBar({ onAbout, onPreferences }: MenuBarProps): JSX.Element {
         {menus.map((menu) => (
           <div
             key={menu.key}
-            className={`menu-title${menu.key === 'wyrm' ? ' wyrm-mark' : ''}${open === menu.key ? ' open' : ''}`}
-            onMouseDown={() => setOpen(open === menu.key ? null : menu.key)}
+            className="menu-slot"
             onMouseEnter={() => open !== null && setOpen(menu.key)}
           >
-            {menu.title}
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={open === menu.key}
+              aria-label={menu.key === 'wyrm' ? 'Wyrmscript menu' : undefined}
+              className={`menu-title${menu.key === 'wyrm' ? ' wyrm-mark' : ''}${open === menu.key ? ' open' : ''}`}
+              onMouseDown={() => setOpen(open === menu.key ? null : menu.key)}
+            >
+              {menu.title}
+            </button>
             {open === menu.key && (
-              <div className="menu-drop">
+              <div className="menu-drop" role="menu">
                 {menu.items.map((item, i) =>
                   item.kind === 'sep' ? (
                     <div key={i} className="menu-sep" />
                   ) : (
-                    <div
+                    <button
                       key={i}
+                      type="button"
+                      role="menuitem"
+                      disabled={item.disabled}
                       className={`menu-item${item.disabled ? ' disabled' : ''}`}
                       onMouseDown={(e) => {
                         e.stopPropagation()
@@ -114,7 +125,7 @@ export function MenuBar({ onAbout, onPreferences }: MenuBarProps): JSX.Element {
                     >
                       <span>{item.label}</span>
                       {item.shortcut && <span className="shortcut">{item.shortcut}</span>}
-                    </div>
+                    </button>
                   )
                 )}
               </div>

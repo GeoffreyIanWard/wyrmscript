@@ -8,7 +8,7 @@ export function EntityPanel({ onClose }: EntityPanelProps): JSX.Element {
   return (
     <div className="entity-panel">
       <div className="panel-title">
-        <span className="close-box" onClick={onClose} />
+        <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
         <span className="title-text">CHARACTER</span>
       </div>
       <div className="panel-body">

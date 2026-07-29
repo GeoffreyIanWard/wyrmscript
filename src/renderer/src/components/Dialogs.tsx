@@ -20,19 +20,20 @@ function Radio({
   onPick: () => void
 }): JSX.Element {
   return (
-    <div className="control-row" onClick={onPick}>
+    <button type="button" role="radio" aria-checked={on} className="control-row" onClick={onPick}>
       <span className={`radio${on ? ' on' : ''}`} />
       <span>{label}</span>
-    </div>
+    </button>
   )
 }
 
 function Check({ label, on }: { label: string; on?: boolean }): JSX.Element {
+  // Static mock — not wired up until the features exist (Phase 2+)
   return (
-    <div className="control-row">
+    <button type="button" role="checkbox" aria-checked={!!on} disabled className="control-row">
       <span className={`check${on ? ' on' : ''}`} />
       <span>{label}</span>
-    </div>
+    </button>
   )
 }
 
@@ -47,7 +48,7 @@ export function PrefsDialog({
     <div className="dialog-overlay" onMouseDown={onClose}>
       <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
-          <span className="close-box" onClick={onClose} />
+          <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">Preferences</span>
         </div>
         <div className="dialog-body">
@@ -100,7 +101,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }): JSX.Element {
     <div className="dialog-overlay" onMouseDown={onClose}>
       <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
-          <span className="close-box" onClick={onClose} />
+          <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">About Wyrmscript</span>
         </div>
         <div className="dialog-body">

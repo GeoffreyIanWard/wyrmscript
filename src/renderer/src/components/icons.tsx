@@ -80,11 +80,11 @@ export function WyrmIcon({ size = 15 }: IconProps): JSX.Element {
       <path
         d="M3 13c-1-3 0-6 3-7 2-1 5-1 6 1s0 4-2 4-3-1-2-3"
         fill="none"
-        stroke="#000"
+        stroke="currentColor"
         strokeWidth="2"
       />
-      <path d="M12 4l2-2M12 4l3 1" stroke="#000" strokeWidth="1" />
-      <path d="M2 13h6" stroke="#000" strokeWidth="2" />
+      <path d="M12 4l2-2M12 4l3 1" stroke="currentColor" strokeWidth="1" />
+      <path d="M2 13h6" stroke="currentColor" strokeWidth="2" />
     </svg>
   )
 }
