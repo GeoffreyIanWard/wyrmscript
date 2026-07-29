@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import matter from 'gray-matter'
 import type { BinderNode, DocFile, DocMeta, ProjectData, ProjectInfo } from '../../shared/types'
-import { commitAll, initRepo } from './git'
+import { commitAll, initRepo, readFileAtRef } from './git'
 
 const PROJECT_FILE = 'project.json'
 const DOCS_DIR = 'documents'
@@ -24,9 +24,47 @@ export async function writeDoc(projectPath: string, doc: DocFile): Promise<void>
 
 export async function readDoc(projectPath: string, id: string): Promise<DocFile> {
   const raw = await fsp.readFile(docPath(projectPath, id), 'utf8')
+  return parseDocFile(raw)
+}
+
+function parseDocFile(raw: string): DocFile {
   const parsed = matter(raw)
   const meta = parsed.data as DocMeta
   return { meta, body: parsed.content.replace(/^\n/, '') }
+}
+
+/** Repo-relative path of a document file, for git log filtering. */
+export function docRepoPath(id: string): string {
+  return `${DOCS_DIR}/${id}.md`
+}
+
+/** A document as it existed at a commit oid or branch ref. Null if absent. */
+export async function readDocAtRef(
+  projectPath: string,
+  id: string,
+  ref: string
+): Promise<DocFile | null> {
+  const raw = await readFileAtRef(projectPath, ref, docRepoPath(id))
+  return raw == null ? null : parseDocFile(raw)
+}
+
+/**
+ * Restore a document to its exact state at a ref (commit oid or variant
+ * branch), as a NEW commit — never rewriting history. A safety commit of any
+ * pending changes happens first, so restore itself can always be undone.
+ */
+export async function restoreDocToRef(
+  projectPath: string,
+  id: string,
+  ref: string,
+  label: string
+): Promise<DocFile> {
+  const raw = await readFileAtRef(projectPath, ref, docRepoPath(id))
+  if (raw == null) throw new Error(`Document ${id} does not exist at ${ref}`)
+  await commitAll(projectPath, 'Auto: before restore')
+  await fsp.writeFile(docPath(projectPath, id), raw, 'utf8')
+  await commitAll(projectPath, label)
+  return parseDocFile(raw)
 }
 
 export async function saveProject(projectPath: string, data: ProjectData): Promise<void> {

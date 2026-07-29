@@ -867,6 +867,109 @@ button {
   content: '';
 }
 
+/* ---------- Phase 3: version control dialogs & prose diff ---------- */
+
+.dialog.wide {
+  min-width: 620px;
+  max-width: 720px;
+}
+
+.dialog-hint {
+  font-size: 10px;
+  line-height: 1.8;
+  margin-top: 10px;
+}
+
+.version-body {
+  display: flex;
+  gap: 12px;
+  min-height: 260px;
+  max-height: 46vh;
+}
+
+.version-list {
+  width: 218px;
+  flex: none;
+  border: 1px solid var(--ink);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.version-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 8px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--ink);
+  width: 100%;
+}
+
+.version-row .row-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.version-row .version-when {
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.version-row.selected {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.version-detail {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--ink);
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.diff-view {
+  font-family: var(--font-prose);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.diff-view.identical {
+  font-family: var(--font-chrome);
+  font-size: 10px;
+}
+
+.diff-view ins {
+  text-decoration: none;
+  border-bottom: 2px solid var(--diff-ins, var(--ink));
+  color: var(--diff-ins, inherit);
+}
+
+.diff-view del {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  color: var(--diff-del, inherit);
+  background-image: var(--dither-25);
+  background-size: 4px 4px;
+}
+
+[data-accents='4bit'] {
+  --diff-ins: #006412;
+  --diff-del: #90001c;
+}
+
+[data-terminal='green'],
+[data-terminal='amber'] {
+  --diff-ins: var(--ink);
+  --diff-del: var(--ink);
+}
+
 /* ---------- phosphor themes: whole-app monochrome CRT ---------- */
 
 /* A phosphor monitor doesn't spare the chrome: remap the global ink/paper
