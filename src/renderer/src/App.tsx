@@ -31,6 +31,7 @@ function agoLabel(timestamp: number | null, now: number): string {
 }
 
 function StatusBar(): JSX.Element {
+  const project = useWyrm((s) => s.project)
   const wordCount = useWyrm((s) => s.wordCount)
   const saveState = useWyrm((s) => s.saveState)
   const activeDoc = useWyrm((s) => s.activeDoc)
@@ -45,7 +46,7 @@ function StatusBar(): JSX.Element {
       <span>{saveLabel}</span>
       <span className="spacer" />
       <span>{agoLabel(lastCommitAt, now)}</span>
-      <span>{isElectron ? '◆ LOCAL' : '◇ DEMO'}</span>
+      <span title={project?.path}>{isElectron ? '◆ LOCAL' : '◇ DEMO — IN MEMORY'}</span>
     </div>
   )
 }

@@ -22,7 +22,6 @@ export function Editor(): JSX.Element {
   const editor = useEditor(
     {
       content: activeDoc ? markdownToDoc(activeDoc.body) : undefined,
-      autofocus: 'end',
       extensions: [
         StarterKit.configure({
           blockquote: false,
@@ -55,6 +54,11 @@ export function Editor(): JSX.Element {
 
   useEffect(() => {
     setEditor(editor ?? null)
+    // Focus the page on doc switch — but never steal focus from an active
+    // inline rename (the field would blur and the rename silently cancel).
+    if (editor && !useWyrm.getState().renamingId) {
+      editor.commands.focus('end')
+    }
     return () => setEditor(null)
   }, [editor, setEditor])
 

@@ -233,7 +233,7 @@ export function Binder(): JSX.Element {
                 type="button"
                 role="menuitem"
                 className="menu-item"
-                onMouseDown={() => {
+                onClick={() => {
                   void restoreFromTrash(menu.node!.id)
                   setMenu(null)
                 }}
@@ -246,7 +246,7 @@ export function Binder(): JSX.Element {
                   type="button"
                   role="menuitem"
                   className="menu-item"
-                  onMouseDown={() => {
+                  onClick={() => {
                     void addDoc(menu.node?.type === 'folder' ? menu.node.id : null)
                     setMenu(null)
                   }}
@@ -257,7 +257,7 @@ export function Binder(): JSX.Element {
                   type="button"
                   role="menuitem"
                   className="menu-item"
-                  onMouseDown={() => {
+                  onClick={() => {
                     void addFolder(menu.node?.type === 'folder' ? menu.node.id : null)
                     setMenu(null)
                   }}
@@ -271,7 +271,7 @@ export function Binder(): JSX.Element {
                       type="button"
                       role="menuitem"
                       className="menu-item"
-                      onMouseDown={() => {
+                      onClick={() => {
                         startRename(menu.node!.id)
                         setMenu(null)
                       }}
@@ -282,7 +282,7 @@ export function Binder(): JSX.Element {
                       type="button"
                       role="menuitem"
                       className="menu-item"
-                      onMouseDown={() => {
+                      onClick={() => {
                         void moveToTrash(menu.node!.id)
                         setMenu(null)
                       }}
