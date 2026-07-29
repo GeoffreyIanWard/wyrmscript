@@ -1,0 +1,746 @@
+/* ============================================================
+   Wyrmscript retro design system — 1-bit Mac System-era chrome
+   ============================================================ */
+
+:root {
+  --ink: #000000;
+  --paper: #ffffff;
+
+  --font-chrome: 'Silkscreen', 'Courier New', monospace;
+  --font-prose: 'Courier Prime', 'Courier New', monospace;
+
+  /* Susan Kare dither fills: SVG patterns draw only the black pixels,
+     so the element's background-color supplies the "paper" underneath. */
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%23000'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%23000'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23000'/%3E%3C/svg%3E");
+
+  /* Writing page (overridden by phosphor terminal themes) */
+  --page-bg: #ffffff;
+  --page-ink: #000000;
+
+  /* Entity link accents — pure black in the default 1-bit theme */
+  --accent-character: var(--ink);
+  --accent-world: var(--ink);
+  --accent-glossary: var(--ink);
+  --accent-label: var(--ink);
+  --highlight-bg: transparent;
+}
+
+/* 4-bit accent theme: restrained 16-color-era tints, chrome stays 1-bit */
+[data-accents='4bit'] {
+  --accent-character: #90001c;
+  --accent-world: #006412;
+  --accent-glossary: #00008b;
+  --accent-label: #90001c;
+  --highlight-bg: #fbf305;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-chrome);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  color: var(--ink);
+  background: var(--paper);
+  user-select: none;
+  cursor: default;
+}
+
+/* ---------- screen = menu bar + desktop ---------- */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.desktop {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  padding: 14px;
+  background-color: var(--paper);
+  background-image: var(--dither-50);
+  background-size: 4px 4px;
+  image-rendering: pixelated;
+}
+
+/* ---------- menu bar ---------- */
+
+.menu-bar {
+  display: flex;
+  align-items: stretch;
+  height: 30px;
+  background: var(--paper);
+  border-bottom: 2px solid var(--ink);
+  font-size: 13px;
+  -webkit-app-region: drag;
+  position: relative;
+  z-index: 100;
+}
+
+.is-electron-mac .menu-bar {
+  padding-left: 76px; /* clearance for macOS traffic lights (hiddenInset) */
+}
+
+.menu-title {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  -webkit-app-region: no-drag;
+  position: relative;
+  white-space: nowrap;
+}
+
+.menu-title.wyrm-mark {
+  font-size: 15px;
+  padding: 0 12px;
+}
+
+.menu-title.open,
+.menu-title:active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.menu-drop {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 232px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink); /* hard-offset System 6 menu shadow */
+  padding: 2px 0;
+  z-index: 200;
+}
+
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 4px 14px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.menu-item:hover:not(.disabled) {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.menu-item.disabled {
+  color: transparent;
+  background-image: var(--dither-50);
+  background-size: 2px 2px;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.menu-item .shortcut {
+  opacity: 0.9;
+}
+
+.menu-sep {
+  height: 0;
+  border-top: 1px solid var(--ink);
+  border-image: var(--dither-50) 1 round;
+  margin: 3px 1px;
+}
+
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+
+/* ---------- window chrome ---------- */
+
+.mac-window {
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  outline: 1px solid var(--paper); /* white keyline so windows separate from the dither desktop */
+}
+
+.main-window {
+  position: absolute;
+  inset: 14px;
+}
+
+.title-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  flex: none;
+  border-bottom: 2px solid var(--ink);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 3px,
+    var(--ink) 3px 4px,
+    transparent 4px 7px
+  );
+  background-size: 100% 24px;
+  background-position: 0 2px;
+  background-repeat: no-repeat;
+  padding: 0 8px;
+}
+
+.title-bar .close-box,
+.title-bar .zoom-box {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  box-shadow: 0 0 0 2px var(--paper); /* white gap punched through the pinstripes */
+  flex: none;
+}
+
+.title-bar .close-box:active,
+.title-bar .zoom-box:active {
+  background: var(--ink);
+}
+
+.title-bar .zoom-box {
+  margin-left: auto;
+  position: relative;
+}
+
+.title-bar .zoom-box::after {
+  content: '';
+  position: absolute;
+  inset: 1px 5px 5px 1px;
+  border: 1px solid var(--ink);
+}
+
+.title-bar .title {
+  margin: 0 auto;
+  padding: 0 10px;
+  background: var(--paper);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.window-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* ---------- binder ---------- */
+
+.binder {
+  width: 240px;
+  flex: none;
+  border-right: 2px solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 0;
+}
+
+.binder-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.binder-row .glyph {
+  flex: none;
+  display: flex;
+}
+
+.binder-row .glyph svg {
+  shape-rendering: crispEdges;
+}
+
+.binder-row.selected {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.binder-row.selected .glyph svg * {
+  fill: var(--paper);
+}
+
+.binder-row .label-dot {
+  width: 8px;
+  height: 8px;
+  border: 1px solid currentColor;
+  background: var(--accent-label);
+  margin-left: auto;
+  flex: none;
+}
+
+.binder-row .status-tag {
+  font-size: 8px;
+  border: 1px solid currentColor;
+  padding: 1px 3px;
+  margin-left: auto;
+  flex: none;
+}
+
+.binder-row .label-dot + .status-tag {
+  margin-left: 0;
+}
+
+.binder-sep {
+  border-top: 2px solid var(--ink);
+  margin: 6px 0;
+}
+
+/* ---------- writing terminal ---------- */
+
+.terminal {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--page-bg);
+}
+
+.terminal-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 14px;
+  font-size: 11px;
+  background: var(--page-bg);
+  color: var(--page-ink);
+  border-bottom: 1px solid var(--page-ink);
+  opacity: 0;
+  transition: opacity 120ms steps(2, end);
+  z-index: 10;
+}
+
+.terminal:hover .terminal-top {
+  opacity: 1;
+}
+
+.terminal-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll;
+}
+
+.page {
+  max-width: 62ch;
+  margin: 0 auto;
+  padding: 56px 24px 45vh;
+  font-family: var(--font-prose);
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--page-ink);
+  -webkit-font-smoothing: subpixel-antialiased;
+  user-select: text;
+  cursor: text;
+}
+
+.page p {
+  margin-bottom: 1em;
+  text-indent: 2ch;
+}
+
+.page mark {
+  background: var(--highlight-bg);
+  color: inherit;
+}
+
+[data-accents='1bit'] .page mark {
+  /* 1-bit "highlighter": thin box around the phrase, WordStar block-marker style */
+  background: none;
+  box-shadow: 0 0 0 1px var(--page-ink);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 1px 2px;
+}
+
+/* Entity links: distinct underline per type, tinted only in 4-bit mode */
+.entity {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+.entity.character {
+  color: var(--accent-character);
+  text-decoration: underline solid;
+}
+
+.entity.world {
+  color: var(--accent-world);
+  text-decoration: underline dashed;
+}
+
+.entity.glossary {
+  color: var(--accent-glossary);
+  text-decoration: underline dotted;
+}
+
+.caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.1em;
+  vertical-align: text-bottom;
+  background: var(--page-ink);
+  animation: caret-blink 1s steps(1, end) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Phosphor terminal themes (writing view only) */
+[data-terminal='green'] .terminal {
+  --page-bg: #041204;
+  --page-ink: #33ff66;
+}
+
+[data-terminal='amber'] .terminal {
+  --page-bg: #140d02;
+  --page-ink: #ffb000;
+}
+
+[data-terminal='green'] .terminal-scroll::after,
+[data-terminal='amber'] .terminal-scroll::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.28) 2px 3px);
+}
+
+[data-terminal='green'] .page,
+[data-terminal='amber'] .page {
+  text-shadow: 0 0 3px currentColor;
+}
+
+/* On phosphor screens everything is one ink: entity tints would be illegible,
+   so links fall back to the phosphor color (underline styles still differ)
+   and highlight becomes inverse video. */
+[data-terminal='green'] .terminal,
+[data-terminal='amber'] .terminal {
+  --accent-character: var(--page-ink);
+  --accent-world: var(--page-ink);
+  --accent-glossary: var(--page-ink);
+}
+
+[data-terminal='green'] .page mark,
+[data-terminal='amber'] .page mark {
+  background-image: none;
+  background-color: var(--page-ink);
+  color: var(--page-bg);
+  text-shadow: none;
+}
+
+/* ---------- entity side panel ---------- */
+
+.entity-panel {
+  width: 280px;
+  flex: none;
+  border-left: 2px solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  font-size: 11px;
+  border-bottom: 2px solid var(--ink);
+  background-image: var(--dither-25);
+  background-size: 4px 4px;
+}
+
+.panel-title .title-text {
+  background: var(--paper);
+  padding: 0 6px;
+}
+
+.panel-title .close-box {
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  flex: none;
+}
+
+.panel-title .close-box:active {
+  background: var(--ink);
+}
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  font-size: 12px;
+}
+
+.panel-body h3 {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.panel-field {
+  margin-bottom: 12px;
+}
+
+.panel-field .field-name {
+  font-size: 9px;
+  letter-spacing: 1px;
+  margin-bottom: 3px;
+}
+
+.panel-field .field-value {
+  font-family: var(--font-prose);
+  font-size: 13px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.backlinks {
+  border-top: 2px solid var(--ink);
+  padding-top: 10px;
+}
+
+.backlink-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 2px;
+  font-size: 11px;
+}
+
+.backlink-row:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* ---------- status bar ---------- */
+
+.status-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-top: 2px solid var(--ink);
+  padding: 4px 10px;
+  font-size: 10px;
+  background-image: var(--dither-25);
+  background-size: 4px 4px;
+}
+
+.status-bar > span {
+  background: var(--paper);
+  padding: 1px 5px;
+}
+
+.status-bar .spacer {
+  flex: 1;
+  background: none;
+}
+
+/* ---------- dialogs ---------- */
+
+.dialog-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog {
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  outline: 1px solid var(--paper);
+  box-shadow: 3px 3px 0 var(--ink);
+  min-width: 420px;
+  max-width: 540px;
+}
+
+.dialog .dialog-body {
+  padding: 16px 20px;
+  font-size: 12px;
+}
+
+.dialog h2 {
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+
+.fieldset {
+  border: 1px solid var(--ink);
+  padding: 10px 12px 12px;
+  margin-bottom: 14px;
+}
+
+.fieldset legend {
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 0 6px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
+/* Boxy 1-bit controls */
+.check,
+.radio {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  flex: none;
+  position: relative;
+}
+
+.radio {
+  border-radius: 50%;
+}
+
+.radio.on::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.check.on::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background:
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 1px),
+      var(--ink) 50%,
+      transparent calc(50% + 1px)
+    ),
+    linear-gradient(
+      to top left,
+      transparent calc(50% - 1px),
+      var(--ink) 50%,
+      transparent calc(50% + 1px)
+    );
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 20px 16px;
+}
+
+.btn {
+  font-family: var(--font-chrome);
+  font-size: 12px;
+  padding: 5px 18px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+}
+
+.btn:active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.btn.default {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.about-art {
+  text-align: center;
+  padding: 8px 0 14px;
+  font-size: 26px;
+}
+
+.about-small {
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.8;
+}
+
+/* ---------- chunky square scrollbars ---------- */
+
+::-webkit-scrollbar {
+  width: 17px;
+  height: 17px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: var(--paper);
+  background-image: var(--dither-25);
+  background-size: 4px 4px;
+  border-left: 1px solid var(--ink);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--paper);
+  border: 1px solid var(--ink);
+}
+
+::-webkit-scrollbar-button:single-button {
+  display: block;
+  width: 17px;
+  height: 17px;
+  background-color: var(--paper);
+  border: 1px solid var(--ink);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 9px 9px;
+}
+
+::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23000'/%3E%3C/svg%3E");
+}
+
+::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23000'/%3E%3C/svg%3E");
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--paper);
+}
