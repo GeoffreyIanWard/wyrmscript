@@ -15,6 +15,10 @@
   --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%23000'/%3E%3C/svg%3E");
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23000'/%3E%3C/svg%3E");
 
+  /* Scrollbar arrow glyphs (recolored by phosphor themes) */
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23000'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23000'/%3E%3C/svg%3E");
+
   /* Writing page (overridden by phosphor terminal themes) */
   --page-bg: #ffffff;
   --page-ink: #000000;
@@ -302,8 +306,18 @@ button {
   color: var(--paper);
 }
 
-.binder-row.selected .glyph svg * {
+/* Icons are authored with literal 1-bit attributes; retarget them to the
+   theme vars so phosphor modes and row inversion recolor them. */
+.glyph svg [stroke='#000'] {
+  stroke: currentColor;
+}
+
+.glyph svg [fill='#fff'] {
   fill: var(--paper);
+}
+
+.binder-row.selected .glyph svg [fill='#fff'] {
+  fill: var(--ink);
 }
 
 .binder-row .label-dot {
@@ -438,49 +452,6 @@ button {
   50% {
     opacity: 0;
   }
-}
-
-/* Phosphor terminal themes (writing view only) */
-[data-terminal='green'] .terminal {
-  --page-bg: #041204;
-  --page-ink: #33ff66;
-}
-
-[data-terminal='amber'] .terminal {
-  --page-bg: #140d02;
-  --page-ink: #ffb000;
-}
-
-[data-terminal='green'] .terminal-scroll::after,
-[data-terminal='amber'] .terminal-scroll::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.28) 2px 3px);
-}
-
-[data-terminal='green'] .page,
-[data-terminal='amber'] .page {
-  text-shadow: 0 0 3px currentColor;
-}
-
-/* On phosphor screens everything is one ink: entity tints would be illegible,
-   so links fall back to the phosphor color (underline styles still differ)
-   and highlight becomes inverse video. */
-[data-terminal='green'] .terminal,
-[data-terminal='amber'] .terminal {
-  --accent-character: var(--page-ink);
-  --accent-world: var(--page-ink);
-  --accent-glossary: var(--page-ink);
-}
-
-[data-terminal='green'] .page mark,
-[data-terminal='amber'] .page mark {
-  background-image: none;
-  background-color: var(--page-ink);
-  color: var(--page-bg);
-  text-shadow: none;
 }
 
 /* ---------- entity side panel ---------- */
@@ -764,13 +735,75 @@ button {
 }
 
 ::-webkit-scrollbar-button:single-button:vertical:decrement {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23000'/%3E%3C/svg%3E");
+  background-image: var(--arrow-up);
 }
 
 ::-webkit-scrollbar-button:single-button:vertical:increment {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23000'/%3E%3C/svg%3E");
+  background-image: var(--arrow-down);
 }
 
 ::-webkit-scrollbar-corner {
   background: var(--paper);
+}
+
+/* ---------- phosphor themes: whole-app monochrome CRT ---------- */
+
+/* A phosphor monitor doesn't spare the chrome: remap the global ink/paper
+   pair (plus every pattern and accent derived from it) and let the whole
+   design system re-render in one color. Must come after the 4-bit accent
+   block so the monochrome override wins when both attributes are set. */
+[data-terminal='green'],
+[data-terminal='amber'] {
+  --page-bg: var(--paper);
+  --page-ink: var(--ink);
+  --accent-character: var(--ink);
+  --accent-world: var(--ink);
+  --accent-glossary: var(--ink);
+  --accent-label: var(--ink);
+  --highlight-bg: transparent;
+  /* color/background are set on body (outside this element), so re-anchor them */
+  color: var(--ink);
+  background: var(--paper);
+  text-shadow: 0 0 3px currentColor;
+}
+
+[data-terminal='green'] {
+  --ink: #33ff66;
+  --paper: #041204;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%2333ff66'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%2333ff66'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%2333ff66'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%2333ff66'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%2333ff66'/%3E%3C/svg%3E");
+}
+
+[data-terminal='amber'] {
+  --ink: #ffb000;
+  --paper: #140d02;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%23ffb000'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%23ffb000'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23ffb000'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23ffb000'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23ffb000'/%3E%3C/svg%3E");
+}
+
+/* CRT scanlines over everything, dialogs included */
+[data-terminal='green']::after,
+[data-terminal='amber']::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.25) 2px 3px);
+}
+
+/* Highlight becomes inverse video on phosphor (overrides the 1-bit box) */
+[data-terminal='green'] .page mark,
+[data-terminal='amber'] .page mark {
+  background: var(--ink);
+  color: var(--paper);
+  text-shadow: none;
+  box-shadow: none;
+  padding: 1px 2px;
 }
