@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
+import { useWyrm } from '../store'
 import { WyrmIcon } from './icons'
 
 type MenuItem =
@@ -15,6 +16,13 @@ type MenuBarProps = {
 
 export function MenuBar({ onAbout, onPreferences }: MenuBarProps): JSX.Element {
   const [open, setOpen] = useState<string | null>(null)
+  const project = useWyrm((s) => s.project)
+  const editor = useWyrm((s) => s.editor)
+  const newProjectAction = (): void => {
+    void useWyrm.getState().newProject('')
+  }
+  const hasProject = Boolean(project)
+  const hasDoc = Boolean(useWyrm((s) => s.activeDoc))
 
   const menus: Menu[] = [
     {
@@ -30,12 +38,38 @@ export function MenuBar({ onAbout, onPreferences }: MenuBarProps): JSX.Element {
       key: 'file',
       title: 'File',
       items: [
-        { kind: 'item', label: 'New Document', shortcut: '⌘N', disabled: true },
-        { kind: 'item', label: 'New Folder', shortcut: '⇧⌘N', disabled: true },
+        {
+          kind: 'item',
+          label: 'New Document',
+          shortcut: '⌘N',
+          disabled: !hasProject,
+          action: () => void useWyrm.getState().addDoc(null)
+        },
+        {
+          kind: 'item',
+          label: 'New Folder',
+          shortcut: '⇧⌘N',
+          disabled: !hasProject,
+          action: () => void useWyrm.getState().addFolder(null)
+        },
         { kind: 'sep' },
-        { kind: 'item', label: 'Commit…', shortcut: '⌘S', disabled: true },
+        {
+          kind: 'item',
+          label: 'Commit Checkpoint',
+          shortcut: '⌘S',
+          disabled: !hasProject,
+          action: () => void useWyrm.getState().commitNow('Checkpoint')
+        },
         { kind: 'item', label: 'History', shortcut: '⌘Y', disabled: true },
         { kind: 'item', label: 'Save As Variant…', disabled: true },
+        { kind: 'sep' },
+        { kind: 'item', label: 'New Project…', action: newProjectAction },
+        {
+          kind: 'item',
+          label: 'Open Project…',
+          shortcut: '⌘O',
+          action: () => void useWyrm.getState().openProject()
+        },
         { kind: 'sep' },
         { kind: 'item', label: 'Compile Manuscript…', shortcut: '⇧⌘E', disabled: true }
       ]
@@ -44,16 +78,42 @@ export function MenuBar({ onAbout, onPreferences }: MenuBarProps): JSX.Element {
       key: 'edit',
       title: 'Edit',
       items: [
-        { kind: 'item', label: 'Undo', shortcut: '⌘Z', disabled: true },
-        { kind: 'item', label: 'Redo', shortcut: '⇧⌘Z', disabled: true },
+        {
+          kind: 'item',
+          label: 'Undo',
+          shortcut: '⌘Z',
+          disabled: !hasDoc,
+          action: () => editor?.chain().focus().undo().run()
+        },
+        {
+          kind: 'item',
+          label: 'Redo',
+          shortcut: '⇧⌘Z',
+          disabled: !hasDoc,
+          action: () => editor?.chain().focus().redo().run()
+        },
         { kind: 'sep' },
-        { kind: 'item', label: 'Cut', shortcut: '⌘X', disabled: true },
-        { kind: 'item', label: 'Copy', shortcut: '⌘C', disabled: true },
-        { kind: 'item', label: 'Paste', shortcut: '⌘V', disabled: true },
-        { kind: 'sep' },
-        { kind: 'item', label: 'Bold', shortcut: '⌘B', disabled: true },
-        { kind: 'item', label: 'Italic', shortcut: '⌘I', disabled: true },
-        { kind: 'item', label: 'Highlight', shortcut: '⇧⌘H', disabled: true }
+        {
+          kind: 'item',
+          label: 'Bold',
+          shortcut: '⌘B',
+          disabled: !hasDoc,
+          action: () => editor?.chain().focus().toggleBold().run()
+        },
+        {
+          kind: 'item',
+          label: 'Italic',
+          shortcut: '⌘I',
+          disabled: !hasDoc,
+          action: () => editor?.chain().focus().toggleItalic().run()
+        },
+        {
+          kind: 'item',
+          label: 'Highlight',
+          shortcut: '⇧⌘H',
+          disabled: !hasDoc,
+          action: () => editor?.chain().focus().toggleHighlight().run()
+        }
       ]
     },
     {
