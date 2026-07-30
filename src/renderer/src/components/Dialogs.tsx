@@ -1,16 +1,8 @@
 import type { JSX } from 'react'
 import { WyrmIcon } from './icons'
-import type { AccentTheme, TerminalTheme } from '../App'
+import type { AppearanceSettings, AccentTheme, PaletteTheme } from '../../../shared/types'
 
-type PrefsDialogProps = {
-  accents: AccentTheme
-  terminal: TerminalTheme
-  firstLineIndent: boolean
-  onAccents: (value: AccentTheme) => void
-  onTerminal: (value: TerminalTheme) => void
-  onFirstLineIndent: (value: boolean) => void
-  onClose: () => void
-}
+const DEFAULT_GEOMETRY = { measure: 62, fontSize: 17, lineHeight: 1.7 } as const
 
 function Radio({
   label,
@@ -54,15 +46,75 @@ function Check({
   )
 }
 
+/** Rounds to one decimal so repeated 0.1 steps (lineHeight) never drift off
+ *  the grid from float error (0.1 + 0.1 + 0.1 !== 0.3). */
+function roundToTenth(v: number): number {
+  return Math.round(v * 10) / 10
+}
+
+/** A labelled +/- row for one F-06 page-geometry number. `name` feeds the
+ *  button aria-labels in plain lowercase, distinct from the uppercase
+ *  chrome `label` so "Increase line width" reads naturally to a screen
+ *  reader without shouting. */
+function Stepper({
+  label,
+  name,
+  value,
+  min,
+  max,
+  step,
+  format,
+  onChange
+}: {
+  label: string
+  name: string
+  value: number
+  min: number
+  max: number
+  step: number
+  format: (v: number) => string
+  onChange: (v: number) => void
+}): JSX.Element {
+  const clamp = (v: number): number => Math.min(max, Math.max(min, roundToTenth(v)))
+  return (
+    <div className="control-row">
+      <span className="field-name">{label}</span>
+      <span className="spacer" />
+      <button
+        type="button"
+        className="btn"
+        aria-label={`Decrease ${name}`}
+        disabled={value <= min}
+        onClick={() => onChange(clamp(value - step))}
+      >
+        −
+      </button>
+      <span>{format(value)}</span>
+      <button
+        type="button"
+        className="btn"
+        aria-label={`Increase ${name}`}
+        disabled={value >= max}
+        onClick={() => onChange(clamp(value + step))}
+      >
+        +
+      </button>
+    </div>
+  )
+}
+
 export function PrefsDialog({
-  accents,
-  terminal,
-  firstLineIndent,
-  onAccents,
-  onTerminal,
-  onFirstLineIndent,
+  appearance,
+  onChange,
   onClose
-}: PrefsDialogProps): JSX.Element {
+}: {
+  appearance: AppearanceSettings
+  onChange: (patch: Partial<AppearanceSettings>) => void
+  onClose: () => void
+}): JSX.Element {
+  const pickPalette = (palette: PaletteTheme): void => onChange({ palette })
+  const pickAccents = (accents: AccentTheme): void => onChange({ accents })
+
   return (
     <div className="dialog-overlay" onMouseDown={onClose}>
       <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
@@ -74,36 +126,100 @@ export function PrefsDialog({
           <fieldset className="fieldset">
             <legend>PALETTE</legend>
             <Radio
-              label="1-bit black & white"
-              on={accents === '1bit'}
-              onPick={() => onAccents('1bit')}
+              label="Paper — 1-bit black & white"
+              on={appearance.palette === 'paper'}
+              onPick={() => pickPalette('paper')}
+            />
+            <Radio
+              label="E-reader — warm grey & deep blue"
+              on={appearance.palette === 'ereader'}
+              onPick={() => pickPalette('ereader')}
+            />
+            <Radio
+              label="Night — tan & brown, for after dark"
+              on={appearance.palette === 'night'}
+              onPick={() => pickPalette('night')}
+            />
+            <Radio
+              label="Dark — inverse of the default"
+              on={appearance.palette === 'dark'}
+              onPick={() => pickPalette('dark')}
+            />
+            <Radio
+              label="Green phosphor (CRT)"
+              on={appearance.palette === 'green'}
+              onPick={() => pickPalette('green')}
+            />
+            <Radio
+              label="Amber phosphor (CRT)"
+              on={appearance.palette === 'amber'}
+              onPick={() => pickPalette('amber')}
+            />
+            <div className="dialog-hint">
+              Green and amber add scanlines and glow. Paper, e-reader and night are the same strict
+              two colours as the default, just easier on the eyes.
+            </div>
+          </fieldset>
+          <fieldset className="fieldset">
+            <legend>ACCENTS</legend>
+            <Radio
+              label="None — pure two-colour"
+              on={appearance.accents === '1bit'}
+              onPick={() => pickAccents('1bit')}
             />
             <Radio
               label="4-bit accents (labels & entity links)"
-              on={accents === '4bit'}
-              onPick={() => onAccents('4bit')}
+              on={appearance.accents === '4bit'}
+              onPick={() => pickAccents('4bit')}
             />
+            <div className="dialog-hint">
+              Accents only tint labels and story-bible links — never the prose.
+            </div>
           </fieldset>
           <fieldset className="fieldset">
-            <legend>WRITING TERMINAL</legend>
-            <Radio label="Paper" on={terminal === 'paper'} onPick={() => onTerminal('paper')} />
-            <Radio
-              label="Green phosphor"
-              on={terminal === 'green'}
-              onPick={() => onTerminal('green')}
+            <legend>THE PAGE</legend>
+            <Stepper
+              label="LINE WIDTH"
+              name="line width"
+              value={appearance.measure}
+              min={40}
+              max={100}
+              step={4}
+              format={(v) => `${v} characters`}
+              onChange={(measure) => onChange({ measure })}
             />
-            <Radio
-              label="Amber phosphor"
-              on={terminal === 'amber'}
-              onPick={() => onTerminal('amber')}
+            <Stepper
+              label="TEXT SIZE"
+              name="text size"
+              value={appearance.fontSize}
+              min={12}
+              max={28}
+              step={1}
+              format={(v) => `${v} px`}
+              onChange={(fontSize) => onChange({ fontSize })}
             />
+            <Stepper
+              label="LINE SPACING"
+              name="line spacing"
+              value={appearance.lineHeight}
+              min={1.2}
+              max={2.4}
+              step={0.1}
+              format={(v) => v.toFixed(1)}
+              onChange={(lineHeight) => onChange({ lineHeight })}
+            />
+            <div className="control-row" style={{ marginTop: 6 }}>
+              <button type="button" className="btn" onClick={() => onChange(DEFAULT_GEOMETRY)}>
+                Reset to defaults
+              </button>
+            </div>
           </fieldset>
           <fieldset className="fieldset">
             <legend>WRITING</legend>
             <Check
               label="Indent first line of paragraphs"
-              on={firstLineIndent}
-              onToggle={onFirstLineIndent}
+              on={appearance.firstLineIndent}
+              onToggle={(firstLineIndent) => onChange({ firstLineIndent })}
             />
             <Check label="Typewriter scrolling" />
             <Check label="WordStar key diamond (Ctrl-S/D/E/X)" />
@@ -111,8 +227,8 @@ export function PrefsDialog({
           </fieldset>
         </div>
         <div className="dialog-buttons">
-          <button className="btn default" onClick={onClose}>
-            OK
+          <button type="button" className="btn default" onClick={onClose}>
+            Close
           </button>
         </div>
       </div>
