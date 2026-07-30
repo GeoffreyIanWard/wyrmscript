@@ -10,6 +10,8 @@ Retro desktop word processor for long-form fiction. WordStar focus, Scrivener st
 ## Workflow
 
 - Work on feature branches; open a PR against `develop` for review. Never push directly to `develop` or `main`.
+- **Always target `develop`; never stack a PR on another feature branch.** A stacked PR merges into its parent branch, so if the parent merges first the work silently lands off the mainline and GitHub still reports "merged" (this happened to Phase 4). If work depends on an unmerged branch, branch from it but still open the PR against `develop`, and after any merge verify with `git merge-base --is-ancestor <commit> origin/develop`.
+- After a PR is merged, confirm the code actually reached `develop` before starting the next phase — commits pushed to a branch _after_ its PR merged are orphaned and need a fresh PR.
 - Run git commands against this repo explicitly (`git -C /path/to/wyrmscript`) — the shell's working directory occasionally resets to the parent folder.
 - Before pushing: `npm run test && npm run typecheck && npm run lint`.
 
