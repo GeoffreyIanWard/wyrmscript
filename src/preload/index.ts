@@ -9,7 +9,14 @@ const api: WyrmApi = {
   readDoc: (path, id) => ipcRenderer.invoke('doc:read', path, id),
   writeDoc: (path, doc: DocFile) => ipcRenderer.invoke('doc:write', path, doc),
   commit: (path, message) => ipcRenderer.invoke('git:commit', path, message),
-  getLastProjectPath: () => ipcRenderer.invoke('settings:lastProject')
+  getLastProjectPath: () => ipcRenderer.invoke('settings:lastProject'),
+  log: (path, docId) => ipcRenderer.invoke('git:log', path, docId),
+  readDocAtRef: (path, id, ref) => ipcRenderer.invoke('doc:atRef', path, id, ref),
+  restoreDocToRef: (path, id, ref, label) =>
+    ipcRenderer.invoke('doc:restore', path, id, ref, label),
+  createVariant: (path, docId, name) => ipcRenderer.invoke('variant:create', path, docId, name),
+  listVariants: (path, docId) => ipcRenderer.invoke('variant:list', path, docId),
+  deleteVariant: (path, branch) => ipcRenderer.invoke('variant:delete', path, branch)
 }
 
 contextBridge.exposeInMainWorld('wyrm', api)

@@ -12,9 +12,10 @@ type Menu = { title: string | JSX.Element; key: string; items: MenuItem[] }
 type MenuBarProps = {
   onAbout: () => void
   onPreferences: () => void
+  onVersionDialog: (dialog: 'commit' | 'history' | 'variants') => void
 }
 
-export function MenuBar({ onAbout, onPreferences }: MenuBarProps): JSX.Element {
+export function MenuBar({ onAbout, onPreferences, onVersionDialog }: MenuBarProps): JSX.Element {
   const [open, setOpen] = useState<string | null>(null)
   const project = useWyrm((s) => s.project)
   const editor = useWyrm((s) => s.editor)
@@ -55,13 +56,24 @@ export function MenuBar({ onAbout, onPreferences }: MenuBarProps): JSX.Element {
         { kind: 'sep' },
         {
           kind: 'item',
-          label: 'Commit Checkpoint',
+          label: 'Commit Checkpoint…',
           shortcut: '⌘S',
           disabled: !hasProject,
-          action: () => void useWyrm.getState().commitNow('Checkpoint')
+          action: () => onVersionDialog('commit')
         },
-        { kind: 'item', label: 'History', shortcut: '⌘Y', disabled: true },
-        { kind: 'item', label: 'Save As Variant…', disabled: true },
+        {
+          kind: 'item',
+          label: 'History',
+          shortcut: '⌘Y',
+          disabled: !hasDoc,
+          action: () => onVersionDialog('history')
+        },
+        {
+          kind: 'item',
+          label: 'Variants…',
+          disabled: !hasDoc,
+          action: () => onVersionDialog('variants')
+        },
         { kind: 'sep' },
         { kind: 'item', label: 'New Project…', action: newProjectAction },
         {
