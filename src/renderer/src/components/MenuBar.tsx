@@ -16,6 +16,7 @@ type MenuBarProps = {
   onVersionDialog: (dialog: 'commit' | 'history' | 'variants') => void
   onCompile: () => void
   onBackup: () => void
+  onSyncSettings: () => void
 }
 
 export function MenuBar({
@@ -23,7 +24,8 @@ export function MenuBar({
   onPreferences,
   onVersionDialog,
   onCompile,
-  onBackup
+  onBackup,
+  onSyncSettings
 }: MenuBarProps): JSX.Element {
   const [open, setOpen] = useState<string | null>(null)
   const project = useWyrm((s) => s.project)
@@ -33,6 +35,7 @@ export function MenuBar({
   }
   const hasProject = Boolean(project)
   const hasDoc = Boolean(useWyrm((s) => s.activeDoc))
+  const syncMode = useWyrm((s) => s.syncStatus?.mode)
   const createEntry = (type: EntityType): void => {
     const state = useWyrm.getState()
     void state.createEntity(type, 'Untitled').then((created) => {
@@ -184,7 +187,13 @@ export function MenuBar({
         },
         { kind: 'sep' },
         { kind: 'item', label: 'Backup…', disabled: !hasProject, action: onBackup },
-        { kind: 'item', label: 'Sync Now', disabled: true },
+        {
+          kind: 'item',
+          label: 'Sync Now',
+          disabled: syncMode !== 'github',
+          action: () => void useWyrm.getState().syncNow(true)
+        },
+        { kind: 'item', label: 'Sync Settings…', disabled: !hasProject, action: onSyncSettings },
         { kind: 'item', label: 'Project Search…', shortcut: '⇧⌘F', disabled: true }
       ]
     }

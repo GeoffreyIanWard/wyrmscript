@@ -150,6 +150,57 @@ export type BackupOutcome =
   /** The backup holds work this project does not. Nothing was written. */
   | { status: 'diverged'; branch: string; detail: string }
 
+/* ---------- GitHub sync (Phase 5, brief §7) ---------- */
+
+/** Per-project sync state. `local-only` is an explicit, first-class choice (F-01). */
+export interface SyncStatus {
+  mode: 'unset' | 'local-only' | 'github'
+  remoteUrl: string | null
+  /** Signed-in GitHub account (app-level, shared across projects). */
+  login: string | null
+  /** Whether the OAuth client id has been configured (one-time app setup). */
+  clientIdSet: boolean
+  lastSyncAt: number | null
+  /** Work committed locally that has not reached GitHub yet. */
+  pendingSync: boolean
+}
+
+/** Device-flow prompt: show the code, send the writer to the URL. */
+export interface DeviceCodeInfo {
+  userCode: string
+  verificationUri: string
+  /** Seconds until the code expires. */
+  expiresIn: number
+}
+
+export type SignInPoll =
+  { state: 'pending' } | { state: 'ok'; login: string } | { state: 'error'; detail: string }
+
+/** One file that changed on both devices in ways that cannot both be kept. */
+export interface SyncConflict {
+  /** Repo-relative path — the id the resolution answers by. */
+  path: string
+  kind: 'doc' | 'entity' | 'project' | 'file'
+  /** Human name: document title, entity name, or a file label. */
+  title: string
+  /** Body text on this device; null means it was deleted here. */
+  localBody: string | null
+  /** Body text on the other device; null means it was deleted there. */
+  remoteBody: string | null
+}
+
+/** `both` keeps this device's text and shelves the other's as a variant (docs only). */
+export type ConflictResolution = 'mine' | 'theirs' | 'both'
+
+export type SyncOutcome =
+  | { status: 'up-to-date'; at: number }
+  | { status: 'pushed'; at: number }
+  | { status: 'pulled'; at: number; pushed: boolean }
+  | { status: 'merged'; at: number; pushed: boolean }
+  | { status: 'conflicts'; conflicts: SyncConflict[] }
+  | { status: 'offline'; detail: string }
+  | { status: 'error'; detail: string }
+
 /** API exposed to the renderer over the context bridge. */
 export interface WyrmApi {
   /** Show a save dialog and create a fresh .wyrm project. Null if cancelled. */
@@ -194,4 +245,26 @@ export interface WyrmApi {
   backupNow(path: string): Promise<BackupOutcome>
   /** Pick a backup and a destination, then open the restored project. Null if cancelled. */
   restoreFromBackup(): Promise<ProjectInfo | null>
+
+  getSyncStatus(path: string): Promise<SyncStatus>
+  /** One-time app setup: the GitHub OAuth app's client id (public, not a secret). */
+  setSyncClientId(clientId: string): Promise<SyncStatus>
+  /** Begin the GitHub device flow. */
+  signInStart(): Promise<DeviceCodeInfo>
+  /** Poll for the device-flow result; call every few seconds until not pending. */
+  signInPoll(): Promise<SignInPoll>
+  signOut(path: string): Promise<SyncStatus>
+  /** Connect this project: create a private repository, or use a pasted URL. */
+  connectSync(
+    path: string,
+    options: { create: boolean; name?: string; url?: string }
+  ): Promise<SyncStatus>
+  disconnectSync(path: string): Promise<SyncStatus>
+  /** Record "keep everything local" as a deliberate choice (F-01). */
+  setLocalOnly(path: string): Promise<SyncStatus>
+  syncNow(path: string): Promise<SyncOutcome>
+  resolveSyncConflicts(
+    path: string,
+    choices: { path: string; resolution: ConflictResolution }[]
+  ): Promise<SyncOutcome>
 }

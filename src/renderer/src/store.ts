@@ -5,6 +5,12 @@ import type {
   BackupSettings,
   BinderNode,
   CompileOptions,
+  ConflictResolution,
+  DeviceCodeInfo,
+  SignInPoll,
+  SyncConflict,
+  SyncOutcome,
+  SyncStatus,
   CompileResult,
   DocFile,
   Entity,
@@ -56,6 +62,27 @@ interface WyrmState {
   /** Restore the active doc to a commit oid or variant branch, as a new commit. */
   restoreActiveDoc(ref: string, label: string): Promise<void>
   createVariant(name: string): Promise<void>
+  /** GitHub sync (Phase 5). */
+  syncStatus: SyncStatus | null
+  /** Conflicts awaiting the writer — non-null renders the resolution screen. */
+  syncConflicts: SyncConflict[] | null
+  /** A background sync found conflicts; surfaced quietly, never as a popup. */
+  syncNeedsAttention: boolean
+  loadSyncStatus(): Promise<void>
+  setSyncClientId(clientId: string): Promise<void>
+  signInStart(): Promise<DeviceCodeInfo>
+  signInPoll(): Promise<SignInPoll>
+  signOutGithub(): Promise<void>
+  connectSync(options: { create: boolean; name?: string; url?: string }): Promise<void>
+  disconnectSync(): Promise<void>
+  setLocalOnly(): Promise<void>
+  /** interactive: a person asked — conflicts may open the resolution screen. */
+  syncNow(interactive?: boolean): Promise<SyncOutcome>
+  resolveConflicts(
+    choices: { path: string; resolution: ConflictResolution }[]
+  ): Promise<SyncOutcome>
+  dismissConflicts(): void
+
   /** Backup configuration for the open project; null until loaded (F-01). */
   backupSettings: BackupSettings | null
   loadBackupSettings(): Promise<void>
@@ -114,9 +141,40 @@ export const useWyrm = create<WyrmState>((set, get) => {
     refreshEntityLinks(get().editor)
   }
 
+  /**
+   * A sync brought other-device work onto disk underneath the UI: re-read the
+   * binder, entities, and the open document, and load the new text into the
+   * editor in place (undoable, same as restore).
+   */
+  async function reloadAfterRemoteChange(): Promise<void> {
+    const { project, activeId, editor } = get()
+    if (!project) return
+    const info = await api.openProjectPath(project.path)
+    if (info) setProject(info)
+    await get().loadEntities()
+    if (!activeId) return
+    const doc = await api.readDoc(project.path, activeId).catch(() => null)
+    if (doc) {
+      set({ activeDoc: doc, wordCount: countWords(doc.body), saveState: 'saved' })
+      editor?.commands.setContent(markdownToDoc(doc.body), { emitUpdate: false })
+    } else {
+      const first = firstDoc((info ?? project).data.binder)
+      if (first) await get().selectDoc(first.id)
+      else set({ activeId: null, activeDoc: null, wordCount: 0 })
+    }
+  }
+
   async function loadProject(info: ProjectInfo): Promise<void> {
     setProject(info)
-    set({ booted: true, activeId: null, activeDoc: null, saveState: 'saved' })
+    set({
+      booted: true,
+      activeId: null,
+      activeDoc: null,
+      saveState: 'saved',
+      syncStatus: null,
+      syncConflicts: null,
+      syncNeedsAttention: false
+    })
     if (commitTimer) clearInterval(commitTimer)
     commitTimer = setInterval(
       () => {
@@ -128,6 +186,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     if (first) await get().selectDoc(first.id)
     await get().loadEntities()
     await get().loadBackupSettings()
+    await get().loadSyncStatus()
     const log = await api.log(info.path)
     if (log.length > 0) set({ lastCommitAt: log[0].timestamp })
   }
@@ -147,6 +206,9 @@ export const useWyrm = create<WyrmState>((set, get) => {
     panelEntityId: null,
     mainView: { kind: 'doc' },
     backupSettings: null,
+    syncStatus: null,
+    syncConflicts: null,
+    syncNeedsAttention: false,
 
     async boot() {
       const last = await api.getLastProjectPath()
@@ -227,6 +289,13 @@ export const useWyrm = create<WyrmState>((set, get) => {
           .backupNow()
           .catch(() => {})
       }
+      // Auto-sync likewise: background, quiet, and conflicts never pop UI
+      // from here (brief §7 — commits are local-first, the push is best-effort).
+      if (committed && get().syncStatus?.mode === 'github') {
+        void get()
+          .syncNow(false)
+          .catch(() => {})
+      }
     },
 
     async restoreActiveDoc(ref, label) {
@@ -252,6 +321,92 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await api.createVariant(project.path, activeId, name)
       commitDirty = false
       set({ lastCommitAt: Date.now() })
+    },
+
+    /* ---------- GitHub sync (Phase 5) ---------- */
+
+    async loadSyncStatus() {
+      const { project } = get()
+      if (!project) return
+      set({ syncStatus: await api.getSyncStatus(project.path) })
+    },
+
+    async setSyncClientId(clientId) {
+      await api.setSyncClientId(clientId)
+      await get().loadSyncStatus()
+    },
+
+    async signInStart() {
+      return api.signInStart()
+    },
+
+    async signInPoll() {
+      const result = await api.signInPoll()
+      if (result.state === 'ok') await get().loadSyncStatus()
+      return result
+    },
+
+    async signOutGithub() {
+      const { project } = get()
+      if (!project) return
+      set({ syncStatus: await api.signOut(project.path) })
+    },
+
+    async connectSync(options) {
+      const { project } = get()
+      if (!project) return
+      set({ syncStatus: await api.connectSync(project.path, options) })
+    },
+
+    async disconnectSync() {
+      const { project } = get()
+      if (!project) return
+      set({ syncStatus: await api.disconnectSync(project.path), syncNeedsAttention: false })
+    },
+
+    async setLocalOnly() {
+      const { project } = get()
+      if (!project) return
+      set({ syncStatus: await api.setLocalOnly(project.path) })
+    },
+
+    async syncNow(interactive = true) {
+      const { project } = get()
+      if (!project) throw new Error('No project is open')
+      await get().flushSave()
+      const outcome = await api.syncNow(project.path)
+      if (outcome.status === 'conflicts') {
+        // The page is sacred: only a sync the writer asked for may put a
+        // dialog on screen. A background one leaves a quiet flag instead.
+        if (interactive) set({ syncConflicts: outcome.conflicts, syncNeedsAttention: false })
+        else set({ syncNeedsAttention: true })
+      } else {
+        set({ syncNeedsAttention: false })
+        if (outcome.status === 'pulled' || outcome.status === 'merged') {
+          // The manuscript on disk changed underneath the UI — reload.
+          await reloadAfterRemoteChange()
+        }
+      }
+      await get().loadSyncStatus()
+      return outcome
+    },
+
+    async resolveConflicts(choices) {
+      const { project } = get()
+      if (!project) throw new Error('No project is open')
+      const outcome = await api.resolveSyncConflicts(project.path, choices)
+      if (outcome.status === 'merged') {
+        set({ syncConflicts: null, syncNeedsAttention: false })
+        await reloadAfterRemoteChange()
+      }
+      await get().loadSyncStatus()
+      return outcome
+    },
+
+    dismissConflicts() {
+      // Declining to decide is allowed — nothing has been changed, and the
+      // quiet flag keeps the door open for later.
+      set({ syncConflicts: null, syncNeedsAttention: true })
     },
 
     async loadBackupSettings() {
@@ -494,4 +649,13 @@ export const useWyrm = create<WyrmState>((set, get) => {
 window.addEventListener('beforeunload', () => {
   void useWyrm.getState().flushSave()
   void useWyrm.getState().commitNow('Autosave on close')
+})
+
+// Offline queueing (brief §7): commits are always local-first; when the
+// network returns, anything still waiting goes up quietly.
+window.addEventListener('online', () => {
+  const state = useWyrm.getState()
+  if (state.syncStatus?.mode === 'github' && state.syncStatus.pendingSync) {
+    void state.syncNow(false).catch(() => {})
+  }
 })
