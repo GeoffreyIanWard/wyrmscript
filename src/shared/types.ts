@@ -35,6 +35,22 @@ export interface DocFile {
   body: string
 }
 
+/** The three story-bible flavours. One mechanic, three skins (brief §5). */
+export type EntityType = 'glossary' | 'character' | 'world'
+
+export interface Entity {
+  id: string
+  type: EntityType
+  /** Canonical name, e.g. "Elara Voss". */
+  name: string
+  /** Nicknames, titles, alternate spellings — all auto-link too. */
+  aliases: string[]
+  /** Free-form definition / bio / description (Markdown). */
+  body: string
+  created: string
+  modified: string
+}
+
 export interface CommitInfo {
   oid: string
   message: string
@@ -74,4 +90,11 @@ export interface WyrmApi {
   createVariant(path: string, docId: string, name: string): Promise<VariantInfo>
   listVariants(path: string, docId: string): Promise<VariantInfo[]>
   deleteVariant(path: string, branch: string): Promise<void>
+
+  /** Every story-bible entry across all three types. */
+  listEntities(path: string): Promise<Entity[]>
+  writeEntity(path: string, entity: Entity): Promise<void>
+  deleteEntity(path: string, type: EntityType, id: string): Promise<void>
+  /** All documents with metadata — used to compute backlinks. */
+  readAllDocs(path: string): Promise<DocFile[]>
 }
