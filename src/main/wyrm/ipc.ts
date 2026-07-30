@@ -1,8 +1,9 @@
 import { app, ipcMain, dialog, BrowserWindow } from 'electron'
 import { existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
-import type { DocFile, ProjectData } from '../../shared/types'
+import type { DocFile, Entity, EntityType, ProjectData } from '../../shared/types'
 import { commitAll, createVariant, deleteVariant, listVariants, logCommits } from './git'
+import { deleteEntity, listEntities, readAllDocs, writeEntity } from './entities'
 import {
   createProject,
   docRepoPath,
@@ -90,4 +91,11 @@ export function registerIpc(): void {
   ipcMain.handle('variant:delete', (_e, path: string, branch: string) =>
     deleteVariant(path, branch)
   )
+
+  ipcMain.handle('entity:list', (_e, path: string) => listEntities(path))
+  ipcMain.handle('entity:write', (_e, path: string, entity: Entity) => writeEntity(path, entity))
+  ipcMain.handle('entity:delete', (_e, path: string, type: EntityType, id: string) =>
+    deleteEntity(path, type, id)
+  )
+  ipcMain.handle('doc:readAll', (_e, path: string) => readAllDocs(path))
 }

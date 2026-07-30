@@ -1,11 +1,16 @@
 import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
-import type { BinderNode, DocFile, ProjectInfo } from '../../shared/types'
+import type { BinderNode, DocFile, Entity, EntityType, ProjectInfo } from '../../shared/types'
 import { api } from './lib/api'
 import { docToMarkdown, markdownToDoc, countWords } from './lib/markdown'
+import { buildEntityIndex, type EntityIndex } from './lib/entities'
+import { refreshEntityLinks } from './lib/entityLinks'
 import { findNode, firstDoc, moveNode, removeNode, type DropPosition } from './lib/tree'
 
 export type SaveState = 'saved' | 'dirty' | 'saving'
+
+/** What the main pane is showing: a manuscript document or a bible entry. */
+export type MainView = { kind: 'doc' } | { kind: 'entity'; id: string }
 
 function newId(): string {
   return Math.random().toString(36).slice(2, 10)
@@ -21,6 +26,13 @@ interface WyrmState {
   wordCount: number
   lastCommitAt: number | null
   renamingId: string | null
+
+  /** Story bible (brief §5). */
+  entities: Entity[]
+  entityIndex: EntityIndex
+  /** Entity shown in the side panel beside the writing terminal. */
+  panelEntityId: string | null
+  mainView: MainView
 
   boot(): Promise<void>
   newProject(title: string): Promise<void>
@@ -41,6 +53,15 @@ interface WyrmState {
   moveToTrash(id: string): Promise<void>
   restoreFromTrash(id: string): Promise<void>
   moveBinderNode(dragId: string, targetId: string, position: DropPosition): Promise<void>
+
+  loadEntities(): Promise<void>
+  /** Create an entry, optionally pre-named from a terminal selection. */
+  createEntity(type: EntityType, name: string): Promise<Entity | null>
+  saveEntity(entity: Entity): Promise<void>
+  deleteEntity(entity: Entity): Promise<void>
+  openEntityPanel(id: string | null): void
+  showEntity(id: string): void
+  showDoc(): void
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -59,6 +80,13 @@ export const useWyrm = create<WyrmState>((set, get) => {
     set({ project })
   }
 
+  /** Rebuild the match index and re-scan the open document in one step, so a
+   *  newly added entry highlights immediately without a reload (brief §5). */
+  function setEntities(entities: Entity[]): void {
+    set({ entities, entityIndex: buildEntityIndex(entities) })
+    refreshEntityLinks(get().editor)
+  }
+
   async function loadProject(info: ProjectInfo): Promise<void> {
     setProject(info)
     set({ booted: true, activeId: null, activeDoc: null, saveState: 'saved' })
@@ -71,6 +99,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     )
     const first = firstDoc(info.data.binder)
     if (first) await get().selectDoc(first.id)
+    await get().loadEntities()
     const log = await api.log(info.path)
     if (log.length > 0) set({ lastCommitAt: log[0].timestamp })
   }
@@ -85,6 +114,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
     wordCount: 0,
     lastCommitAt: null,
     renamingId: null,
+    entities: [],
+    entityIndex: buildEntityIndex([]),
+    panelEntityId: null,
+    mainView: { kind: 'doc' },
 
     async boot() {
       const last = await api.getLastProjectPath()
@@ -278,6 +311,72 @@ export const useWyrm = create<WyrmState>((set, get) => {
         setProject({ ...project })
         await persistProject()
       }
+    },
+
+    /* ---------- story bible ---------- */
+
+    async loadEntities() {
+      const { project } = get()
+      if (!project) return
+      const entities = await api.listEntities(project.path)
+      setEntities(entities)
+    },
+
+    async createEntity(type, name) {
+      const { project } = get()
+      if (!project) return null
+      const now = new Date().toISOString()
+      const entity: Entity = {
+        id: newId(),
+        type,
+        name: name.trim() || 'Untitled',
+        aliases: [],
+        body: '',
+        created: now,
+        modified: now
+      }
+      await api.writeEntity(project.path, entity)
+      setEntities([...get().entities, entity])
+      commitDirty = true
+      return entity
+    },
+
+    async saveEntity(entity) {
+      const { project } = get()
+      if (!project) return
+      const updated: Entity = { ...entity, modified: new Date().toISOString() }
+      await api.writeEntity(project.path, updated)
+      setEntities(get().entities.map((e) => (e.id === updated.id ? updated : e)))
+      commitDirty = true
+    },
+
+    async deleteEntity(entity) {
+      const { project, panelEntityId, mainView } = get()
+      if (!project) return
+      await api.deleteEntity(project.path, entity.type, entity.id)
+      setEntities(get().entities.filter((e) => e.id !== entity.id))
+      commitDirty = true
+      if (panelEntityId === entity.id) set({ panelEntityId: null })
+      if (mainView.kind === 'entity' && mainView.id === entity.id)
+        set({ mainView: { kind: 'doc' } })
+    },
+
+    openEntityPanel(id) {
+      set({ panelEntityId: id })
+    },
+
+    showEntity(id) {
+      // Opening the full entry makes the reference panel redundant — showing the
+      // same entry twice side by side just eats the writing pane.
+      const { panelEntityId } = get()
+      set({
+        mainView: { kind: 'entity', id },
+        panelEntityId: panelEntityId === id ? null : panelEntityId
+      })
+    },
+
+    showDoc() {
+      set({ mainView: { kind: 'doc' } })
     }
   }
 })
