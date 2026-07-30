@@ -14,9 +14,15 @@ type MenuBarProps = {
   onAbout: () => void
   onPreferences: () => void
   onVersionDialog: (dialog: 'commit' | 'history' | 'variants') => void
+  onCompile: () => void
 }
 
-export function MenuBar({ onAbout, onPreferences, onVersionDialog }: MenuBarProps): JSX.Element {
+export function MenuBar({
+  onAbout,
+  onPreferences,
+  onVersionDialog,
+  onCompile
+}: MenuBarProps): JSX.Element {
   const [open, setOpen] = useState<string | null>(null)
   const project = useWyrm((s) => s.project)
   const editor = useWyrm((s) => s.editor)
@@ -90,7 +96,13 @@ export function MenuBar({ onAbout, onPreferences, onVersionDialog }: MenuBarProp
           action: () => void useWyrm.getState().openProject()
         },
         { kind: 'sep' },
-        { kind: 'item', label: 'Compile Manuscript…', shortcut: '⇧⌘E', disabled: true }
+        {
+          kind: 'item',
+          label: 'Compile Manuscript…',
+          shortcut: '⇧⌘E',
+          disabled: !hasProject,
+          action: onCompile
+        }
       ]
     },
     {

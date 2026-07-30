@@ -18,7 +18,7 @@ The phased build order from design-brief.md §11. One PR (or small series) per p
 | 3   | Version control UI         | ✅     | Commit dialog, per-doc history, prose word-diff, restore, snapshot variants. PR #3, with the bug fixes and this roadmap following in PR #4                         |
 | 4   | Story bible                | ✅     | Entity index over glossary/characters/world, debounced auto-linking in the terminal, click-to-side-panel, add-from-selection, entry editors, backlinks. PRs #5, #6 |
 | 5   | GitHub sync                | 📋     | OAuth device flow, push/pull, offline queue, merge-conflict resolution UI. See F-01 — local-only must stay first-class                                             |
-| 6   | Suggested extras           | 📋     | Compile/export, corkboard, full-project search, writing stats, command palette                                                                                     |
+| 6   | Suggested extras           | 🔨     | Compile/export shipped (PR #8); corkboard, full-project search, writing stats, command palette still to come                                                       |
 
 **Locked v1 decisions** (confirmed 2026-07-29): 1-bit default palette with entity links distinguished per type; entity click opens a side panel; character/world entries free-form; compile/export, backlinks, auto-commit safety net, and command palette all in v1; variants are frozen snapshots (not editable branches).
 
@@ -28,21 +28,21 @@ The phased build order from design-brief.md §11. One PR (or small series) per p
 
 **Phases 1–4 are shipped and the app is in real daily use, which changes what matters next.** The brief's numbering above still describes the _scope_ of each phase, but the running order below supersedes it. Reprioritized 2026-07-30, agreed with Geoffrey.
 
-### 1. Compile / Export — **next up** 📋
+### 1. Compile / Export ✅
 
-Assemble binder items into a finished manuscript. This is the top priority because **there is currently no way to get prose out of the app**: words go in and never come out. The brief flags it as a de facto v1 requirement (§8) even though it sits inside Phase 6, and it touches no existing data, so it carries none of the risk that sync does.
+Assemble binder items into a finished manuscript — the app can now get prose back out. **File → Compile Manuscript… (⇧⌘E).** Shipped in PR #8.
 
-Scope for the first pass:
+- **Selection**: a checkbox tree over the binder; ticking a folder takes everything beneath it, and folders show a partial state. Binder order is the output order. Trash is excluded _by construction_ — `trash` is a separate tree that the compiler never walks, and a test passes a trashed id in explicitly to prove it cannot leak.
+- **Formats**: plain text, Markdown, and `.docx`. The `.docx` writer is dependency-free (`lib/docx.ts` builds the OOXML and its own stored-entry ZIP), so no new packages entered the tree.
+- **Scene separators**: `#`, `* * *`, blank line, or a custom string; a page break replaces the separator at folder boundaries in `.docx`.
+- **Front matter**: optional title page with the project title and the compiled word count.
+- **Formatting**: bold/italic/highlight map to each format — Markdown re-uses the editor's own serializer, so compiled Markdown is byte-identical to the stored files (tested against real fixtures). Plain text keeps the words and drops the markup, since inventing asterisks would just be Markdown again.
+- **Safety**: a checkpoint is committed before compiling, and the documents are re-read afterwards, so the exported manuscript is always a state that can be returned to.
+- The dialog shows a live preview plus word and document counts, comparable with the status bar.
 
-- **Selection**: choose which binder items to include (whole project, a folder, or a hand-picked set); respect binder order; skip anything in Trash.
-- **Formats**: plain text and Markdown first (trivial, immediately useful), then `.docx`, then EPUB/PDF. Ship the easy formats rather than blocking on the hard ones.
-- **Scene separators**: configurable string between documents (default `#`-style or a blank line), and a page break between folders when the format supports it.
-- **Front matter**: optional title page from the project title.
-- **Formatting**: map bold/italic/highlight to the target format; strip entity auto-links entirely — they are decorations, never part of the text (see house rules).
-- **Safety**: auto-commit before compiling, per the brief's auto-commit safety net.
-- Word count of the compiled output, so it can be checked against the status bar.
+Deferred: EPUB and PDF (the hard formats — the block model in `shared/types.ts` is format-independent, so each is a new serializer rather than new plumbing).
 
-### 2. Local backup remote (cheap half of F-01) 📋
+### 2. Local backup remote (cheap half of F-01) — **next up** 📋
 
 A git remote can be a filesystem path, so a second repo on an external drive or another folder gives real off-machine redundancy with no account, no OAuth, and no network. Small work, and it directly protects a novel that currently exists in exactly one place — local history protects against editing mistakes, not against a dead disk. Do this _before_ full GitHub sync.
 
