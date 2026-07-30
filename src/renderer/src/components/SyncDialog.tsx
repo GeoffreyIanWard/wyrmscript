@@ -5,18 +5,35 @@ import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
 
 type Screen =
-  'loading' | 'picker' | 'local-only' | 'client-id' | 'sign-in' | 'connect-project' | 'connected'
+  | 'loading'
+  | 'picker'
+  | 'local-only'
+  | 'client-id'
+  | 'sign-in'
+  | 'signed-in'
+  | 'connect-project'
+  | 'connected'
 
 /**
- * Which panel to show, derived entirely from persisted status plus one
- * in-session flag: whether the writer has clicked "Sync with GitHub" this
- * time the dialog is open. `mode` itself only becomes 'github' once a
- * project is actually connected (state 6) — clientIdSet and login are
- * app-level, so a writer who already set up a previous project sails
- * straight through states 3/4 into 5.
+ * Which panel to show, derived entirely from persisted status plus two
+ * in-session flags: whether the writer has clicked "Sync with GitHub" this
+ * time the dialog is open, and whether a sign-in just completed and has not
+ * been acknowledged yet. `mode` itself only becomes 'github' once a project
+ * is actually connected — clientIdSet and login are app-level, so a writer
+ * who already set up a previous project sails straight through into
+ * connect-project.
+ *
+ * `justSignedIn` exists because sign-in previously succeeded *silently*: the
+ * panel swapped to the connect form with nothing confirming the account had
+ * been reached, which reads exactly like a hang.
  */
-function computeScreen(status: SyncStatus | null, githubChosen: boolean): Screen {
+function computeScreen(
+  status: SyncStatus | null,
+  githubChosen: boolean,
+  justSignedIn: boolean
+): Screen {
   if (status == null) return 'loading'
+  if (justSignedIn && status.login != null) return 'signed-in'
   if (status.mode === 'github' && status.remoteUrl != null) return 'connected'
   if (status.mode === 'local-only' && !githubChosen) return 'local-only'
   if (status.mode === 'unset' && !githubChosen) return 'picker'
@@ -125,6 +142,10 @@ export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
 
   const [deviceInfo, setDeviceInfo] = useState<DeviceCodeInfo | null>(null)
   const [expired, setExpired] = useState(false)
+  const [justSignedIn, setJustSignedIn] = useState(false)
+  const [copied, setCopied] = useState(false)
+  /** Rises while waiting so the panel is visibly alive, not frozen. */
+  const [checks, setChecks] = useState(0)
 
   const [connectMode, setConnectMode] = useState<'create' | 'existing'>('create')
   const [repoName, setRepoName] = useState(() => slugify(project?.data.title ?? ''))
@@ -143,46 +164,53 @@ export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
     if (!deviceInfo) return
     const deadline = Date.now() + deviceInfo.expiresIn * 1000
     let active = true
-    const timer = setInterval(() => {
+    let timer: ReturnType<typeof setInterval> | null = null
+
+    const stop = (): void => {
+      active = false
+      if (timer) clearInterval(timer)
+    }
+
+    const check = (): void => {
       if (!active) return
       if (Date.now() >= deadline) {
-        active = false
-        clearInterval(timer)
+        stop()
         setExpired(true)
         setDeviceInfo(null)
         return
       }
+      setChecks((n) => n + 1)
       void signInPoll()
         .then((result) => {
           if (!active) return
           if (result.state === 'ok') {
-            // The store's signInPoll() already refreshes syncStatus on ok —
-            // clearing deviceInfo is enough to move the screen on.
-            active = false
-            clearInterval(timer)
+            stop()
             setDeviceInfo(null)
+            // Say so out loud. Silently swapping to the next panel is what
+            // made a working sign-in look like a hang.
+            setJustSignedIn(true)
           } else if (result.state === 'error') {
-            active = false
-            clearInterval(timer)
+            stop()
             setDeviceInfo(null)
             setError(result.detail)
           }
         })
         .catch((e: unknown) => {
           if (!active) return
-          active = false
-          clearInterval(timer)
+          stop()
           setDeviceInfo(null)
           setError(errorMessage(e))
         })
-    }, 5000)
-    return () => {
-      active = false
-      clearInterval(timer)
     }
+
+    // Check straight away rather than after a first blind 5s: approval is
+    // often already done by the time the writer looks back at the app.
+    check()
+    timer = setInterval(check, 5000)
+    return stop
   }, [deviceInfo, signInPoll])
 
-  const screen = computeScreen(syncStatus, githubChosen)
+  const screen = computeScreen(syncStatus, githubChosen, justSignedIn)
 
   const pickLocalOnly = (): void => {
     setBusy('local')
@@ -210,10 +238,22 @@ export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
     setBusy('signin')
     setError(null)
     setExpired(false)
+    setChecks(0)
+    setCopied(false)
     void signInStart()
       .then(setDeviceInfo)
       .catch((e: unknown) => setError(errorMessage(e)))
       .finally(() => setBusy(null))
+  }
+
+  const copyCode = (): void => {
+    if (!deviceInfo) return
+    void navigator.clipboard
+      .writeText(deviceInfo.userCode)
+      .then(() => setCopied(true))
+      // Clipboard access can be refused; the code is selectable either way,
+      // so say what happened rather than failing silently.
+      .catch(() => setError('Could not reach the clipboard — select the code and copy it by hand.'))
   }
 
   const connect = (): void => {
@@ -250,6 +290,7 @@ export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
   const signOut = (): void => {
     setBusy('signout')
     setError(null)
+    setJustSignedIn(false)
     void signOutGithub()
       .catch((e: unknown) => setError(errorMessage(e)))
       .finally(() => setBusy(null))
@@ -266,6 +307,18 @@ export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
         </div>
         <div className="dialog-body">
           {error != null && <div className="error-text">{error}</div>}
+
+          {/* Standing answer to "am I signed in?" — visible on every GitHub
+              screen, including when the dialog is reopened later. */}
+          {syncStatus?.login != null && screen !== 'signed-in' && (
+            <div className="account-line">
+              <span>SIGNED IN AS {syncStatus.login.toUpperCase()}</span>
+              <span className="spacer" />
+              <button type="button" className="btn small" disabled={busy != null} onClick={signOut}>
+                {busy === 'signout' ? 'Signing Out…' : 'Sign Out'}
+              </button>
+            </div>
+          )}
 
           {screen === 'loading' && <div className="dialog-hint">Reading sync settings…</div>}
 
@@ -361,23 +414,44 @@ export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
                 </>
               ) : (
                 <>
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-prose)',
-                      fontSize: 28,
-                      letterSpacing: 6,
-                      textAlign: 'center',
-                      margin: '14px 0'
-                    }}
-                  >
-                    {deviceInfo.userCode}
+                  {/* Selectable on purpose: the chrome sets user-select:none
+                      globally, which silently made the one string the writer
+                      must reproduce by hand impossible to copy. */}
+                  <div className="device-code">{deviceInfo.userCode}</div>
+                  <div className="control-row" style={{ justifyContent: 'center' }}>
+                    <button type="button" className="btn" onClick={copyCode}>
+                      {copied ? 'Copied' : 'Copy Code'}
+                    </button>
                   </div>
-                  <div className="dialog-hint" style={{ marginTop: 0 }}>
+                  <div className="dialog-hint" style={{ marginTop: 8 }}>
                     enter it at {deviceInfo.verificationUri}
                   </div>
-                  <div className="dialog-hint">Waiting for approval…</div>
+                  <div className="dialog-hint">
+                    Waiting for approval{'.'.repeat((checks % 3) + 1)} (checked {checks}
+                    {checks === 1 ? ' time' : ' times'}) — this panel changes by itself the moment
+                    GitHub says yes.
+                  </div>
                 </>
               )}
+            </fieldset>
+          )}
+
+          {screen === 'signed-in' && (
+            <fieldset className="fieldset">
+              <legend>SIGNED IN</legend>
+              <div className="dialog-hint" style={{ marginTop: 0 }}>
+                You are signed in to GitHub as <strong>{syncStatus?.login}</strong>. This account is
+                remembered for every project until you sign out.
+              </div>
+              <div className="control-row">
+                <button
+                  type="button"
+                  className="btn default"
+                  onClick={() => setJustSignedIn(false)}
+                >
+                  Continue
+                </button>
+              </div>
             </fieldset>
           )}
 
@@ -447,12 +521,11 @@ export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
                 <div className="dialog-hint">Some work is still waiting to sync.</div>
               )}
               {outcome != null && <OutcomeView outcome={outcome} />}
+              {/* Sign Out lives in the account line above, next to the name
+                  it acts on — repeating it here would be two doors to one room. */}
               <div className="control-row" style={{ marginTop: 8 }}>
                 <button type="button" className="btn" disabled={busy != null} onClick={disconnect}>
                   {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect…'}
-                </button>
-                <button type="button" className="btn" disabled={busy != null} onClick={signOut}>
-                  {busy === 'signout' ? 'Signing Out…' : 'Sign Out'}
                 </button>
               </div>
             </fieldset>

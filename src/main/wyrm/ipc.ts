@@ -254,9 +254,9 @@ export function registerIpc(): void {
 
   ipcMain.handle('sync:status', (_e, path: string) => syncStatusOf(path))
 
-  ipcMain.handle('sync:clientId', async (_e, clientId: string) => {
+  ipcMain.handle('sync:clientId', async (_e, path: string, clientId: string) => {
     await writeSettings({ syncClientId: clientId.trim() })
-    return syncStatusOf('')
+    return syncStatusOf(path)
   })
 
   ipcMain.handle('sync:signInStart', async () => {

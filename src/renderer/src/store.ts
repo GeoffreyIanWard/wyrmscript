@@ -332,8 +332,9 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async setSyncClientId(clientId) {
-      await api.setSyncClientId(clientId)
-      await get().loadSyncStatus()
+      const { project } = get()
+      if (!project) return
+      set({ syncStatus: await api.setSyncClientId(project.path, clientId) })
     },
 
     async signInStart() {
