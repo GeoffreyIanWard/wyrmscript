@@ -3,13 +3,8 @@ import type { JSX } from 'react'
 import { diffWords } from 'diff'
 import type { CommitInfo, VariantInfo } from '../../../shared/types'
 import { api } from '../lib/api'
+import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
-
-function errorMessage(e: unknown): string {
-  const raw = e instanceof Error ? e.message : String(e)
-  // Electron prefixes IPC rejections with the handler plumbing; keep the cause.
-  return raw.replace(/^Error invoking remote method '[^']*':\s*/, '')
-}
 
 function timeAgo(timestamp: number): string {
   const mins = Math.floor((Date.now() - timestamp) / 60000)
