@@ -8,6 +8,7 @@ import { EntityEditor } from './components/EntityEditor'
 import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog } from './components/Dialogs'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
+import { CompileDialog } from './components/CompileDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useWyrm } from './store'
 import { isElectron } from './lib/api'
@@ -72,6 +73,7 @@ function App(): JSX.Element {
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
+  const [compileOpen, setCompileOpen] = useState(false)
 
   const project = useWyrm((s) => s.project)
   const booted = useWyrm((s) => s.booted)
@@ -99,6 +101,9 @@ function App(): JSX.Element {
       } else if ((e.key === 'N' || (e.key === 'n' && e.shiftKey)) && state.project) {
         e.preventDefault()
         void state.addFolder(null)
+      } else if ((e.key === 'E' || (e.key === 'e' && e.shiftKey)) && state.project) {
+        e.preventDefault()
+        setCompileOpen(true)
       } else if (e.key === ',') {
         e.preventDefault()
         setPrefsOpen(true)
@@ -124,6 +129,7 @@ function App(): JSX.Element {
             .flushSave()
             .then(() => setVersionDialog(dialog))
         }}
+        onCompile={() => setCompileOpen(true)}
       />
       <div className="desktop">
         {project ? (
@@ -157,6 +163,11 @@ function App(): JSX.Element {
           />
         )}
         {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
+        {compileOpen && (
+          <ErrorBoundary label="Compile" onDismiss={() => setCompileOpen(false)}>
+            <CompileDialog onClose={() => setCompileOpen(false)} />
+          </ErrorBoundary>
+        )}
         {versionDialog !== null && (
           <ErrorBoundary
             label={

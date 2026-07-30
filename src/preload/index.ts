@@ -21,7 +21,9 @@ const api: WyrmApi = {
   listEntities: (path) => ipcRenderer.invoke('entity:list', path),
   writeEntity: (path, entity: Entity) => ipcRenderer.invoke('entity:write', path, entity),
   deleteEntity: (path, type: EntityType, id) => ipcRenderer.invoke('entity:delete', path, type, id),
-  readAllDocs: (path) => ipcRenderer.invoke('doc:readAll', path)
+  readAllDocs: (path) => ipcRenderer.invoke('doc:readAll', path),
+
+  exportFile: (defaultName, data) => ipcRenderer.invoke('compile:export', defaultName, data)
 }
 
 contextBridge.exposeInMainWorld('wyrm', api)

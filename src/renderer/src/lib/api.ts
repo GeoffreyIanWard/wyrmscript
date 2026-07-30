@@ -337,6 +337,11 @@ export function createMockApi(): WyrmApi {
     },
     async readAllDocs(path: string): Promise<DocFile[]> {
       return [...mustGet(path).docs.values()].map(cloneDoc)
+    },
+    async exportFile(defaultName: string): Promise<string | null> {
+      // No save dialog and no disk in the browser preview — the compile
+      // dialog's preview pane is where the output is actually inspected.
+      return `/demo/${defaultName}`
     }
   }
 }

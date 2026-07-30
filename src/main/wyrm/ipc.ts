@@ -1,5 +1,5 @@
 import { app, ipcMain, dialog, BrowserWindow } from 'electron'
-import { existsSync } from 'node:fs'
+import { existsSync, promises as fsp } from 'node:fs'
 import { join, basename } from 'node:path'
 import type { DocFile, Entity, EntityType, ProjectData } from '../../shared/types'
 import { commitAll, createVariant, deleteVariant, listVariants, logCommits } from './git'
@@ -98,4 +98,21 @@ export function registerIpc(): void {
     deleteEntity(path, type, id)
   )
   ipcMain.handle('doc:readAll', (_e, path: string) => readAllDocs(path))
+
+  ipcMain.handle('compile:export', async (_e, defaultName: string, data: string | Uint8Array) => {
+    const win = focusedWindow()
+    if (!win) return null
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Compile Manuscript',
+      defaultPath: join(app.getPath('documents'), defaultName),
+      buttonLabel: 'Compile'
+    })
+    if (result.canceled || !result.filePath) return null
+    // Compiled output leaves the project entirely — it is a deliverable, not
+    // project data, so it is written wherever the writer asks and never
+    // touched again.
+    if (typeof data === 'string') await fsp.writeFile(result.filePath, data, 'utf8')
+    else await fsp.writeFile(result.filePath, Buffer.from(data))
+    return result.filePath
+  })
 }

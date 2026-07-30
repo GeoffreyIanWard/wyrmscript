@@ -36,6 +36,7 @@ Worth reading before touching the neighbouring code:
 - `main/wyrm/git.ts` — `commitAll` compares **blob hashes against HEAD** rather than trusting `statusMatrix`'s stat-based dirt check. Do not "simplify" that back: same-length edits landing inside one mtime second are invisible to stat comparison (racy git), which for this app means a silently lost draft.
 - `lib/entities.ts` — the auto-link matcher: longest-match-wins alternation, Unicode lookaround word boundaries (accents work, possessives link), regex-escaped terms, collisions recorded rather than shadowed.
 - `lib/entityLinks.ts` — the ProseMirror plugin that draws links as decorations. Scans per text block (so names split across marks are still found) and is debounced; `refreshEntityLinks(editor)` forces a re-scan after the index changes.
+- `lib/compile.ts` — compile/export. Binder + documents are flattened into a format-independent block list (`CompileBlock` in `shared/types.ts`) first, and every output format is a pure function of that list, so selection/order/separator rules exist once. Markdown output goes back through `docToMarkdown`, which is what makes compiled Markdown byte-identical to the stored files. `lib/docx.ts` is a dependency-free OOXML + ZIP writer; keep it that way.
 - `components/ErrorBoundary.tsx` — wraps the root and each dialog. An error thrown from a React effect otherwise unmounts the whole tree, which once left the app a dead white window with no way back to the manuscript.
 
 ## Testing

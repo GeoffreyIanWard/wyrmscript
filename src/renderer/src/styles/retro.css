@@ -1190,3 +1190,74 @@ button {
   box-shadow: none;
   padding: 1px 2px;
 }
+
+/* ---------- compile / export ---------- */
+
+/* Shorter than the history panes: the option fieldsets sit below this and the
+   whole dialog still has to fit a small window. */
+.compile-body {
+  min-height: 170px;
+  max-height: 30vh;
+  margin-bottom: 14px;
+}
+
+.compile-row {
+  padding: 3px 8px 3px 6px;
+  font-size: 11px;
+  text-align: left;
+}
+
+.compile-row .row-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Partial selection: a folder with only some of its documents ticked. */
+.check.some::after {
+  content: '';
+  position: absolute;
+  inset: 4px 1px;
+  background: var(--ink);
+}
+
+.compile-preview {
+  font-family: var(--font-prose);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  margin: 0;
+}
+
+.compile-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.compile-options .fieldset {
+  margin-bottom: 0;
+}
+
+.compile-options .text-field {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.compile-tally {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 4px 0;
+  border-top: 1px solid var(--ink);
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.compile-tally .spacer {
+  flex: 1;
+}
