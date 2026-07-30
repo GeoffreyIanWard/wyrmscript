@@ -10,6 +10,8 @@ Retro desktop word processor for long-form fiction. WordStar focus, Scrivener st
 ## Workflow
 
 - Work on feature branches; open a PR against `develop` for review. Never push directly to `develop` or `main`.
+- **Always target `develop`; never stack a PR on another feature branch.** A stacked PR merges into its parent branch, so if the parent merges first the work silently lands off the mainline and GitHub still reports "merged" (this happened to Phase 4). If work depends on an unmerged branch, branch from it but still open the PR against `develop`, and after any merge verify with `git merge-base --is-ancestor <commit> origin/develop`.
+- After a PR is merged, confirm the code actually reached `develop` before starting the next phase — commits pushed to a branch _after_ its PR merged are orphaned and need a fresh PR.
 - Run git commands against this repo explicitly (`git -C /path/to/wyrmscript`) — the shell's working directory occasionally resets to the parent folder.
 - Before pushing: `npm run test && npm run typecheck && npm run lint`.
 
@@ -27,6 +29,8 @@ Retro desktop word processor for long-form fiction. WordStar focus, Scrivener st
 - **The UI never says "git"**: it says checkpoint, version, variant, restore.
 - Chrome uses the bitmap font; manuscript prose never does. Themes remap `--ink`/`--paper` and the dither/accent variables from one place in `styles/retro.css` — add new themes there rather than hardcoding colours.
 - A failure in one panel must never take down the app. Dialogs own their loading/empty/error states.
+- **Never return a fresh object from a zustand selector** (`s.entities.filter(...)`, `.map(...)`): the snapshot differs on every read and the component re-renders until React throws "Maximum update depth exceeded". Select the stable slice and derive during render.
+- Auto-linking is _derived_ data: story-bible links are ProseMirror decorations, never marks, so they never get written into the manuscript file.
 
 ## Verifying UI work
 
