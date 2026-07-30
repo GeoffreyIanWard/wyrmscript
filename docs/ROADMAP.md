@@ -55,6 +55,15 @@ More themes, more intensely period. Candidates: Apple II / Commodore 64 / ZX Spe
 ### F-06 · Editor margins & measure control 📋
 Let the writer control page geometry in the writing terminal: margin width / line measure (currently a fixed 62ch), font size, line height, and first-line indent (the indent toggle shipped early as part of the drift fix — see I-03). Belongs in Preferences beside the existing typography settings.
 
+### F-07 · Full keyboard navigation 📋
+Every menu and panel reachable and operable without the mouse — the WordStar half of the app's lineage (design-brief.md §1, pillar 3) currently only holds inside the editor. What exists today: global shortcuts (⌘S, ⌘Y, ⌘N, ⇧⌘N, ⌘,), and menu items are already real `<button>`s with `role="menuitem"`, so the semantics are in place. What's missing:
+- **Menu bar**: a key to enter the menu bar, then ←/→ between menus, ↑/↓ between items, Home/End, Enter to activate, Esc to close, and type-ahead to jump to an item by first letter. This is the WAI-ARIA menubar pattern (roving `tabindex`) — worth following it rather than inventing, since it also makes the app screen-reader navigable.
+- **Dialogs**: focus trap while open, Tab/⇧Tab cycling, Esc to cancel everywhere (only the commit field handles it today), Enter for the default button.
+- **Binder**: ↑/↓ through rows, ←/→ to collapse/expand folders, Enter to open or rename, ⌫ to trash — plus a shortcut to move focus between binder, editor, and side panel.
+- **Discoverability**: show the shortcut in the menu item that triggers each action (already partly done), and consider a keyboard-shortcut reference sheet.
+
+Related: the ⌘K command palette (Phase 6) covers fast *navigation* but is not a substitute for operating the existing menus; the optional WordStar Ctrl-key diamond (design-brief.md §3) is a separate opt-in keymap that should be designed alongside this so the two don't fight over bindings.
+
 ---
 
 ## Known issues
