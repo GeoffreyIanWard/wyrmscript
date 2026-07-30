@@ -110,16 +110,26 @@ Every menu and panel reachable and operable without the mouse — the WordStar h
 
 Related: the ⌘K command palette (Phase 6) covers fast _navigation_ but is not a substitute for operating the existing menus; the optional WordStar Ctrl-key diamond (design-brief.md §3) is a separate opt-in keymap that should be designed alongside this so the two don't fight over bindings.
 
+### F-08 · Folder view (document browser) 📋
+
+Clicking a folder in the binder currently only expands or collapses it. It should also open a **file-explorer view of that folder's documents** in the main pane — one row per document with word count, created and last-modified timestamps, and status/label (both already exist in `DocMeta`). Requested 2026-07-30.
+
+- **Keep it plain.** A sortable list of rows, chrome font, 1-bit — not a table with borders everywhere, and not the corkboard (that is a separate Phase 6 item with index cards). The point is to see a folder's shape at a glance, so the columns should earn their place: title, words, modified. Created and status are useful but secondary.
+- Clicking a row opens that document; the folder view is a _destination_, so `MainView` gains a `{ kind: 'folder'; id }` case alongside `doc` and `entity` (see I-05 — that union is what decides the main pane).
+- Word counts for non-open documents need every body read, which `readAllDocs` already does; the compile dialog does the same thing and could share the loader.
+- Open question: does clicking a folder replace expand/collapse, or does the twist stay the expander and the row body become the navigation target? The second is less surprising and matches the Finder lineage.
+
 ---
 
 ## Known issues
 
-| ID   | Issue                                                                                                                                                                               | Status                                        |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| I-01 | History dialog white-screened the whole app with no way out — an uncaught error in a React effect (failing IPC call after a stale dev hot-reload) unmounted the entire tree         | ✅ fixed: ErrorBoundary + recovery panel      |
-| I-02 | History list rendered blank with no explanation — a rejected `api.log` promise left state `null`, which rendered neither rows nor the empty-state message                           | ✅ fixed: explicit loading/empty/error states |
-| I-03 | First-line indent drifted right and stayed shifted — `text-indent: 2ch` on every paragraph (measured 44.4px vs 24px) is jarring while typing and inconsistent with hard-break lines | ✅ fixed: off by default, Preferences toggle  |
-| I-04 | Highlight mark shifted text ~2px horizontally because its box used padding                                                                                                          | ✅ fixed: negative-margin compensation        |
+| ID   | Issue                                                                                                                                                                                                                                                                                                                      | Status                                                                              |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| I-01 | History dialog white-screened the whole app with no way out — an uncaught error in a React effect (failing IPC call after a stale dev hot-reload) unmounted the entire tree                                                                                                                                                | ✅ fixed: ErrorBoundary + recovery panel                                            |
+| I-02 | History list rendered blank with no explanation — a rejected `api.log` promise left state `null`, which rendered neither rows nor the empty-state message                                                                                                                                                                  | ✅ fixed: explicit loading/empty/error states                                       |
+| I-03 | First-line indent drifted right and stayed shifted — `text-indent: 2ch` on every paragraph (measured 44.4px vs 24px) is jarring while typing and inconsistent with hard-break lines                                                                                                                                        | ✅ fixed: off by default, Preferences toggle                                        |
+| I-04 | Highlight mark shifted text ~2px horizontally because its box used padding                                                                                                                                                                                                                                                 | ✅ fixed: negative-margin compensation                                              |
+| I-05 | Clicking a document in the binder while a story-bible entry was open selected the row but left the entry in the main pane. Two stacked causes: `selectDoc` never reset `mainView`, and it returned early when the clicked document was already active — exactly the case a writer hits returning to the document they left | ✅ fixed: `selectDoc` restores the manuscript view _before_ the same-document guard |
 
 ---
 
