@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
+import type { EntityType } from '../../../shared/types'
 import { useWyrm } from '../store'
 import { WyrmIcon } from './icons'
 
@@ -24,6 +25,12 @@ export function MenuBar({ onAbout, onPreferences, onVersionDialog }: MenuBarProp
   }
   const hasProject = Boolean(project)
   const hasDoc = Boolean(useWyrm((s) => s.activeDoc))
+  const createEntry = (type: EntityType): void => {
+    const state = useWyrm.getState()
+    void state.createEntity(type, 'Untitled').then((created) => {
+      if (created) state.showEntity(created.id)
+    })
+  }
 
   const menus: Menu[] = [
     {
@@ -143,9 +150,24 @@ export function MenuBar({ onAbout, onPreferences, onVersionDialog }: MenuBarProp
       key: 'project',
       title: 'Project',
       items: [
-        { kind: 'item', label: 'Glossary', disabled: true },
-        { kind: 'item', label: 'Character Book', disabled: true },
-        { kind: 'item', label: 'World Book', disabled: true },
+        {
+          kind: 'item',
+          label: 'New Glossary Entry…',
+          disabled: !hasProject,
+          action: () => createEntry('glossary')
+        },
+        {
+          kind: 'item',
+          label: 'New Character…',
+          disabled: !hasProject,
+          action: () => createEntry('character')
+        },
+        {
+          kind: 'item',
+          label: 'New World Entry…',
+          disabled: !hasProject,
+          action: () => createEntry('world')
+        },
         { kind: 'sep' },
         { kind: 'item', label: 'Sync Now', disabled: true },
         { kind: 'item', label: 'Project Search…', shortcut: '⇧⌘F', disabled: true }

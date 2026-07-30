@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { JSX, DragEvent, MouseEvent } from 'react'
-import type { BinderNode } from '../../../shared/types'
+import type { BinderNode, EntityType } from '../../../shared/types'
 import type { DropPosition } from '../lib/tree'
 import { useWyrm } from '../store'
 import { CharacterIcon, DocIcon, FolderIcon, GlossaryIcon, TrashIcon, WorldIcon } from './icons'
@@ -123,6 +123,71 @@ function BinderRow({
   )
 }
 
+/** One story-bible collection in the binder, expanding to its entries. */
+function BibleSection({
+  type,
+  icon,
+  label
+}: {
+  type: EntityType
+  icon: JSX.Element
+  label: string
+}): JSX.Element {
+  // Select the stable array and derive during render: a selector that returns a
+  // fresh array (.filter/.map) makes zustand's snapshot differ every read, which
+  // re-renders forever.
+  const allEntities = useWyrm((s) => s.entities)
+  const createEntity = useWyrm((s) => s.createEntity)
+  const showEntity = useWyrm((s) => s.showEntity)
+  const mainView = useWyrm((s) => s.mainView)
+  const [open, setOpen] = useState(false)
+
+  const entities = allEntities.filter((e) => e.type === type)
+  const sorted = [...entities].sort((a, b) => a.name.localeCompare(b.name))
+
+  return (
+    <>
+      <div className="binder-row" onClick={() => setOpen((v) => !v)}>
+        <span className={`twist${open ? ' open' : ''}`} aria-hidden>
+          ▸
+        </span>
+        <span className="glyph">{icon}</span>
+        <span className="row-title">{label}</span>
+        {entities.length > 0 && <span className="entity-count">{entities.length}</span>}
+      </div>
+      {open && (
+        <>
+          {sorted.map((entity) => (
+            <div
+              key={entity.id}
+              className={`binder-row${
+                mainView.kind === 'entity' && mainView.id === entity.id ? ' selected' : ''
+              }`}
+              style={{ paddingLeft: 8 + 16 }}
+              onClick={() => showEntity(entity.id)}
+            >
+              <span className="glyph">{icon}</span>
+              <span className="row-title">{entity.name}</span>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="binder-row add-entry"
+            style={{ paddingLeft: 8 + 16 }}
+            onClick={() => {
+              void createEntity(type, 'Untitled').then((created) => {
+                if (created) showEntity(created.id)
+              })
+            }}
+          >
+            <span className="row-title">+ New entry</span>
+          </button>
+        </>
+      )}
+    </>
+  )
+}
+
 export function Binder(): JSX.Element {
   const project = useWyrm((s) => s.project)
   const addDoc = useWyrm((s) => s.addDoc)
@@ -189,24 +254,9 @@ export function Binder(): JSX.Element {
         </div>
         {trashOpen && renderNodes(project.data.trash, 1, true)}
         <div className="binder-sep" />
-        <div className="binder-row dim">
-          <span className="glyph">
-            <GlossaryIcon />
-          </span>
-          <span className="row-title">Glossary</span>
-        </div>
-        <div className="binder-row dim">
-          <span className="glyph">
-            <CharacterIcon />
-          </span>
-          <span className="row-title">Character Book</span>
-        </div>
-        <div className="binder-row dim">
-          <span className="glyph">
-            <WorldIcon />
-          </span>
-          <span className="row-title">World Book</span>
-        </div>
+        <BibleSection type="glossary" icon={<GlossaryIcon />} label="Glossary" />
+        <BibleSection type="character" icon={<CharacterIcon />} label="Character Book" />
+        <BibleSection type="world" icon={<WorldIcon />} label="World Book" />
       </div>
       <div className="binder-footer">
         <button type="button" className="btn small" onClick={() => void addDoc(null)}>

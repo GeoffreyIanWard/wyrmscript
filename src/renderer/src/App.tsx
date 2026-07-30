@@ -3,6 +3,8 @@ import type { JSX } from 'react'
 import { MenuBar } from './components/MenuBar'
 import { Binder } from './components/Binder'
 import { Editor } from './components/Editor'
+import { EntityPanel } from './components/EntityPanel'
+import { EntityEditor } from './components/EntityEditor'
 import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog } from './components/Dialogs'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
@@ -50,6 +52,16 @@ function StatusBar(): JSX.Element {
       <span>{agoLabel(lastCommitAt, now)}</span>
       <span title={project?.path}>{isElectron ? '◆ LOCAL' : '◇ DEMO — IN MEMORY'}</span>
     </div>
+  )
+}
+
+/** The writing terminal, or a story-bible entry in its place. */
+function MainPane(): JSX.Element {
+  const mainView = useWyrm((s) => s.mainView)
+  return mainView.kind === 'entity' ? (
+    <EntityEditor key={mainView.id} entityId={mainView.id} />
+  ) : (
+    <Editor />
   )
 }
 
@@ -123,7 +135,10 @@ function App(): JSX.Element {
             </div>
             <div className="window-body">
               <Binder />
-              <Editor />
+              <ErrorBoundary label="Story bible" onDismiss={() => useWyrm.getState().showDoc()}>
+                <MainPane />
+              </ErrorBoundary>
+              <EntityPanel />
             </div>
             <StatusBar />
           </div>

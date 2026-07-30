@@ -2,6 +2,8 @@ import type {
   BinderNode,
   CommitInfo,
   DocFile,
+  Entity,
+  EntityType,
   ProjectData,
   ProjectInfo,
   VariantInfo,
@@ -20,6 +22,7 @@ function id(): string {
 }
 
 const cloneDoc = (doc: DocFile): DocFile => ({ meta: { ...doc.meta }, body: doc.body })
+const cloneEntity = (entity: Entity): Entity => ({ ...entity, aliases: [...entity.aliases] })
 
 interface MockCommit extends CommitInfo {
   snapshot: Map<string, DocFile>
@@ -30,6 +33,7 @@ interface MockProject {
   docs: Map<string, DocFile>
   commits: MockCommit[] // newest last
   variants: Map<string, (VariantInfo & { doc: DocFile })[]>
+  entities: Map<string, Entity>
 }
 
 function snapshotOf(docs: Map<string, DocFile>): Map<string, DocFile> {
@@ -81,7 +85,7 @@ function starterProject(title: string): MockProject {
       trash: []
     }
   }
-  const project: MockProject = { info, docs, commits: [], variants: new Map() }
+  const project: MockProject = { info, docs, commits: [], variants: new Map(), entities: new Map() }
   commitInto(project, `Create project “${title}”`)
   return project
 }
@@ -134,7 +138,49 @@ function demoProject(): MockProject {
     }
   }
 
-  const project: MockProject = { info, docs, commits: [], variants: new Map() }
+  const entities = new Map<string, Entity>()
+  const mkEntity = (type: EntityType, name: string, aliases: string[], body: string): void => {
+    const entityId = id()
+    entities.set(entityId, { id: entityId, type, name, aliases, body, created: now, modified: now })
+  }
+  mkEntity(
+    'character',
+    'Elara Voss',
+    ['Elara', 'Captain Voss', 'the Captain'],
+    'Former harbor-guard captain of Harrowgate, cashiered after the Siege of the Narrows. Keeps her old commission folded in a tobacco tin she never opens. Sister to Marten (deceased). Sleeps badly; notices everything.'
+  )
+  mkEntity(
+    'character',
+    'Marten',
+    [],
+    "Elara's younger brother. Laughed at everything, which is the first thing the sea took. Drowned during the Siege; she has never said his name out loud since."
+  )
+  mkEntity(
+    'world',
+    'Harrowgate',
+    ['the harbor city'],
+    'Salt-eaten harbor city built on the bones of an older one. Every window pane in it carries a faint green wyrmlight shimmer the residents no longer notice.'
+  )
+  mkEntity(
+    'world',
+    'Winter Court',
+    ['the Court'],
+    'The inland power that sends envoys rather than armies. Its regards are never only regards.'
+  )
+  mkEntity(
+    'glossary',
+    'wyrmlight',
+    ['wyrm-light'],
+    'The faint green luminescence that clings to glass in Harrowgate. Harmless, constant, and impossible to scrub off.'
+  )
+  mkEntity(
+    'glossary',
+    'Drowned Saints',
+    ['the Saints'],
+    'Harbor deities of uncertain number. Sailors make the harbor-sign with two fingers rather than pray aloud.'
+  )
+
+  const project: MockProject = { info, docs, commits: [], variants: new Map(), entities }
 
   // Fabricate believable history for the demo: three drafts of scene2.
   const hours = 3600_000
@@ -275,6 +321,22 @@ export function createMockApi(): WyrmApi {
           list.filter((v) => v.branch !== branch)
         )
       }
+    },
+
+    async listEntities(path: string): Promise<Entity[]> {
+      return [...mustGet(path).entities.values()].map(cloneEntity)
+    },
+    async writeEntity(path: string, entity: Entity): Promise<void> {
+      mustGet(path).entities.set(entity.id, {
+        ...cloneEntity(entity),
+        modified: new Date().toISOString()
+      })
+    },
+    async deleteEntity(path: string, _type: EntityType, id: string): Promise<void> {
+      mustGet(path).entities.delete(id)
+    },
+    async readAllDocs(path: string): Promise<DocFile[]> {
+      return [...mustGet(path).docs.values()].map(cloneDoc)
     }
   }
 }
