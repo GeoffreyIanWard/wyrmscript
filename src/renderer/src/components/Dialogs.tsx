@@ -5,8 +5,10 @@ import type { AccentTheme, TerminalTheme } from '../App'
 type PrefsDialogProps = {
   accents: AccentTheme
   terminal: TerminalTheme
+  firstLineIndent: boolean
   onAccents: (value: AccentTheme) => void
   onTerminal: (value: TerminalTheme) => void
+  onFirstLineIndent: (value: boolean) => void
   onClose: () => void
 }
 
@@ -27,10 +29,25 @@ function Radio({
   )
 }
 
-function Check({ label, on }: { label: string; on?: boolean }): JSX.Element {
-  // Static mock — not wired up until the features exist (Phase 2+)
+function Check({
+  label,
+  on,
+  onToggle
+}: {
+  label: string
+  on?: boolean
+  /** Omit for settings whose feature does not exist yet — renders inert. */
+  onToggle?: (value: boolean) => void
+}): JSX.Element {
   return (
-    <button type="button" role="checkbox" aria-checked={!!on} disabled className="control-row">
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={!!on}
+      disabled={!onToggle}
+      className="control-row"
+      onClick={() => onToggle?.(!on)}
+    >
       <span className={`check${on ? ' on' : ''}`} />
       <span>{label}</span>
     </button>
@@ -40,8 +57,10 @@ function Check({ label, on }: { label: string; on?: boolean }): JSX.Element {
 export function PrefsDialog({
   accents,
   terminal,
+  firstLineIndent,
   onAccents,
   onTerminal,
+  onFirstLineIndent,
   onClose
 }: PrefsDialogProps): JSX.Element {
   return (
@@ -81,7 +100,12 @@ export function PrefsDialog({
           </fieldset>
           <fieldset className="fieldset">
             <legend>WRITING</legend>
-            <Check label="Typewriter scrolling" on />
+            <Check
+              label="Indent first line of paragraphs"
+              on={firstLineIndent}
+              onToggle={onFirstLineIndent}
+            />
+            <Check label="Typewriter scrolling" />
             <Check label="WordStar key diamond (Ctrl-S/D/E/X)" />
             <Check label="UI sounds" />
           </fieldset>
