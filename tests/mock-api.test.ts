@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { BinderNode } from '../src/shared/types'
 
 // The mock reads window.wyrm at module scope; provide a bare window.
 vi.stubGlobal('window', {})
@@ -15,7 +16,7 @@ async function setup(): Promise<{
   const path = (await api.getLastProjectPath())!
   const info = (await api.openProjectPath(path))!
   // find "A Knock at Night" (the doc with fabricated history)
-  const findDoc = (nodes: any[]): string | null => {
+  const findDoc = (nodes: BinderNode[]): string | null => {
     for (const n of nodes) {
       if (n.type === 'doc' && n.title === 'A Knock at Night') return n.id
       const hit = n.children ? findDoc(n.children) : null
@@ -23,7 +24,7 @@ async function setup(): Promise<{
     }
     return null
   }
-  return { api, path, docId: findDoc(info.data.binder as any[])! }
+  return { api, path, docId: findDoc(info.data.binder)! }
 }
 
 describe('mock api variant/restore interplay', () => {
