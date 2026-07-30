@@ -1,4 +1,5 @@
 import type {
+  AppearanceSettings,
   BackupOutcome,
   BackupSettings,
   BinderNode,
@@ -15,6 +16,7 @@ import type {
   VariantInfo,
   WyrmApi
 } from '../../../shared/types'
+import { DEFAULT_APPEARANCE } from '../../../shared/types'
 
 /**
  * In Electron the preload script exposes the real filesystem/git API on
@@ -213,6 +215,7 @@ export function createMockApi(): WyrmApi {
   const demo = demoProject()
   const projects = new Map<string, MockProject>([[demo.info.path, demo]])
   const backups = new Map<string, BackupSettings>()
+  let appearance: AppearanceSettings = { ...DEFAULT_APPEARANCE }
   const sync = new Map<string, SyncStatus>()
   let mockClientIdSet = false
   let mockLogin: string | null = null
@@ -434,6 +437,14 @@ export function createMockApi(): WyrmApi {
       const at = Date.now()
       if (settings) sync.set(path, { ...settings, lastSyncAt: at, pendingSync: false })
       return { status: 'merged', at, pushed: true }
+    },
+
+    async getAppearance(): Promise<AppearanceSettings> {
+      return { ...appearance }
+    },
+    async setAppearance(patch: Partial<AppearanceSettings>): Promise<AppearanceSettings> {
+      appearance = { ...appearance, ...patch }
+      return { ...appearance }
     },
 
     async getBackupSettings(path: string): Promise<BackupSettings> {

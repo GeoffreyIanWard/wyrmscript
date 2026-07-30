@@ -19,9 +19,14 @@
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23000'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23000'/%3E%3C/svg%3E");
 
-  /* Writing page (overridden by phosphor terminal themes) */
+  /* Writing page (overridden by every non-default palette) */
   --page-bg: #ffffff;
   --page-ink: #000000;
+
+  /* Page geometry — Preferences overrides these on the root element (F-06) */
+  --measure: 62ch;
+  --prose-size: 17px;
+  --prose-leading: 1.7;
 
   /* Entity link accents — pure black in the default 1-bit theme */
   --accent-character: var(--ink);
@@ -385,13 +390,17 @@ button {
   overflow-y: scroll;
 }
 
+/* Page geometry is variable-driven (F-06) so Preferences can move it live.
+   The measure is in `ch`, which tracks the prose font — the column stays the
+   same number of characters wide whatever size the writer picks, which is
+   what actually governs readability. */
 .page {
-  max-width: 62ch;
+  max-width: var(--measure, 62ch);
   margin: 0 auto;
   padding: 56px 24px 45vh;
   font-family: var(--font-prose);
-  font-size: 17px;
-  line-height: 1.65;
+  font-size: var(--prose-size, 17px);
+  line-height: var(--prose-leading, 1.7);
   color: var(--page-ink);
   -webkit-font-smoothing: subpixel-antialiased;
   user-select: text;
@@ -585,6 +594,9 @@ button {
   justify-content: center;
 }
 
+/* Column layout with a scrolling middle: a dialog that outgrows the window
+   must never push its own title bar and buttons off-screen — losing the way
+   to close it is worse than a scrollbar. */
 .dialog {
   background: var(--paper);
   border: 2px solid var(--ink);
@@ -592,11 +604,21 @@ button {
   box-shadow: 3px 3px 0 var(--ink);
   min-width: 420px;
   max-width: 540px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog > .title-bar,
+.dialog > .dialog-buttons {
+  flex: none;
 }
 
 .dialog .dialog-body {
   padding: 16px 20px;
   font-size: 12px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .dialog h2 {
@@ -985,8 +1007,8 @@ button {
   --diff-del: #90001c;
 }
 
-[data-terminal='green'],
-[data-terminal='amber'] {
+[data-palette='green'],
+[data-palette='amber'] {
   --diff-ins: var(--ink);
   --diff-del: var(--ink);
 }
@@ -1129,14 +1151,71 @@ button {
   flex: none;
 }
 
-/* ---------- phosphor themes: whole-app monochrome CRT ---------- */
+/* ---------- whole-app palettes ---------- */
 
-/* A phosphor monitor doesn't spare the chrome: remap the global ink/paper
-   pair (plus every pattern and accent derived from it) and let the whole
-   design system re-render in one color. Must come after the 4-bit accent
-   block so the monochrome override wins when both attributes are set. */
-[data-terminal='green'],
-[data-terminal='amber'] {
+/* Every palette works the same way: remap the global ink/paper pair and let
+   the entire design system re-render in those two colors. The dither and
+   arrow patterns are SVG data-URIs with the ink color baked in, so each
+   palette must restate all five — a palette that forgets them keeps the
+   previous theme's patterns and looks subtly broken.
+   These blocks must come after the 4-bit accent block so a two-color palette
+   wins when both attributes are set. */
+
+/* Comfort variants (F-05): the same strict two-color discipline as the
+   default, picked for long sessions rather than period accuracy. No glow and
+   no scanlines — those belong to the CRT palettes below. */
+[data-palette='ereader'],
+[data-palette='night'],
+[data-palette='dark'] {
+  --page-bg: var(--paper);
+  --page-ink: var(--ink);
+  --accent-character: var(--ink);
+  --accent-world: var(--ink);
+  --accent-glossary: var(--ink);
+  --accent-label: var(--ink);
+  --highlight-bg: transparent;
+  /* color/background are set on body (outside this element), so re-anchor them */
+  color: var(--ink);
+  background: var(--paper);
+}
+
+/* E-ink in a warm room: light warm grey page, deep blue ink. */
+[data-palette='ereader'] {
+  --ink: #1d2b45;
+  --paper: #e8e4dc;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%231d2b45'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%231d2b45'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%231d2b45'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%231d2b45'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%231d2b45'/%3E%3C/svg%3E");
+}
+
+/* Lamplight: warm tan page, brown ink — no blue-white at 2am. */
+[data-palette='night'] {
+  --ink: #4a3324;
+  --paper: #e3d3b3;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%234a3324'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%234a3324'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%234a3324'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%234a3324'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%234a3324'/%3E%3C/svg%3E");
+}
+
+/* The default, inverted. Not pure #fff on #000: full-contrast white on black
+   blooms badly on an LCD over a long session. */
+[data-palette='dark'] {
+  --ink: #e6e6e6;
+  --paper: #0d0d0d;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%23e6e6e6'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%23e6e6e6'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23e6e6e6'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23e6e6e6'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23e6e6e6'/%3E%3C/svg%3E");
+}
+
+/* Phosphor CRTs: palette plus glow, with scanlines added further down. */
+[data-palette='green'],
+[data-palette='amber'] {
   --page-bg: var(--paper);
   --page-ink: var(--ink);
   --accent-character: var(--ink);
@@ -1150,7 +1229,7 @@ button {
   text-shadow: 0 0 3px currentColor;
 }
 
-[data-terminal='green'] {
+[data-palette='green'] {
   --ink: #33ff66;
   --paper: #041204;
   --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%2333ff66'/%3E%3C/svg%3E");
@@ -1160,7 +1239,7 @@ button {
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%2333ff66'/%3E%3C/svg%3E");
 }
 
-[data-terminal='amber'] {
+[data-palette='amber'] {
   --ink: #ffb000;
   --paper: #140d02;
   --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%23ffb000'/%3E%3C/svg%3E");
@@ -1171,8 +1250,8 @@ button {
 }
 
 /* CRT scanlines over everything, dialogs included */
-[data-terminal='green']::after,
-[data-terminal='amber']::after {
+[data-palette='green']::after,
+[data-palette='amber']::after {
   content: '';
   position: fixed;
   inset: 0;
@@ -1182,8 +1261,8 @@ button {
 }
 
 /* Highlight becomes inverse video on phosphor (overrides the 1-bit box) */
-[data-terminal='green'] .page mark,
-[data-terminal='amber'] .page mark {
+[data-palette='green'] .page mark,
+[data-palette='amber'] .page mark {
   background: var(--ink);
   color: var(--paper);
   text-shadow: none;

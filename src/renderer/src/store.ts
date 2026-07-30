@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
 import type {
+  AppearanceSettings,
   BackupOutcome,
   BackupSettings,
   BinderNode,
@@ -62,6 +63,11 @@ interface WyrmState {
   /** Restore the active doc to a commit oid or variant branch, as a new commit. */
   restoreActiveDoc(ref: string, label: string): Promise<void>
   createVariant(name: string): Promise<void>
+  /** Palette, accents and page geometry (F-05, F-06); null until loaded. */
+  appearance: AppearanceSettings | null
+  loadAppearance(): Promise<void>
+  setAppearance(patch: Partial<AppearanceSettings>): Promise<void>
+
   /** GitHub sync (Phase 5). */
   syncStatus: SyncStatus | null
   /** Conflicts awaiting the writer — non-null renders the resolution screen. */
@@ -206,11 +212,16 @@ export const useWyrm = create<WyrmState>((set, get) => {
     panelEntityId: null,
     mainView: { kind: 'doc' },
     backupSettings: null,
+    appearance: null,
     syncStatus: null,
     syncConflicts: null,
     syncNeedsAttention: false,
 
     async boot() {
+      // Appearance first and independently of any project: the writer's
+      // chosen palette should be on screen before anything else renders,
+      // and it must survive a boot that finds no project at all.
+      await get().loadAppearance()
       const last = await api.getLastProjectPath()
       if (last) {
         const info = await api.openProjectPath(last)
@@ -321,6 +332,20 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await api.createVariant(project.path, activeId, name)
       commitDirty = false
       set({ lastCommitAt: Date.now() })
+    },
+
+    /* ---------- appearance (F-05, F-06) ---------- */
+
+    async loadAppearance() {
+      set({ appearance: await api.getAppearance() })
+    },
+
+    async setAppearance(patch) {
+      // Optimistic: dragging a stepper must feel immediate, and a failed
+      // write is a cosmetic setback rather than lost work.
+      const current = get().appearance
+      if (current) set({ appearance: { ...current, ...patch } })
+      set({ appearance: await api.setAppearance(patch) })
     },
 
     /* ---------- GitHub sync (Phase 5) ---------- */

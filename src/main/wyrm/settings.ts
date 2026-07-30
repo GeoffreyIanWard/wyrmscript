@@ -2,6 +2,8 @@ import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 
+import type { AppearanceSettings } from '../../shared/types'
+import { DEFAULT_APPEARANCE } from '../../shared/types'
 import type { BackupSettings } from '../../shared/types'
 
 /** Per-project sync bookkeeping. The remote URL itself lives in .git/config. */
@@ -21,6 +23,8 @@ interface AppSettings {
   githubToken?: string
   githubLogin?: string
   syncProjects?: Record<string, SyncProjectSettings>
+  /** Palette, accents and page geometry — app-level, follows the writer. */
+  appearance?: Partial<AppearanceSettings>
 }
 
 const NO_BACKUP: BackupSettings = { path: null, auto: false, lastBackupAt: null }
@@ -41,6 +45,21 @@ export async function readSettings(): Promise<AppSettings> {
 export async function writeSettings(patch: Partial<AppSettings>): Promise<void> {
   const current = await readSettings()
   await fsp.writeFile(settingsFile(), JSON.stringify({ ...current, ...patch }, null, 2), 'utf8')
+}
+
+export async function readAppearance(): Promise<AppearanceSettings> {
+  const settings = await readSettings()
+  // Merged over the defaults rather than replacing them, so a settings file
+  // written by an older build keeps working when new fields appear.
+  return { ...DEFAULT_APPEARANCE, ...settings.appearance }
+}
+
+export async function writeAppearance(
+  patch: Partial<AppearanceSettings>
+): Promise<AppearanceSettings> {
+  const next = { ...(await readAppearance()), ...patch }
+  await writeSettings({ appearance: next })
+  return next
 }
 
 export async function readSyncProject(projectPath: string): Promise<SyncProjectSettings> {
