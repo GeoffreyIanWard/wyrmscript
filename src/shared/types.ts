@@ -66,6 +66,67 @@ export interface VariantInfo {
   oid: string
 }
 
+/* ---------- Compile / export (brief §8) ---------- */
+
+export type CompileFormat = 'txt' | 'md' | 'docx'
+
+/**
+ * A formatted span of manuscript text. Only the three supported marks exist —
+ * story-bible auto-links are ProseMirror decorations, never marks, so they
+ * cannot reach this model at all (see the house rules).
+ */
+export interface CompileRun {
+  text: string
+  bold?: boolean
+  italic?: boolean
+  highlight?: boolean
+}
+
+/** A hard break inside a paragraph (TipTap `hardBreak`). */
+export interface CompileBreak {
+  break: true
+}
+
+export type CompileInline = CompileRun | CompileBreak
+
+/**
+ * The compiled manuscript as a flat block list, format-independent. Every
+ * output format is a pure function of this — so selection, ordering, and
+ * separator logic is written and tested exactly once.
+ */
+export type CompileBlock =
+  | { kind: 'titlePage'; title: string; lines: string[] }
+  | { kind: 'heading'; level: 1 | 2; text: string }
+  | { kind: 'separator'; text: string }
+  | { kind: 'pageBreak' }
+  | { kind: 'paragraph'; runs: CompileInline[] }
+
+export interface CompileOptions {
+  format: CompileFormat
+  /** Binder document ids to include. Null means every document in the binder. */
+  includeIds: string[] | null
+  /** Text placed between documents; empty means a blank line only. */
+  separator: string
+  titlePage: boolean
+  docTitles: boolean
+  folderTitles: boolean
+  /** Only honoured by formats with pages (`docx`). */
+  pageBreakBetweenFolders: boolean
+}
+
+export interface CompileResult {
+  blocks: CompileBlock[]
+  /** Prose words only — headings, separators and the title page are excluded,
+   *  so this is comparable with the status bar's count. */
+  wordCount: number
+  /** Number of documents that contributed prose. */
+  docCount: number
+  /** Text formats only; `docx` output is bytes. */
+  text: string
+  bytes?: Uint8Array
+  extension: string
+}
+
 /** API exposed to the renderer over the context bridge. */
 export interface WyrmApi {
   /** Show a save dialog and create a fresh .wyrm project. Null if cancelled. */
@@ -97,4 +158,7 @@ export interface WyrmApi {
   deleteEntity(path: string, type: EntityType, id: string): Promise<void>
   /** All documents with metadata — used to compute backlinks. */
   readAllDocs(path: string): Promise<DocFile[]>
+
+  /** Show a save dialog and write compiled output. Returns the path, or null if cancelled. */
+  exportFile(defaultName: string, data: string | Uint8Array): Promise<string | null>
 }

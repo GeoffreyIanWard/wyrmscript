@@ -1,7 +1,16 @@
 import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
-import type { BinderNode, DocFile, Entity, EntityType, ProjectInfo } from '../../shared/types'
+import type {
+  BinderNode,
+  CompileOptions,
+  CompileResult,
+  DocFile,
+  Entity,
+  EntityType,
+  ProjectInfo
+} from '../../shared/types'
 import { api } from './lib/api'
+import { compile, compileFileName } from './lib/compile'
 import { docToMarkdown, markdownToDoc, countWords } from './lib/markdown'
 import { buildEntityIndex, type EntityIndex } from './lib/entities'
 import { refreshEntityLinks } from './lib/entityLinks'
@@ -45,6 +54,12 @@ interface WyrmState {
   /** Restore the active doc to a commit oid or variant branch, as a new commit. */
   restoreActiveDoc(ref: string, label: string): Promise<void>
   createVariant(name: string): Promise<void>
+  /** Every document keyed by id — the compile dialog's source of truth. */
+  loadAllDocs(): Promise<Map<string, DocFile>>
+  /** Checkpoint, then compile the manuscript and write it wherever the writer picks. */
+  compileManuscript(
+    options: CompileOptions
+  ): Promise<{ result: CompileResult; path: string | null }>
 
   addDoc(parentId: string | null): Promise<void>
   addFolder(parentId: string | null): Promise<void>
@@ -210,6 +225,32 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await api.createVariant(project.path, activeId, name)
       commitDirty = false
       set({ lastCommitAt: Date.now() })
+    },
+
+    async loadAllDocs() {
+      const { project } = get()
+      if (!project) return new Map()
+      await get().flushSave()
+      const docs = await api.readAllDocs(project.path)
+      return new Map(docs.map((doc) => [doc.meta.id, doc]))
+    },
+
+    async compileManuscript(options) {
+      const { project } = get()
+      if (!project) throw new Error('No project is open')
+      // Checkpoint first (brief §6): the compiled manuscript must correspond to
+      // a state that is recoverable, and re-reading afterwards guarantees the
+      // output is exactly what was committed rather than a stale editor buffer.
+      await get().flushSave()
+      const committed = await api.commit(project.path, 'Auto: before compile')
+      commitDirty = false
+      if (committed) set({ lastCommitAt: Date.now() })
+
+      const docs = await get().loadAllDocs()
+      const result = compile(project.data, docs, options, true)
+      const name = compileFileName(project.data.title, result.extension)
+      const path = await api.exportFile(name, result.bytes ?? result.text)
+      return { result, path }
     },
 
     async addDoc(parentId) {
