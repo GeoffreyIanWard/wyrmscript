@@ -14,7 +14,8 @@ import {
   saveProject,
   writeDoc
 } from './project'
-import { readSettings, writeSettings } from './settings'
+import { readBackupSettings, readSettings, writeBackupSettings, writeSettings } from './settings'
+import { backupNameFor, backupProject, restoreBackup } from './backup'
 
 function focusedWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
@@ -98,6 +99,73 @@ export function registerIpc(): void {
     deleteEntity(path, type, id)
   )
   ipcMain.handle('doc:readAll', (_e, path: string) => readAllDocs(path))
+
+  /* ---------- local backup (F-01) ---------- */
+
+  ipcMain.handle('backup:get', (_e, path: string) => readBackupSettings(path))
+
+  ipcMain.handle('backup:choose', async (_e, path: string) => {
+    const win = focusedWindow()
+    if (!win) return null
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Choose Backup Location',
+      // An external drive is the point of the feature, so start somewhere the
+      // writer will recognise rather than inside the project itself.
+      defaultPath: join(app.getPath('documents'), backupNameFor(path)),
+      buttonLabel: 'Use This Location',
+      properties: ['createDirectory']
+    })
+    if (result.canceled || !result.filePath) return null
+    return writeBackupSettings(path, { path: result.filePath })
+  })
+
+  ipcMain.handle('backup:auto', (_e, path: string, auto: boolean) =>
+    writeBackupSettings(path, { auto })
+  )
+
+  ipcMain.handle('backup:clear', (_e, path: string) =>
+    writeBackupSettings(path, { path: null, auto: false, lastBackupAt: null })
+  )
+
+  ipcMain.handle('backup:now', async (_e, path: string) => {
+    const settings = await readBackupSettings(path)
+    if (!settings.path) throw new Error('No backup location has been chosen for this project.')
+    const outcome = await backupProject(path, settings.path)
+    // Only a real mirror advances the timestamp — "up to date" keeps the time
+    // of the backup that actually holds the work.
+    if (outcome.status === 'backed-up')
+      await writeBackupSettings(path, { lastBackupAt: outcome.at })
+    return outcome
+  })
+
+  ipcMain.handle('backup:restore', async () => {
+    const win = focusedWindow()
+    if (!win) return null
+    const picked = await dialog.showOpenDialog(win, {
+      title: 'Restore from Backup',
+      properties: ['openDirectory'],
+      buttonLabel: 'Restore From This'
+    })
+    if (picked.canceled || picked.filePaths.length === 0) return null
+    const source = picked.filePaths[0]
+    if (!existsSync(join(source, 'objects'))) {
+      dialog.showErrorBox('Not a Wyrmscript backup', 'That folder is not a backup repository.')
+      return null
+    }
+    const destination = await dialog.showSaveDialog(win, {
+      title: 'Restore As New Project',
+      defaultPath: join(app.getPath('documents'), basename(source).replace(/\.git$/, '')),
+      buttonLabel: 'Restore',
+      properties: ['createDirectory']
+    })
+    if (destination.canceled || !destination.filePath) return null
+    const path = destination.filePath.endsWith('.wyrm')
+      ? destination.filePath
+      : `${destination.filePath}.wyrm`
+    const data = await restoreBackup(source, path)
+    await rememberProject(path)
+    return { path, data }
+  })
 
   ipcMain.handle('compile:export', async (_e, defaultName: string, data: string | Uint8Array) => {
     const win = focusedWindow()

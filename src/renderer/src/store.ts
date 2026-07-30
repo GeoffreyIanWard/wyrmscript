@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
 import type {
+  BackupOutcome,
+  BackupSettings,
   BinderNode,
   CompileOptions,
   CompileResult,
@@ -54,6 +56,16 @@ interface WyrmState {
   /** Restore the active doc to a commit oid or variant branch, as a new commit. */
   restoreActiveDoc(ref: string, label: string): Promise<void>
   createVariant(name: string): Promise<void>
+  /** Backup configuration for the open project; null until loaded (F-01). */
+  backupSettings: BackupSettings | null
+  loadBackupSettings(): Promise<void>
+  chooseBackupLocation(): Promise<void>
+  setBackupAuto(auto: boolean): Promise<void>
+  clearBackupLocation(): Promise<void>
+  backupNow(): Promise<BackupOutcome>
+  /** Restore a backup into a new project and open it. True if one was opened. */
+  restoreFromBackup(): Promise<boolean>
+
   /** Every document keyed by id — the compile dialog's source of truth. */
   loadAllDocs(): Promise<Map<string, DocFile>>
   /** Checkpoint, then compile the manuscript and write it wherever the writer picks. */
@@ -115,6 +127,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     const first = firstDoc(info.data.binder)
     if (first) await get().selectDoc(first.id)
     await get().loadEntities()
+    await get().loadBackupSettings()
     const log = await api.log(info.path)
     if (log.length > 0) set({ lastCommitAt: log[0].timestamp })
   }
@@ -133,6 +146,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     entityIndex: buildEntityIndex([]),
     panelEntityId: null,
     mainView: { kind: 'doc' },
+    backupSettings: null,
 
     async boot() {
       const last = await api.getLastProjectPath()
@@ -206,6 +220,13 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const committed = await api.commit(project.path, message)
       commitDirty = false
       if (committed) set({ lastCommitAt: Date.now() })
+      // Auto-backup runs after the checkpoint and never blocks it: a missing
+      // external drive must not be able to stop the writer saving their work.
+      if (committed && get().backupSettings?.auto) {
+        void get()
+          .backupNow()
+          .catch(() => {})
+      }
     },
 
     async restoreActiveDoc(ref, label) {
@@ -231,6 +252,47 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await api.createVariant(project.path, activeId, name)
       commitDirty = false
       set({ lastCommitAt: Date.now() })
+    },
+
+    async loadBackupSettings() {
+      const { project } = get()
+      if (!project) return
+      set({ backupSettings: await api.getBackupSettings(project.path) })
+    },
+
+    async chooseBackupLocation() {
+      const { project } = get()
+      if (!project) return
+      const settings = await api.chooseBackupLocation(project.path)
+      if (settings) set({ backupSettings: settings })
+    },
+
+    async setBackupAuto(auto) {
+      const { project } = get()
+      if (!project) return
+      set({ backupSettings: await api.setBackupAuto(project.path, auto) })
+    },
+
+    async clearBackupLocation() {
+      const { project } = get()
+      if (!project) return
+      set({ backupSettings: await api.clearBackupLocation(project.path) })
+    },
+
+    async backupNow() {
+      const { project } = get()
+      if (!project) throw new Error('No project is open')
+      await get().flushSave()
+      const outcome = await api.backupNow(project.path)
+      await get().loadBackupSettings()
+      return outcome
+    },
+
+    async restoreFromBackup() {
+      const info = await api.restoreFromBackup()
+      if (!info) return false
+      await loadProject(info)
+      return true
     },
 
     async loadAllDocs() {

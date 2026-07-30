@@ -127,6 +127,29 @@ export interface CompileResult {
   extension: string
 }
 
+/* ---------- Local backup (F-01) ---------- */
+
+export interface BackupSettings {
+  /** Absolute path of the backup repository, or null when none is configured. */
+  path: string | null
+  /** Mirror automatically after every checkpoint. */
+  auto: boolean
+  lastBackupAt: number | null
+}
+
+export type BackupOutcome =
+  | {
+      status: 'backed-up'
+      objectsCopied: number
+      branches: number
+      /** Files read back out of the backup to prove the manuscript is recoverable. */
+      filesVerified: number
+      at: number
+    }
+  | { status: 'up-to-date'; at: number }
+  /** The backup holds work this project does not. Nothing was written. */
+  | { status: 'diverged'; branch: string; detail: string }
+
 /** API exposed to the renderer over the context bridge. */
 export interface WyrmApi {
   /** Show a save dialog and create a fresh .wyrm project. Null if cancelled. */
@@ -161,4 +184,14 @@ export interface WyrmApi {
 
   /** Show a save dialog and write compiled output. Returns the path, or null if cancelled. */
   exportFile(defaultName: string, data: string | Uint8Array): Promise<string | null>
+
+  getBackupSettings(path: string): Promise<BackupSettings>
+  /** Pick a backup location for this project. Null if cancelled. */
+  chooseBackupLocation(path: string): Promise<BackupSettings | null>
+  setBackupAuto(path: string, auto: boolean): Promise<BackupSettings>
+  clearBackupLocation(path: string): Promise<BackupSettings>
+  /** Checkpoint, then mirror this project into its backup repository. */
+  backupNow(path: string): Promise<BackupOutcome>
+  /** Pick a backup and a destination, then open the restored project. Null if cancelled. */
+  restoreFromBackup(): Promise<ProjectInfo | null>
 }
