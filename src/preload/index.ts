@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DocFile, ProjectData, WyrmApi } from '../shared/types'
+import type { DocFile, Entity, EntityType, ProjectData, WyrmApi } from '../shared/types'
 
 const api: WyrmApi = {
   createProject: (title) => ipcRenderer.invoke('project:create', title),
@@ -16,7 +16,12 @@ const api: WyrmApi = {
     ipcRenderer.invoke('doc:restore', path, id, ref, label),
   createVariant: (path, docId, name) => ipcRenderer.invoke('variant:create', path, docId, name),
   listVariants: (path, docId) => ipcRenderer.invoke('variant:list', path, docId),
-  deleteVariant: (path, branch) => ipcRenderer.invoke('variant:delete', path, branch)
+  deleteVariant: (path, branch) => ipcRenderer.invoke('variant:delete', path, branch),
+
+  listEntities: (path) => ipcRenderer.invoke('entity:list', path),
+  writeEntity: (path, entity: Entity) => ipcRenderer.invoke('entity:write', path, entity),
+  deleteEntity: (path, type: EntityType, id) => ipcRenderer.invoke('entity:delete', path, type, id),
+  readAllDocs: (path) => ipcRenderer.invoke('doc:readAll', path)
 }
 
 contextBridge.exposeInMainWorld('wyrm', api)

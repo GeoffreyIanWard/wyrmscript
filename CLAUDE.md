@@ -27,6 +27,8 @@ Retro desktop word processor for long-form fiction. WordStar focus, Scrivener st
 - **The UI never says "git"**: it says checkpoint, version, variant, restore.
 - Chrome uses the bitmap font; manuscript prose never does. Themes remap `--ink`/`--paper` and the dither/accent variables from one place in `styles/retro.css` — add new themes there rather than hardcoding colours.
 - A failure in one panel must never take down the app. Dialogs own their loading/empty/error states.
+- **Never return a fresh object from a zustand selector** (`s.entities.filter(...)`, `.map(...)`): the snapshot differs on every read and the component re-renders until React throws "Maximum update depth exceeded". Select the stable slice and derive during render.
+- Auto-linking is _derived_ data: story-bible links are ProseMirror decorations, never marks, so they never get written into the manuscript file.
 
 ## Verifying UI work
 
