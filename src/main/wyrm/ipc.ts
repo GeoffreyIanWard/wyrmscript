@@ -2,8 +2,17 @@ import { app, ipcMain, dialog, BrowserWindow } from 'electron'
 import { existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import type { DocFile, ProjectData } from '../../shared/types'
-import { commitAll } from './git'
-import { createProject, openProject, readDoc, saveProject, writeDoc } from './project'
+import { commitAll, createVariant, deleteVariant, listVariants, logCommits } from './git'
+import {
+  createProject,
+  docRepoPath,
+  openProject,
+  readDoc,
+  readDocAtRef,
+  restoreDocToRef,
+  saveProject,
+  writeDoc
+} from './project'
 import { readSettings, writeSettings } from './settings'
 
 function focusedWindow(): BrowserWindow | undefined {
@@ -64,4 +73,21 @@ export function registerIpc(): void {
   ipcMain.handle('doc:write', (_e, path: string, doc: DocFile) => writeDoc(path, doc))
   ipcMain.handle('git:commit', (_e, path: string, message: string) => commitAll(path, message))
   ipcMain.handle('settings:lastProject', async () => (await readSettings()).lastProjectPath ?? null)
+
+  ipcMain.handle('git:log', (_e, path: string, docId?: string) =>
+    logCommits(path, docId ? docRepoPath(docId) : undefined)
+  )
+  ipcMain.handle('doc:atRef', (_e, path: string, id: string, ref: string) =>
+    readDocAtRef(path, id, ref)
+  )
+  ipcMain.handle('doc:restore', (_e, path: string, id: string, ref: string, label: string) =>
+    restoreDocToRef(path, id, ref, label)
+  )
+  ipcMain.handle('variant:create', (_e, path: string, docId: string, name: string) =>
+    createVariant(path, docId, name)
+  )
+  ipcMain.handle('variant:list', (_e, path: string, docId: string) => listVariants(path, docId))
+  ipcMain.handle('variant:delete', (_e, path: string, branch: string) =>
+    deleteVariant(path, branch)
+  )
 }

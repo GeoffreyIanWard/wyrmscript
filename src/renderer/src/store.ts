@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
 import type { BinderNode, DocFile, ProjectInfo } from '../../shared/types'
 import { api } from './lib/api'
-import { docToMarkdown, countWords } from './lib/markdown'
+import { docToMarkdown, markdownToDoc, countWords } from './lib/markdown'
 import { findNode, firstDoc, moveNode, removeNode, type DropPosition } from './lib/tree'
 
 export type SaveState = 'saved' | 'dirty' | 'saving'
@@ -30,6 +30,9 @@ interface WyrmState {
   editorChanged(): void
   flushSave(): Promise<void>
   commitNow(message: string): Promise<void>
+  /** Restore the active doc to a commit oid or variant branch, as a new commit. */
+  restoreActiveDoc(ref: string, label: string): Promise<void>
+  createVariant(name: string): Promise<void>
 
   addDoc(parentId: string | null): Promise<void>
   addFolder(parentId: string | null): Promise<void>
@@ -68,6 +71,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
     )
     const first = firstDoc(info.data.binder)
     if (first) await get().selectDoc(first.id)
+    const log = await api.log(info.path)
+    if (log.length > 0) set({ lastCommitAt: log[0].timestamp })
   }
 
   return {
@@ -147,6 +152,31 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const committed = await api.commit(project.path, message)
       commitDirty = false
       if (committed) set({ lastCommitAt: Date.now() })
+    },
+
+    async restoreActiveDoc(ref, label) {
+      const { project, activeId, editor } = get()
+      if (!project || !activeId) return
+      await get().flushSave()
+      const doc = await api.restoreDocToRef(project.path, activeId, ref, label)
+      set({
+        activeDoc: doc,
+        saveState: 'saved',
+        wordCount: countWords(doc.body),
+        lastCommitAt: Date.now()
+      })
+      // Same doc id, so the editor isn't recreated — load the restored text
+      // in place. It lands on the undo stack, so even the restore is ⌘Z-able.
+      editor?.commands.setContent(markdownToDoc(doc.body), { emitUpdate: false })
+    },
+
+    async createVariant(name) {
+      const { project, activeId } = get()
+      if (!project || !activeId) return
+      await get().flushSave()
+      await api.createVariant(project.path, activeId, name)
+      commitDirty = false
+      set({ lastCommitAt: Date.now() })
     },
 
     async addDoc(parentId) {
