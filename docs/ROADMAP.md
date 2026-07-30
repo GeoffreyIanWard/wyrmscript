@@ -24,6 +24,42 @@ The phased build order from design-brief.md §11. One PR (or small series) per p
 
 ---
 
+## Execution order
+
+**Phases 1–4 are shipped and the app is in real daily use, which changes what matters next.** The brief's numbering above still describes the _scope_ of each phase, but the running order below supersedes it. Reprioritized 2026-07-30, agreed with Geoffrey.
+
+### 1. Compile / Export — **next up** 📋
+
+Assemble binder items into a finished manuscript. This is the top priority because **there is currently no way to get prose out of the app**: words go in and never come out. The brief flags it as a de facto v1 requirement (§8) even though it sits inside Phase 6, and it touches no existing data, so it carries none of the risk that sync does.
+
+Scope for the first pass:
+
+- **Selection**: choose which binder items to include (whole project, a folder, or a hand-picked set); respect binder order; skip anything in Trash.
+- **Formats**: plain text and Markdown first (trivial, immediately useful), then `.docx`, then EPUB/PDF. Ship the easy formats rather than blocking on the hard ones.
+- **Scene separators**: configurable string between documents (default `#`-style or a blank line), and a page break between folders when the format supports it.
+- **Front matter**: optional title page from the project title.
+- **Formatting**: map bold/italic/highlight to the target format; strip entity auto-links entirely — they are decorations, never part of the text (see house rules).
+- **Safety**: auto-commit before compiling, per the brief's auto-commit safety net.
+- Word count of the compiled output, so it can be checked against the status bar.
+
+### 2. Local backup remote (cheap half of F-01) 📋
+
+A git remote can be a filesystem path, so a second repo on an external drive or another folder gives real off-machine redundancy with no account, no OAuth, and no network. Small work, and it directly protects a novel that currently exists in exactly one place — local history protects against editing mistakes, not against a dead disk. Do this _before_ full GitHub sync.
+
+### 3. Phase 5 — GitHub sync (+ the rest of F-01) 📋
+
+OAuth device flow, auto-push after commit, offline queueing, and the merge-conflict resolution screen built on the existing diff viewer. **The riskiest remaining work** — a mishandled merge can lose prose — so it deserves the most careful configuration and the most verification. Includes making local-only an explicit first-class choice rather than an implicit state.
+
+### 4. Quality-of-life batch 📋
+
+F-06 (margins/measure), F-05 (more retro themes), F-07 (full keyboard navigation), plus full-project search, the ⌘K command palette, and writing stats. All well-specified and largely independent — the best delegation candidates in the whole plan, and several are close to pure CSS.
+
+### 5. Story-structure trio (F-02, F-03, F-04) 💭
+
+Timeline, plot graph, and plotline tracking. **Design these together before building any of them**: all three hang off scene-level metadata (chronology, tension, plotline tags), so the metadata model should be designed once rather than three incompatible times. High-value thinking, low-volume output.
+
+---
+
 ## Backlog
 
 Requested features, not yet scheduled. Stable IDs so they can be referenced in commits and PRs.
@@ -93,4 +129,6 @@ Related: the ⌘K command palette (Phase 6) covers fast _navigation_ but is not 
 - **Backlog IDs are permanent** (`F-01`, `I-02`). Reference them in commit messages and PR titles so history stays greppable.
 - **Bugs get logged here with their root cause**, not just a symptom, and are only marked fixed when there's a test or a verified reproduction behind the fix.
 - **Feature requests land in the backlog immediately**, even half-formed — 💭 means "needs design before it can be scheduled," which is a real status, not a parking lot.
-- Phases stay in the order above unless explicitly re-sequenced; if a backlog item changes a phase's shape (F-01 does), note it on the item.
+- **Execution order beats phase numbering.** The phase table describes scope; the Execution order section says what to build next and why. Re-sequence it deliberately, with the reason written down, rather than letting the brief's numbering decide by default.
+- **Verify a merge actually landed** on `develop` before starting the next item (`git merge-base --is-ancestor <commit> origin/develop`). Two batches of work have silently missed the mainline — see the workflow rules in `CLAUDE.md`.
+- **Start a fresh session per work item.** Long sessions re-send their whole history every turn; this file plus `CLAUDE.md` exist so a new agent can pick up full context in two reads instead.
