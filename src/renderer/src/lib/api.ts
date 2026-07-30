@@ -1,4 +1,6 @@
 import type {
+  BackupOutcome,
+  BackupSettings,
   BinderNode,
   CommitInfo,
   DocFile,
@@ -201,9 +203,12 @@ function demoProject(): MockProject {
   return project
 }
 
+const demoBackup = (): BackupSettings => ({ path: null, auto: false, lastBackupAt: null })
+
 export function createMockApi(): WyrmApi {
   const demo = demoProject()
   const projects = new Map<string, MockProject>([[demo.info.path, demo]])
+  const backups = new Map<string, BackupSettings>()
 
   const mustGet = (path: string): MockProject => {
     const project = projects.get(path)
@@ -337,6 +342,44 @@ export function createMockApi(): WyrmApi {
     },
     async readAllDocs(path: string): Promise<DocFile[]> {
       return [...mustGet(path).docs.values()].map(cloneDoc)
+    },
+    async getBackupSettings(path: string): Promise<BackupSettings> {
+      return { ...(backups.get(path) ?? { path: null, auto: false, lastBackupAt: null }) }
+    },
+    async chooseBackupLocation(path: string): Promise<BackupSettings> {
+      // No native dialog in the browser preview — stand in a plausible drive so
+      // the configured state is still explorable.
+      const settings: BackupSettings = {
+        path: `/Volumes/Backup/${path
+          .split('/')
+          .pop()
+          ?.replace(/\.wyrm$/, '')}.wyrm.git`,
+        auto: backups.get(path)?.auto ?? false,
+        lastBackupAt: backups.get(path)?.lastBackupAt ?? null
+      }
+      backups.set(path, settings)
+      return { ...settings }
+    },
+    async setBackupAuto(path: string, auto: boolean): Promise<BackupSettings> {
+      const settings = { ...(backups.get(path) ?? demoBackup()), auto }
+      backups.set(path, settings)
+      return { ...settings }
+    },
+    async clearBackupLocation(path: string): Promise<BackupSettings> {
+      const settings: BackupSettings = { path: null, auto: false, lastBackupAt: null }
+      backups.set(path, settings)
+      return { ...settings }
+    },
+    async backupNow(path: string): Promise<BackupOutcome> {
+      const settings = backups.get(path)
+      if (!settings?.path) throw new Error('No backup location has been chosen for this project.')
+      const at = Date.now()
+      backups.set(path, { ...settings, lastBackupAt: at })
+      return { status: 'backed-up', objectsCopied: 12, branches: 1, filesVerified: 5, at }
+    },
+    async restoreFromBackup(): Promise<ProjectInfo | null> {
+      // Restoring needs real repositories on disk; the preview has neither.
+      return null
     },
     async exportFile(defaultName: string): Promise<string | null> {
       // No save dialog and no disk in the browser preview — the compile

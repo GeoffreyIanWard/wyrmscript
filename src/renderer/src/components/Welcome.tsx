@@ -6,6 +6,7 @@ import { WyrmIcon } from './icons'
 export function Welcome(): JSX.Element {
   const newProject = useWyrm((s) => s.newProject)
   const openProject = useWyrm((s) => s.openProject)
+  const restoreFromBackup = useWyrm((s) => s.restoreFromBackup)
   const [title, setTitle] = useState('')
 
   return (
@@ -41,6 +42,11 @@ export function Welcome(): JSX.Element {
           </fieldset>
         </div>
         <div className="dialog-buttons">
+          {/* The moment a backup matters most is the moment there is no project
+              to reach it through — so restore has to live out here too. */}
+          <button type="button" className="btn" onClick={() => void restoreFromBackup()}>
+            Restore from Backup…
+          </button>
           <button type="button" className="btn default" onClick={() => void openProject()}>
             Open Project…
           </button>

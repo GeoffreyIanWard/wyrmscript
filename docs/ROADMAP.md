@@ -42,11 +42,19 @@ Assemble binder items into a finished manuscript — the app can now get prose b
 
 Deferred: EPUB and PDF (the hard formats — the block model in `shared/types.ts` is format-independent, so each is a new serializer rather than new plumbing).
 
-### 2. Local backup remote (cheap half of F-01) — **next up** 📋
+### 2. Local backup remote (cheap half of F-01) ✅
 
-A git remote can be a filesystem path, so a second repo on an external drive or another folder gives real off-machine redundancy with no account, no OAuth, and no network. Small work, and it directly protects a novel that currently exists in exactly one place — local history protects against editing mistakes, not against a dead disk. Do this _before_ full GitHub sync.
+Off-machine redundancy with no account, no OAuth and no network. **Project → Backup…** mirrors a project into a second repository on disk (external drive, synced folder, network share) and restores from one. Shipped in PR #10.
 
-### 3. Phase 5 — GitHub sync (+ the rest of F-01) 📋
+**The premise in the original plan was wrong, and it matters for Phase 5.** "A git remote can be a filesystem path" is true of real git but **not of isomorphic-git**, which has no local transport at all — `push` requires an HTTP client, and both `file:///path` and a bare path fail with `MissingParameterError`. Shelling out to system git would break the brief's §10 decision to require no git install. So the mirror is done the way git's own "dumb" transport does it: copy objects, then move refs. See `main/wyrm/backup.ts`, which documents the three invariants that make that safe:
+
+1. **Objects are copied before refs move.** Interrupted halfway, the backup holds unreferenced objects (harmless garbage) and its refs still describe a complete, older history. The reverse order leaves a ref pointing at a missing object — a corrupt repository.
+2. **Every object is staged and renamed into place.** A torn write sitting at its final name would be treated as "already present" by every later backup, making the corruption permanent and silent.
+3. **Fast-forward only, and nothing is ever deleted.** If the backup holds commits this project does not, the backup is left untouched and the writer is told. There is deliberately no force option.
+
+Also shipped: the backup carries variant branches, not just the main line; restore always creates a **new** project folder so it cannot overwrite an open one; auto-backup after each checkpoint is opt-in and can never block or fail a commit; and a successful backup is verified by reading every file of the manuscript back **out** of the backup, so "backed up" means "provably recoverable" rather than "the copy returned no error".
+
+### 3. Phase 5 — GitHub sync (+ the rest of F-01) — **next up** 📋
 
 OAuth device flow, auto-push after commit, offline queueing, and the merge-conflict resolution screen built on the existing diff viewer. **The riskiest remaining work** — a mishandled merge can lose prose — so it deserves the most careful configuration and the most verification. Includes making local-only an explicit first-class choice rather than an implicit state.
 
@@ -69,7 +77,7 @@ Requested features, not yet scheduled. Stable IDs so they can be referenced in c
 Users who want everything on their own machine must get full version-control parity — history, diff, restore, variants, branches — with no account and no network. Wyrmscript already uses **isomorphic-git** (open-source, MIT), so the entire engine is local; GitHub is only a _remote_. Work needed:
 
 - Make "no remote" an explicit, first-class choice in onboarding rather than an implicit state, so it never feels like a degraded mode.
-- Optional local backup target: push/pull to a second repo on disk or an external drive (a git remote can be a filesystem path — real redundancy, no cloud).
+- ✅ **Optional local backup target** — shipped in PR #10 (see Execution order §2). Note for whoever does the rest: isomorphic-git has **no local transport**, so this was built from git plumbing rather than `push`; GitHub sync gets a real HTTP transport and cannot reuse that code path.
 - Confirm every Phase 5 sync surface degrades cleanly and silently when no remote exists (no nagging, no dead buttons).
 - Document the trade-off honestly: local-only means a disk failure is unrecoverable; recommend at least one off-machine copy.
 
