@@ -3,6 +3,10 @@ import type {
   BackupSettings,
   BinderNode,
   CommitInfo,
+  DeviceCodeInfo,
+  SignInPoll,
+  SyncOutcome,
+  SyncStatus,
   DocFile,
   Entity,
   EntityType,
@@ -209,6 +213,18 @@ export function createMockApi(): WyrmApi {
   const demo = demoProject()
   const projects = new Map<string, MockProject>([[demo.info.path, demo]])
   const backups = new Map<string, BackupSettings>()
+  const sync = new Map<string, SyncStatus>()
+  let mockClientIdSet = false
+  let mockLogin: string | null = null
+  let mockPolls = 0
+  const demoSync = (): SyncStatus => ({
+    mode: 'unset',
+    remoteUrl: null,
+    login: mockLogin,
+    clientIdSet: mockClientIdSet,
+    lastSyncAt: null,
+    pendingSync: false
+  })
 
   const mustGet = (path: string): MockProject => {
     const project = projects.get(path)
@@ -343,6 +359,83 @@ export function createMockApi(): WyrmApi {
     async readAllDocs(path: string): Promise<DocFile[]> {
       return [...mustGet(path).docs.values()].map(cloneDoc)
     },
+    async getSyncStatus(path: string): Promise<SyncStatus> {
+      // login/clientIdSet are app-level and change after a stored snapshot —
+      // compose them fresh so the preview never shows a stale sign-in state.
+      const stored = sync.get(path)
+      return stored
+        ? {
+            ...demoSync(),
+            mode: stored.mode,
+            remoteUrl: stored.remoteUrl,
+            lastSyncAt: stored.lastSyncAt,
+            pendingSync: stored.pendingSync
+          }
+        : demoSync()
+    },
+    async setSyncClientId(): Promise<SyncStatus> {
+      mockClientIdSet = true
+      return { ...demoSync(), clientIdSet: true }
+    },
+    async signInStart(): Promise<DeviceCodeInfo> {
+      mockPolls = 0
+      return {
+        userCode: 'WYRM-1234',
+        verificationUri: 'https://github.com/login/device',
+        expiresIn: 900
+      }
+    },
+    async signInPoll(): Promise<SignInPoll> {
+      // Two pending beats so the waiting state is visible in the preview.
+      mockPolls += 1
+      if (mockPolls < 3) return { state: 'pending' }
+      mockLogin = 'demo-writer'
+      return { state: 'ok', login: 'demo-writer' }
+    },
+    async signOut(path: string): Promise<SyncStatus> {
+      mockLogin = null
+      const settings = { ...(sync.get(path) ?? demoSync()), login: null }
+      sync.set(path, settings)
+      return { ...settings }
+    },
+    async connectSync(
+      path: string,
+      options: { create: boolean; name?: string; url?: string }
+    ): Promise<SyncStatus> {
+      const url = options.create
+        ? `https://github.com/demo-writer/${options.name ?? 'novel'}.git`
+        : (options.url ?? '')
+      const settings: SyncStatus = { ...demoSync(), mode: 'github', remoteUrl: url }
+      sync.set(path, settings)
+      return { ...settings }
+    },
+    async disconnectSync(path: string): Promise<SyncStatus> {
+      const settings: SyncStatus = { ...demoSync(), mode: 'unset', remoteUrl: null }
+      sync.set(path, settings)
+      return { ...settings }
+    },
+    async setLocalOnly(path: string): Promise<SyncStatus> {
+      const settings: SyncStatus = { ...demoSync(), mode: 'local-only' }
+      sync.set(path, settings)
+      return { ...settings }
+    },
+    async syncNow(path: string): Promise<SyncOutcome> {
+      const settings = sync.get(path)
+      if (!settings || settings.mode !== 'github') {
+        return { status: 'error', detail: 'This project is not connected.' }
+      }
+      const at = Date.now()
+      const first = settings.lastSyncAt == null
+      sync.set(path, { ...settings, lastSyncAt: at, pendingSync: false })
+      return first ? { status: 'pushed', at } : { status: 'up-to-date', at }
+    },
+    async resolveSyncConflicts(path: string): Promise<SyncOutcome> {
+      const settings = sync.get(path)
+      const at = Date.now()
+      if (settings) sync.set(path, { ...settings, lastSyncAt: at, pendingSync: false })
+      return { status: 'merged', at, pushed: true }
+    },
+
     async getBackupSettings(path: string): Promise<BackupSettings> {
       return { ...(backups.get(path) ?? { path: null, auto: false, lastBackupAt: null }) }
     },
