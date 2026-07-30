@@ -9,6 +9,7 @@ import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog } from './components/Dialogs'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { CompileDialog } from './components/CompileDialog'
+import { BackupDialog } from './components/BackupDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useWyrm } from './store'
 import { isElectron } from './lib/api'
@@ -41,6 +42,7 @@ function StatusBar(): JSX.Element {
   const saveState = useWyrm((s) => s.saveState)
   const activeDoc = useWyrm((s) => s.activeDoc)
   const lastCommitAt = useWyrm((s) => s.lastCommitAt)
+  const backupSettings = useWyrm((s) => s.backupSettings)
   const now = useNow(30000)
 
   const saveLabel = saveState === 'saved' ? 'SAVED' : saveState === 'saving' ? 'SAVING…' : 'EDITED'
@@ -51,7 +53,11 @@ function StatusBar(): JSX.Element {
       <span>{saveLabel}</span>
       <span className="spacer" />
       <span>{agoLabel(lastCommitAt, now)}</span>
-      <span title={project?.path}>{isElectron ? '◆ LOCAL' : '◇ DEMO — IN MEMORY'}</span>
+      {/* States what is true, and stays quiet otherwise — an unbacked-up
+          project must not be nagged at from the status bar (F-01). */}
+      <span title={backupSettings?.path ?? project?.path}>
+        {!isElectron ? '◇ DEMO — IN MEMORY' : backupSettings?.path ? '◆ LOCAL + BACKUP' : '◆ LOCAL'}
+      </span>
     </div>
   )
 }
@@ -74,6 +80,7 @@ function App(): JSX.Element {
   const [aboutOpen, setAboutOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
   const [compileOpen, setCompileOpen] = useState(false)
+  const [backupOpen, setBackupOpen] = useState(false)
 
   const project = useWyrm((s) => s.project)
   const booted = useWyrm((s) => s.booted)
@@ -130,6 +137,7 @@ function App(): JSX.Element {
             .then(() => setVersionDialog(dialog))
         }}
         onCompile={() => setCompileOpen(true)}
+        onBackup={() => setBackupOpen(true)}
       />
       <div className="desktop">
         {project ? (
@@ -166,6 +174,11 @@ function App(): JSX.Element {
         {compileOpen && (
           <ErrorBoundary label="Compile" onDismiss={() => setCompileOpen(false)}>
             <CompileDialog onClose={() => setCompileOpen(false)} />
+          </ErrorBoundary>
+        )}
+        {backupOpen && (
+          <ErrorBoundary label="Backup" onDismiss={() => setBackupOpen(false)}>
+            <BackupDialog onClose={() => setBackupOpen(false)} />
           </ErrorBoundary>
         )}
         {versionDialog !== null && (

@@ -15,13 +15,15 @@ type MenuBarProps = {
   onPreferences: () => void
   onVersionDialog: (dialog: 'commit' | 'history' | 'variants') => void
   onCompile: () => void
+  onBackup: () => void
 }
 
 export function MenuBar({
   onAbout,
   onPreferences,
   onVersionDialog,
-  onCompile
+  onCompile,
+  onBackup
 }: MenuBarProps): JSX.Element {
   const [open, setOpen] = useState<string | null>(null)
   const project = useWyrm((s) => s.project)
@@ -181,6 +183,7 @@ export function MenuBar({
           action: () => createEntry('world')
         },
         { kind: 'sep' },
+        { kind: 'item', label: 'Backup…', disabled: !hasProject, action: onBackup },
         { kind: 'item', label: 'Sync Now', disabled: true },
         { kind: 'item', label: 'Project Search…', shortcut: '⇧⌘F', disabled: true }
       ]

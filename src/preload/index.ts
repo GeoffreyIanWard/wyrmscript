@@ -23,7 +23,14 @@ const api: WyrmApi = {
   deleteEntity: (path, type: EntityType, id) => ipcRenderer.invoke('entity:delete', path, type, id),
   readAllDocs: (path) => ipcRenderer.invoke('doc:readAll', path),
 
-  exportFile: (defaultName, data) => ipcRenderer.invoke('compile:export', defaultName, data)
+  exportFile: (defaultName, data) => ipcRenderer.invoke('compile:export', defaultName, data),
+
+  getBackupSettings: (path) => ipcRenderer.invoke('backup:get', path),
+  chooseBackupLocation: (path) => ipcRenderer.invoke('backup:choose', path),
+  setBackupAuto: (path, auto) => ipcRenderer.invoke('backup:auto', path, auto),
+  clearBackupLocation: (path) => ipcRenderer.invoke('backup:clear', path),
+  backupNow: (path) => ipcRenderer.invoke('backup:now', path),
+  restoreFromBackup: () => ipcRenderer.invoke('backup:restore')
 }
 
 contextBridge.exposeInMainWorld('wyrm', api)
