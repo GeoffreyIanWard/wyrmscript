@@ -17,7 +17,7 @@ The phased build order from design-brief.md §11. One PR (or small series) per p
 | 2   | Core loop                  | ✅     | `.wyrm` format, binder, TipTap terminal, autosave, local git from day one. PR #2                                                                                   |
 | 3   | Version control UI         | ✅     | Commit dialog, per-doc history, prose word-diff, restore, snapshot variants. PR #3, with the bug fixes and this roadmap following in PR #4                         |
 | 4   | Story bible                | ✅     | Entity index over glossary/characters/world, debounced auto-linking in the terminal, click-to-side-panel, add-from-selection, entry editors, backlinks. PRs #5, #6 |
-| 5   | GitHub sync                | 📋     | OAuth device flow, push/pull, offline queue, merge-conflict resolution UI. See F-01 — local-only must stay first-class                                             |
+| 5   | GitHub sync                | ✅     | OAuth device flow, sync engine, offline queue, conflict resolution UI, local-only first-class. PR #11                                                              |
 | 6   | Suggested extras           | 🔨     | Compile/export shipped (PR #8); corkboard, full-project search, writing stats, command palette still to come                                                       |
 
 **Locked v1 decisions** (confirmed 2026-07-29): 1-bit default palette with entity links distinguished per type; entity click opens a side panel; character/world entries free-form; compile/export, backlinks, auto-commit safety net, and command palette all in v1; variants are frozen snapshots (not editable branches).
@@ -54,11 +54,21 @@ Off-machine redundancy with no account, no OAuth and no network. **Project → B
 
 Also shipped: the backup carries variant branches, not just the main line; restore always creates a **new** project folder so it cannot overwrite an open one; auto-backup after each checkpoint is opt-in and can never block or fail a commit; and a successful backup is verified by reading every file of the manuscript back **out** of the backup, so "backed up" means "provably recoverable" rather than "the copy returned no error".
 
-### 3. Phase 5 — GitHub sync (+ the rest of F-01) — **next up** 📋
+### 3. Phase 5 — GitHub sync (+ the rest of F-01) ✅
 
-OAuth device flow, auto-push after commit, offline queueing, and the merge-conflict resolution screen built on the existing diff viewer. **The riskiest remaining work** — a mishandled merge can lose prose — so it deserves the most careful configuration and the most verification. Includes making local-only an explicit first-class choice rather than an implicit state.
+Shipped in PR #11: OAuth device flow, auto-sync after each checkpoint, offline queueing, the merge-conflict resolution screen on the existing diff viewer, and local-only as an explicit first-class choice. **Project → Sync Settings… / Sync Now.**
 
-### 4. Quality-of-life batch 📋
+Design decisions that will matter later, recorded in `main/wyrm/sync.ts`'s header:
+
+- **The working tree is the single source of truth for every sync commit.** isomorphic-git's `merge` never touches the working directory (verified by experiment) — trusting its ref move would let the next autosave commit the stale tree back over the merge, silently undoing the other device's work. So `merge` is only ever a conflict _detector_ and a content _oracle_ (`noUpdateBranch` both times); the final state is always materialized to disk first and committed from there with explicit parents.
+- **Prose never auto-merges.** diff3 would happily interleave paragraphs of fiction edited on two devices; in a prose tool that is not a feature. Frontmatter merges structurally (newer `modified` wins, per-field three-way — so timestamp noise never nags), but two devices editing the same document's _text_ always goes to the writer: keep mine / take theirs / keep both, with "both" shelving the other device's version as a variant pointing at the remote commit itself.
+- **A binder conflict cannot orphan a document.** After every merge, any `documents/*.md` not reachable from binder or trash is re-attached to the binder root as "(recovered)" — resolving project.json either way is safe.
+- **The sacred page holds for sync.** A background sync that finds conflicts raises a quiet status-bar flag; only a sync the writer asked for may open the resolution screen.
+- Auth: device flow (no client secret; the one-time OAuth app client id is entered in Sync Settings), token encrypted via the OS keychain (`safeStorage`) at rest, remote URL in `.git/config` — none of it ever inside the synced content.
+
+Deferred from this pass: syncing to a remote whose default branch isn't `main`; structural (rather than mine/theirs) binder merge; multi-account.
+
+### 4. Quality-of-life batch — **next up** 📋
 
 F-06 (margins/measure), F-05 (more retro themes), F-07 (full keyboard navigation), plus full-project search, the ⌘K command palette, and writing stats. All well-specified and largely independent — the best delegation candidates in the whole plan, and several are close to pure CSS.
 
@@ -76,8 +86,9 @@ Requested features, not yet scheduled. Stable IDs so they can be referenced in c
 
 Users who want everything on their own machine must get full version-control parity — history, diff, restore, variants, branches — with no account and no network. Wyrmscript already uses **isomorphic-git** (open-source, MIT), so the entire engine is local; GitHub is only a _remote_. Work needed:
 
-- Make "no remote" an explicit, first-class choice in onboarding rather than an implicit state, so it never feels like a degraded mode.
+- ✅ "No remote" is an explicit, first-class choice — the sync setup screen's first question, with local-only phrased as a peer of GitHub, not a fallback (PR #11).
 - ✅ **Optional local backup target** — shipped in PR #10 (see Execution order §2). Note for whoever does the rest: isomorphic-git has **no local transport**, so this was built from git plumbing rather than `push`; GitHub sync gets a real HTTP transport and cannot reuse that code path.
+- ✅ Sync surfaces degrade silently with no remote: Sync Now is disabled, the status bar shows plain `◆ LOCAL`, nothing nags (PR #11).
 - Confirm every Phase 5 sync surface degrades cleanly and silently when no remote exists (no nagging, no dead buttons).
 - Document the trade-off honestly: local-only means a disk failure is unrecoverable; recommend at least one off-machine copy.
 
@@ -102,6 +113,14 @@ Track main plot, B-plots, romance/love-interest arcs, character arcs — and sur
 ### F-05 · More retro visual variants 📋
 
 More themes, more intensely period. Candidates: Apple II / Commodore 64 / ZX Spectrum palettes, IBM CGA (cyan-magenta), plasma orange, Macintosh Plus warm grey-green, DOS EGA 16-colour, a paper-white "LaserWriter proof" mode. Also: optional CRT curvature/bloom/flicker, and the classic Mac UI click/chime sound set from design-brief.md §2 (off by default). The theming layer already remaps ink/paper/dither/accents from one place, so new variants are mostly a palette block each.
+
+**Comfort variants** (requested 2026-07-30) — same mechanism, different intent: ergonomic rather than period-authentic, still strictly two-colour so the 1-bit look holds.
+
+- **E-reader**: light warm grey paper, dark blue ink — subtle, easy on the eyes, mimics an e-ink screen.
+- **Night mode**: warm tan paper, brown ink — for writing after dark without the searing white page.
+- **Dark mode**: straight inverse of the default — black paper, white ink.
+
+Design note before building: today there are two theme axes — `data-accents` (1bit/4bit) and `data-terminal` (paper/green/amber), and the terminal axis only recolours the writing pane. These three variants want to recolour the **whole app**, chrome included, which is what the phosphor themes already do via the root CSS variables — so they likely extend the terminal axis (or promote it to an app-wide "palette" axis) rather than adding a third. Decide that once, then each variant is a palette block. Dithers are inline SVG data-URIs carrying a hardcoded fill per theme — new palettes must remember to restate them (the phosphor themes show the pattern).
 
 ### F-06 · Editor margins & measure control 📋
 
@@ -131,13 +150,16 @@ Clicking a folder in the binder currently only expands or collapses it. It shoul
 
 ## Known issues
 
-| ID   | Issue                                                                                                                                                                                                                                                                                                                      | Status                                                                              |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| I-01 | History dialog white-screened the whole app with no way out — an uncaught error in a React effect (failing IPC call after a stale dev hot-reload) unmounted the entire tree                                                                                                                                                | ✅ fixed: ErrorBoundary + recovery panel                                            |
-| I-02 | History list rendered blank with no explanation — a rejected `api.log` promise left state `null`, which rendered neither rows nor the empty-state message                                                                                                                                                                  | ✅ fixed: explicit loading/empty/error states                                       |
-| I-03 | First-line indent drifted right and stayed shifted — `text-indent: 2ch` on every paragraph (measured 44.4px vs 24px) is jarring while typing and inconsistent with hard-break lines                                                                                                                                        | ✅ fixed: off by default, Preferences toggle                                        |
-| I-04 | Highlight mark shifted text ~2px horizontally because its box used padding                                                                                                                                                                                                                                                 | ✅ fixed: negative-margin compensation                                              |
-| I-05 | Clicking a document in the binder while a story-bible entry was open selected the row but left the entry in the main pane. Two stacked causes: `selectDoc` never reset `mainView`, and it returned early when the clicked document was already active — exactly the case a writer hits returning to the document they left | ✅ fixed: `selectDoc` restores the manuscript view _before_ the same-document guard |
+| ID   | Issue                                                                                                                                                                                                                                                                                                                      | Status                                                                                                     |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| I-01 | History dialog white-screened the whole app with no way out — an uncaught error in a React effect (failing IPC call after a stale dev hot-reload) unmounted the entire tree                                                                                                                                                | ✅ fixed: ErrorBoundary + recovery panel                                                                   |
+| I-02 | History list rendered blank with no explanation — a rejected `api.log` promise left state `null`, which rendered neither rows nor the empty-state message                                                                                                                                                                  | ✅ fixed: explicit loading/empty/error states                                                              |
+| I-03 | First-line indent drifted right and stayed shifted — `text-indent: 2ch` on every paragraph (measured 44.4px vs 24px) is jarring while typing and inconsistent with hard-break lines                                                                                                                                        | ✅ fixed: off by default, Preferences toggle                                                               |
+| I-04 | Highlight mark shifted text ~2px horizontally because its box used padding                                                                                                                                                                                                                                                 | ✅ fixed: negative-margin compensation                                                                     |
+| I-05 | Clicking a document in the binder while a story-bible entry was open selected the row but left the entry in the main pane. Two stacked causes: `selectDoc` never reset `mainView`, and it returned early when the clicked document was already active — exactly the case a writer hits returning to the document they left | ✅ fixed: `selectDoc` restores the manuscript view _before_ the same-document guard                        |
+| I-06 | The GitHub sign-in code could not be selected or copied — `retro.css` sets `user-select: none` across all chrome, and the one string a writer must reproduce by hand never opted back in                                                                                                                                   | ✅ fixed: `.device-code` opts into `user-select: text`, plus a Copy Code button                            |
+| I-07 | A successful sign-in was never acknowledged: the panel swapped silently to the connect form, nothing in the app ever said an account was reached, and the first poll waited 5s behind a static "Waiting for approval…" — so a working sign-in read exactly like a hang                                                     | ✅ fixed: explicit signed-in panel, standing account line, immediate first poll with a visible check count |
+| I-08 | `sync:clientId` computed its reply with `syncStatusOf('')`, returning status for an empty project path (masked by the store reloading afterwards)                                                                                                                                                                          | ✅ fixed: the handler takes the project path                                                               |
 
 ---
 

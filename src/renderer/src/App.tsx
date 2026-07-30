@@ -10,6 +10,8 @@ import { AboutDialog, PrefsDialog } from './components/Dialogs'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { CompileDialog } from './components/CompileDialog'
 import { BackupDialog } from './components/BackupDialog'
+import { SyncDialog } from './components/SyncDialog'
+import { ConflictDialog } from './components/ConflictDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useWyrm } from './store'
 import { isElectron } from './lib/api'
@@ -43,9 +45,24 @@ function StatusBar(): JSX.Element {
   const activeDoc = useWyrm((s) => s.activeDoc)
   const lastCommitAt = useWyrm((s) => s.lastCommitAt)
   const backupSettings = useWyrm((s) => s.backupSettings)
+  const syncStatus = useWyrm((s) => s.syncStatus)
+  const syncNeedsAttention = useWyrm((s) => s.syncNeedsAttention)
   const now = useNow(30000)
 
   const saveLabel = saveState === 'saved' ? 'SAVED' : saveState === 'saving' ? 'SAVING…' : 'EDITED'
+  // States what is true, and stays quiet otherwise — neither an unbacked-up
+  // nor a local-only project is nagged at from the status bar (F-01).
+  const placeLabel = !isElectron
+    ? '◇ DEMO — IN MEMORY'
+    : syncStatus?.mode === 'github'
+      ? syncNeedsAttention
+        ? '◆ SYNC — NEEDS YOUR EYE'
+        : syncStatus.pendingSync
+          ? '◆ SYNC — WAITING'
+          : '◆ SYNCED'
+      : backupSettings?.path
+        ? '◆ LOCAL + BACKUP'
+        : '◆ LOCAL'
   return (
     <div className="status-bar">
       <span>{wordCount.toLocaleString()} WORDS</span>
@@ -53,10 +70,8 @@ function StatusBar(): JSX.Element {
       <span>{saveLabel}</span>
       <span className="spacer" />
       <span>{agoLabel(lastCommitAt, now)}</span>
-      {/* States what is true, and stays quiet otherwise — an unbacked-up
-          project must not be nagged at from the status bar (F-01). */}
-      <span title={backupSettings?.path ?? project?.path}>
-        {!isElectron ? '◇ DEMO — IN MEMORY' : backupSettings?.path ? '◆ LOCAL + BACKUP' : '◆ LOCAL'}
+      <span title={syncStatus?.remoteUrl ?? backupSettings?.path ?? project?.path}>
+        {placeLabel}
       </span>
     </div>
   )
@@ -81,6 +96,8 @@ function App(): JSX.Element {
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
   const [compileOpen, setCompileOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
+  const [syncOpen, setSyncOpen] = useState(false)
+  const syncConflicts = useWyrm((s) => s.syncConflicts)
 
   const project = useWyrm((s) => s.project)
   const booted = useWyrm((s) => s.booted)
@@ -138,6 +155,7 @@ function App(): JSX.Element {
         }}
         onCompile={() => setCompileOpen(true)}
         onBackup={() => setBackupOpen(true)}
+        onSyncSettings={() => setSyncOpen(true)}
       />
       <div className="desktop">
         {project ? (
@@ -179,6 +197,16 @@ function App(): JSX.Element {
         {backupOpen && (
           <ErrorBoundary label="Backup" onDismiss={() => setBackupOpen(false)}>
             <BackupDialog onClose={() => setBackupOpen(false)} />
+          </ErrorBoundary>
+        )}
+        {syncOpen && (
+          <ErrorBoundary label="Sync" onDismiss={() => setSyncOpen(false)}>
+            <SyncDialog onClose={() => setSyncOpen(false)} />
+          </ErrorBoundary>
+        )}
+        {syncConflicts != null && (
+          <ErrorBoundary label="Sync" onDismiss={() => useWyrm.getState().dismissConflicts()}>
+            <ConflictDialog />
           </ErrorBoundary>
         )}
         {versionDialog !== null && (
