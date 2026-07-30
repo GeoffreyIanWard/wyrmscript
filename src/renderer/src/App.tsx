@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { JSX } from 'react'
+import type { CSSProperties, JSX } from 'react'
 import { MenuBar } from './components/MenuBar'
 import { Binder } from './components/Binder'
 import { Editor } from './components/Editor'
@@ -16,8 +16,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { useWyrm } from './store'
 import { isElectron } from './lib/api'
 
-export type AccentTheme = '1bit' | '4bit'
-export type TerminalTheme = 'paper' | 'green' | 'amber'
+import { DEFAULT_APPEARANCE } from '../../shared/types'
 
 const isElectronMac = /Macintosh/.test(navigator.userAgent) && /Electron/.test(navigator.userAgent)
 
@@ -88,9 +87,11 @@ function MainPane(): JSX.Element {
 }
 
 function App(): JSX.Element {
-  const [accents, setAccents] = useState<AccentTheme>('1bit')
-  const [terminal, setTerminal] = useState<TerminalTheme>('paper')
-  const [firstLineIndent, setFirstLineIndent] = useState(false)
+  // Falls back to the defaults for the first paint only; the stored appearance
+  // arrives with boot(). Rendering nothing until then would flash an empty
+  // window, which is worse than one frame in the default palette.
+  const appearance = useWyrm((s) => s.appearance) ?? DEFAULT_APPEARANCE
+  const setAppearance = useWyrm((s) => s.setAppearance)
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
@@ -140,9 +141,18 @@ function App(): JSX.Element {
   return (
     <div
       className={`screen${isElectronMac ? ' is-electron-mac' : ''}`}
-      data-accents={accents}
-      data-terminal={terminal}
-      data-indent={firstLineIndent ? 'on' : 'off'}
+      data-accents={appearance.accents}
+      data-palette={appearance.palette}
+      data-indent={appearance.firstLineIndent ? 'on' : 'off'}
+      style={
+        {
+          // Geometry rides as inline custom properties so the page reflows
+          // live while a stepper is held down (F-06).
+          '--measure': `${appearance.measure}ch`,
+          '--prose-size': `${appearance.fontSize}px`,
+          '--prose-leading': String(appearance.lineHeight)
+        } as CSSProperties
+      }
     >
       <MenuBar
         onAbout={() => setAboutOpen(true)}
@@ -179,12 +189,8 @@ function App(): JSX.Element {
         )}
         {prefsOpen && (
           <PrefsDialog
-            accents={accents}
-            terminal={terminal}
-            firstLineIndent={firstLineIndent}
-            onAccents={setAccents}
-            onTerminal={setTerminal}
-            onFirstLineIndent={setFirstLineIndent}
+            appearance={appearance}
+            onChange={(patch) => void setAppearance(patch)}
             onClose={() => setPrefsOpen(false)}
           />
         )}

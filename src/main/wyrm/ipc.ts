@@ -3,6 +3,7 @@ import { existsSync, promises as fsp } from 'node:fs'
 import { join, basename } from 'node:path'
 import http from 'isomorphic-git/http/node'
 import type {
+  AppearanceSettings,
   ConflictResolution,
   DocFile,
   Entity,
@@ -24,9 +25,11 @@ import {
   writeDoc
 } from './project'
 import {
+  readAppearance,
   readBackupSettings,
   readSettings,
   readSyncProject,
+  writeAppearance,
   writeBackupSettings,
   writeSettings,
   writeSyncProject
@@ -130,6 +133,13 @@ export function registerIpc(): void {
     deleteEntity(path, type, id)
   )
   ipcMain.handle('doc:readAll', (_e, path: string) => readAllDocs(path))
+
+  /* ---------- appearance & page geometry (F-05, F-06) ---------- */
+
+  ipcMain.handle('appearance:get', () => readAppearance())
+  ipcMain.handle('appearance:set', (_e, patch: Partial<AppearanceSettings>) =>
+    writeAppearance(patch)
+  )
 
   /* ---------- local backup (F-01) ---------- */
 

@@ -127,6 +127,39 @@ export interface CompileResult {
   extension: string
 }
 
+/* ---------- Appearance & page geometry (F-05, F-06) ---------- */
+
+export type AccentTheme = '1bit' | '4bit'
+
+/**
+ * Whole-app palette. `paper` is the 1-bit default; `green`/`amber` add the
+ * CRT glow and scanlines; the rest are comfort variants — same strict
+ * two-colour discipline, chosen to be easy on the eyes rather than
+ * period-accurate.
+ */
+export type PaletteTheme = 'paper' | 'ereader' | 'night' | 'dark' | 'green' | 'amber'
+
+export interface AppearanceSettings {
+  accents: AccentTheme
+  palette: PaletteTheme
+  firstLineIndent: boolean
+  /** Line measure in characters — the width of the text column. */
+  measure: number
+  /** Prose size in px. */
+  fontSize: number
+  /** Prose line height, unitless. */
+  lineHeight: number
+}
+
+export const DEFAULT_APPEARANCE: AppearanceSettings = {
+  accents: '1bit',
+  palette: 'paper',
+  firstLineIndent: false,
+  measure: 62,
+  fontSize: 17,
+  lineHeight: 1.7
+}
+
 /* ---------- Local backup (F-01) ---------- */
 
 export interface BackupSettings {
@@ -235,6 +268,10 @@ export interface WyrmApi {
 
   /** Show a save dialog and write compiled output. Returns the path, or null if cancelled. */
   exportFile(defaultName: string, data: string | Uint8Array): Promise<string | null>
+
+  /** Appearance is app-level, not per-project — it follows the writer. */
+  getAppearance(): Promise<AppearanceSettings>
+  setAppearance(patch: Partial<AppearanceSettings>): Promise<AppearanceSettings>
 
   getBackupSettings(path: string): Promise<BackupSettings>
   /** Pick a backup location for this project. Null if cancelled. */
