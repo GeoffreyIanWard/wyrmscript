@@ -158,7 +158,13 @@ export const useWyrm = create<WyrmState>((set, get) => {
 
     async selectDoc(id) {
       const { project, activeId } = get()
-      if (!project || id === activeId) return
+      if (!project) return
+      // Picking a document in the binder always brings the manuscript back to
+      // the main pane — and this has to happen *before* the same-document
+      // guard below, because the commonest way to hit it is clicking back to
+      // the document you were already on from a story-bible entry (I-05).
+      set({ mainView: { kind: 'doc' } })
+      if (id === activeId) return
       await get().flushSave()
       const doc = await api.readDoc(project.path, id)
       // The Editor component recreates its TipTap instance when activeId
