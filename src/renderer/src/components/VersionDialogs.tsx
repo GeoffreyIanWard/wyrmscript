@@ -16,8 +16,9 @@ function timeAgo(timestamp: number): string {
   return days === 1 ? 'yesterday' : `${days} days ago`
 }
 
-/** Inline word-diff of two markdown bodies, old → new. */
-function DiffView({ oldText, newText }: { oldText: string; newText: string }): JSX.Element {
+/** Inline word-diff of two markdown bodies, old → new. Shared with the sync
+ *  conflict screen (brief §7 says to reuse this viewer rather than invent). */
+export function DiffView({ oldText, newText }: { oldText: string; newText: string }): JSX.Element {
   const parts = diffWords(oldText, newText)
   if (oldText === newText) {
     return <div className="diff-view identical">No differences from the current text.</div>

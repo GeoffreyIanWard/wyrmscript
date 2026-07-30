@@ -30,7 +30,18 @@ const api: WyrmApi = {
   setBackupAuto: (path, auto) => ipcRenderer.invoke('backup:auto', path, auto),
   clearBackupLocation: (path) => ipcRenderer.invoke('backup:clear', path),
   backupNow: (path) => ipcRenderer.invoke('backup:now', path),
-  restoreFromBackup: () => ipcRenderer.invoke('backup:restore')
+  restoreFromBackup: () => ipcRenderer.invoke('backup:restore'),
+
+  getSyncStatus: (path) => ipcRenderer.invoke('sync:status', path),
+  setSyncClientId: (clientId) => ipcRenderer.invoke('sync:clientId', clientId),
+  signInStart: () => ipcRenderer.invoke('sync:signInStart'),
+  signInPoll: () => ipcRenderer.invoke('sync:signInPoll'),
+  signOut: (path) => ipcRenderer.invoke('sync:signOut', path),
+  connectSync: (path, options) => ipcRenderer.invoke('sync:connect', path, options),
+  disconnectSync: (path) => ipcRenderer.invoke('sync:disconnect', path),
+  setLocalOnly: (path) => ipcRenderer.invoke('sync:localOnly', path),
+  syncNow: (path) => ipcRenderer.invoke('sync:now', path),
+  resolveSyncConflicts: (path, choices) => ipcRenderer.invoke('sync:resolve', path, choices)
 }
 
 contextBridge.exposeInMainWorld('wyrm', api)

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import git from 'isomorphic-git'
 import type { CommitInfo, VariantInfo } from '../../shared/types'
 
-const author = { name: 'Wyrmscript', email: 'wyrmscript@local' }
+export const author = { name: 'Wyrmscript', email: 'wyrmscript@local' }
 
 export async function initRepo(dir: string): Promise<void> {
   await git.init({ fs, dir, defaultBranch: 'main' })
@@ -21,6 +21,14 @@ export async function initRepo(dir: string): Promise<void> {
  * point is that no version is ever lost.
  */
 export async function commitAll(dir: string, message: string): Promise<boolean> {
+  const changed = await stageAllChanges(dir)
+  if (!changed) return false
+  await git.commit({ fs, dir, message, author })
+  return true
+}
+
+/** Stage every working-tree change with the hash-exact walk. True if anything changed. */
+export async function stageAllChanges(dir: string): Promise<boolean> {
   // statusMatrix rows: [filepath, HEAD (0|1), workdir (0|1|2), stage (0..3)]
   const matrix = await git.statusMatrix({ fs, dir })
   const headOid = await git.resolveRef({ fs, dir, ref: 'HEAD' }).catch(() => null)
@@ -47,9 +55,22 @@ export async function commitAll(dir: string, message: string): Promise<boolean> 
     }
   }
 
-  if (!changed) return false
-  await git.commit({ fs, dir, message, author })
-  return true
+  return changed
+}
+
+/**
+ * Commit the working tree as a merge with explicit parents. Unlike commitAll
+ * this commits even when the tree is byte-identical to HEAD's — a resolution
+ * of "keep everything mine" still has to record that the other parent's
+ * history has been incorporated, or the two lines would diverge forever.
+ */
+export async function commitMerge(
+  dir: string,
+  message: string,
+  parents: string[]
+): Promise<string> {
+  await stageAllChanges(dir)
+  return git.commit({ fs, dir, message, author, parent: parents })
 }
 
 /** Commit history, newest first — optionally only commits touching one file. */

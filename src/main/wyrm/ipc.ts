@@ -1,7 +1,16 @@
-import { app, ipcMain, dialog, BrowserWindow } from 'electron'
+import { app, ipcMain, dialog, BrowserWindow, safeStorage } from 'electron'
 import { existsSync, promises as fsp } from 'node:fs'
 import { join, basename } from 'node:path'
-import type { DocFile, Entity, EntityType, ProjectData } from '../../shared/types'
+import http from 'isomorphic-git/http/node'
+import type {
+  ConflictResolution,
+  DocFile,
+  Entity,
+  EntityType,
+  ProjectData,
+  SyncOutcome,
+  SyncStatus
+} from '../../shared/types'
 import { commitAll, createVariant, deleteVariant, listVariants, logCommits } from './git'
 import { deleteEntity, listEntities, readAllDocs, writeEntity } from './entities'
 import {
@@ -14,8 +23,30 @@ import {
   saveProject,
   writeDoc
 } from './project'
-import { readBackupSettings, readSettings, writeBackupSettings, writeSettings } from './settings'
+import {
+  readBackupSettings,
+  readSettings,
+  readSyncProject,
+  writeBackupSettings,
+  writeSettings,
+  writeSyncProject
+} from './settings'
 import { backupNameFor, backupProject, restoreBackup } from './backup'
+import {
+  clearRemote,
+  getRemoteUrl,
+  realTransport,
+  resolveSyncConflicts,
+  setRemoteUrl,
+  syncProject
+} from './sync'
+import {
+  createPrivateRepo,
+  fetchGithubLogin,
+  pollDeviceFlow,
+  startDeviceFlow,
+  type DeviceFlowSession
+} from './github-auth'
 
 function focusedWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
@@ -166,6 +197,134 @@ export function registerIpc(): void {
     await rememberProject(path)
     return { path, data }
   })
+
+  /* ---------- GitHub sync (Phase 5) ---------- */
+
+  // Token at rest: encrypted through the OS keychain when available. The
+  // prefix records which way it was written so a keychain appearing later
+  // cannot silently make old entries unreadable.
+  const encodeToken = (token: string): string =>
+    safeStorage.isEncryptionAvailable()
+      ? `enc:${safeStorage.encryptString(token).toString('base64')}`
+      : `plain:${token}`
+
+  const decodeToken = (stored: string | undefined): string | null => {
+    if (!stored) return null
+    if (stored.startsWith('enc:')) {
+      try {
+        return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'))
+      } catch {
+        return null
+      }
+    }
+    return stored.startsWith('plain:') ? stored.slice(6) : null
+  }
+
+  const getToken = async (): Promise<string | null> =>
+    decodeToken((await readSettings()).githubToken)
+  const transport = realTransport(http, getToken)
+
+  const syncStatusOf = async (path: string): Promise<SyncStatus> => {
+    const settings = await readSettings()
+    const project = await readSyncProject(path)
+    return {
+      mode: project.mode,
+      remoteUrl: await getRemoteUrl(path),
+      login: settings.githubLogin ?? null,
+      clientIdSet: Boolean(settings.syncClientId),
+      lastSyncAt: project.lastSyncAt,
+      pendingSync: project.pendingSync
+    }
+  }
+
+  /** Fold an outcome into the per-project bookkeeping. */
+  const recordOutcome = async (path: string, outcome: SyncOutcome): Promise<SyncOutcome> => {
+    const at = Date.now()
+    if (outcome.status === 'pushed' || outcome.status === 'up-to-date') {
+      await writeSyncProject(path, { lastSyncAt: at, pendingSync: false })
+    } else if (outcome.status === 'pulled' || outcome.status === 'merged') {
+      await writeSyncProject(path, { lastSyncAt: at, pendingSync: !outcome.pushed })
+    } else if (outcome.status === 'offline') {
+      await writeSyncProject(path, { pendingSync: true })
+    }
+    return outcome
+  }
+
+  let deviceSession: DeviceFlowSession | null = null
+
+  ipcMain.handle('sync:status', (_e, path: string) => syncStatusOf(path))
+
+  ipcMain.handle('sync:clientId', async (_e, clientId: string) => {
+    await writeSettings({ syncClientId: clientId.trim() })
+    return syncStatusOf('')
+  })
+
+  ipcMain.handle('sync:signInStart', async () => {
+    const { syncClientId } = await readSettings()
+    if (!syncClientId) throw new Error('Set the GitHub client id first.')
+    deviceSession = await startDeviceFlow(syncClientId)
+    return {
+      userCode: deviceSession.userCode,
+      verificationUri: deviceSession.verificationUri,
+      expiresIn: Math.max(0, Math.round((deviceSession.expiresAt - Date.now()) / 1000))
+    }
+  })
+
+  ipcMain.handle('sync:signInPoll', async () => {
+    const { syncClientId } = await readSettings()
+    if (!deviceSession || !syncClientId) return { state: 'error', detail: 'No sign-in is running.' }
+    const result = await pollDeviceFlow(syncClientId, deviceSession)
+    if (result.state !== 'ok') {
+      if (result.state === 'error') deviceSession = null
+      return result
+    }
+    deviceSession = null
+    const login = await fetchGithubLogin(result.token)
+    await writeSettings({ githubToken: encodeToken(result.token), githubLogin: login })
+    return { state: 'ok', login }
+  })
+
+  ipcMain.handle('sync:signOut', async (_e, path: string) => {
+    await writeSettings({ githubToken: undefined, githubLogin: undefined })
+    return syncStatusOf(path)
+  })
+
+  ipcMain.handle(
+    'sync:connect',
+    async (_e, path: string, options: { create: boolean; name?: string; url?: string }) => {
+      let url = options.url?.trim() ?? ''
+      if (options.create) {
+        const token = await getToken()
+        if (!token) throw new Error('Sign in with GitHub first.')
+        url = await createPrivateRepo(token, options.name?.trim() || 'novel')
+      }
+      if (!url) throw new Error('No address was given.')
+      await setRemoteUrl(path, url)
+      await writeSyncProject(path, { mode: 'github' })
+      return syncStatusOf(path)
+    }
+  )
+
+  ipcMain.handle('sync:disconnect', async (_e, path: string) => {
+    await clearRemote(path)
+    await writeSyncProject(path, { mode: 'unset', pendingSync: false })
+    return syncStatusOf(path)
+  })
+
+  ipcMain.handle('sync:localOnly', async (_e, path: string) => {
+    await writeSyncProject(path, { mode: 'local-only', pendingSync: false })
+    return syncStatusOf(path)
+  })
+
+  ipcMain.handle('sync:now', async (_e, path: string) =>
+    recordOutcome(path, await syncProject(path, transport))
+  )
+
+  ipcMain.handle(
+    'sync:resolve',
+    async (_e, path: string, choices: { path: string; resolution: ConflictResolution }[]) =>
+      recordOutcome(path, await resolveSyncConflicts(path, choices, transport))
+  )
 
   ipcMain.handle('compile:export', async (_e, defaultName: string, data: string | Uint8Array) => {
     const win = focusedWindow()
