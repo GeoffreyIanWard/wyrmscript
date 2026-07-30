@@ -68,9 +68,19 @@ Design decisions that will matter later, recorded in `main/wyrm/sync.ts`'s heade
 
 Deferred from this pass: syncing to a remote whose default branch isn't `main`; structural (rather than mine/theirs) binder merge; multi-account.
 
-### 4. Quality-of-life batch — **next up** 📋
+### 4. Quality-of-life batch — 🔨 in progress
 
-F-06 (margins/measure), F-05 (more retro themes), F-07 (full keyboard navigation), plus full-project search, the ⌘K command palette, and writing stats. All well-specified and largely independent — the best delegation candidates in the whole plan, and several are close to pure CSS.
+Split in two, because "appearance you can live in" and "navigation you can drive" are unrelated changes that would otherwise land as one unreviewable diff.
+
+**4a. Reading comfort ✅** — F-05's comfort variants and F-06, shipped in PR #12. Appearance is now persisted app-level (`settings.json`), so a chosen palette survives a restart — previously it was React state and reset on every launch, which made the phosphor themes decorative rather than usable.
+
+- The theme axis was `data-terminal`, which only ever _looked_ writing-pane-scoped — it has always remapped the root `--ink`/`--paper` pair for the whole app. Renamed to **`data-palette`** to stop the name lying, and split "palette" from "CRT effects": glow and scanlines now belong only to `green`/`amber`, so a comfort variant can be two-colour without pretending to be a monitor.
+- New palettes: `ereader` (warm grey / deep blue), `night` (tan / brown), `dark` (inverse — deliberately `#e6e6e6` on `#0d0d0d`, since full-contrast white on black blooms over a long session).
+- **Every palette must restate all five SVG data-URIs** (3 dithers, 2 scrollbar arrows) — the ink colour is baked into each one, so a palette that forgets them keeps the previous theme's patterns and looks subtly broken. This is the single easiest way to add a broken theme.
+- F-06 geometry (`--measure` in `ch`, `--prose-size`, `--prose-leading`) rides as inline custom properties on the root, so the page reflows live. The measure is in `ch` on purpose: the column stays the same number of characters wide at any text size, which is what actually governs readability.
+- Dialogs became a flex column with a scrolling body and a `92vh` cap — the enlarged Preferences pushed its own title bar and Close button off-screen, and losing the way out of a dialog is worse than a scrollbar.
+
+**4b. Navigation 📋 — next up.** F-07 (full keyboard navigation), full-project search, the ⌘K command palette, and writing stats. Still the best delegation candidates in the plan; F-07 should follow the WAI-ARIA menubar pattern rather than inventing one, since that also makes the app screen-reader navigable.
 
 ### 5. Story-structure trio (F-02, F-03, F-04) 💭
 
@@ -114,7 +124,7 @@ Track main plot, B-plots, romance/love-interest arcs, character arcs — and sur
 
 More themes, more intensely period. Candidates: Apple II / Commodore 64 / ZX Spectrum palettes, IBM CGA (cyan-magenta), plasma orange, Macintosh Plus warm grey-green, DOS EGA 16-colour, a paper-white "LaserWriter proof" mode. Also: optional CRT curvature/bloom/flicker, and the classic Mac UI click/chime sound set from design-brief.md §2 (off by default). The theming layer already remaps ink/paper/dither/accents from one place, so new variants are mostly a palette block each.
 
-**Comfort variants** (requested 2026-07-30) — same mechanism, different intent: ergonomic rather than period-authentic, still strictly two-colour so the 1-bit look holds.
+**Comfort variants** (requested 2026-07-30) — ✅ shipped in PR #12 (see Execution order 4a). Same mechanism, different intent: ergonomic rather than period-authentic, still strictly two-colour so the 1-bit look holds.
 
 - **E-reader**: light warm grey paper, dark blue ink — subtle, easy on the eyes, mimics an e-ink screen.
 - **Night mode**: warm tan paper, brown ink — for writing after dark without the searing white page.
@@ -122,9 +132,9 @@ More themes, more intensely period. Candidates: Apple II / Commodore 64 / ZX Spe
 
 Design note before building: today there are two theme axes — `data-accents` (1bit/4bit) and `data-terminal` (paper/green/amber), and the terminal axis only recolours the writing pane. These three variants want to recolour the **whole app**, chrome included, which is what the phosphor themes already do via the root CSS variables — so they likely extend the terminal axis (or promote it to an app-wide "palette" axis) rather than adding a third. Decide that once, then each variant is a palette block. Dithers are inline SVG data-URIs carrying a hardcoded fill per theme — new palettes must remember to restate them (the phosphor themes show the pattern).
 
-### F-06 · Editor margins & measure control 📋
+### F-06 · Editor margins & measure control ✅
 
-Let the writer control page geometry in the writing terminal: margin width / line measure (currently a fixed 62ch), font size, line height, and first-line indent (the indent toggle shipped early as part of the drift fix — see I-03). Belongs in Preferences beside the existing typography settings.
+Shipped in PR #12 (Execution order 4a): line measure, text size and line spacing are steppers in Preferences → THE PAGE, applied live as root custom properties and persisted app-level. First-line indent shipped earlier with the I-03 drift fix.
 
 ### F-07 · Full keyboard navigation 📋
 
