@@ -5,6 +5,12 @@ import type { CommitInfo, VariantInfo } from '../../../shared/types'
 import { api } from '../lib/api'
 import { useWyrm } from '../store'
 
+function errorMessage(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e)
+  // Electron prefixes IPC rejections with the handler plumbing; keep the cause.
+  return raw.replace(/^Error invoking remote method '[^']*':\s*/, '')
+}
+
 function timeAgo(timestamp: number): string {
   const mins = Math.floor((Date.now() - timestamp) / 60000)
   if (mins < 1) return 'just now'
@@ -101,10 +107,22 @@ export function HistoryDialog({ onClose }: { onClose: () => void }): JSX.Element
   const [commits, setCommits] = useState<CommitInfo[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [oldBody, setOldBody] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!project || !activeDoc) return
-    void api.log(project.path, activeDoc.meta.id).then(setCommits)
+    let live = true
+    void api
+      .log(project.path, activeDoc.meta.id)
+      .then((log) => {
+        if (!live) return
+        setCommits(log)
+        setError(null)
+      })
+      .catch((e: unknown) => live && setError(errorMessage(e)))
+    return () => {
+      live = false
+    }
   }, [project, activeDoc])
 
   useEffect(() => {
@@ -112,6 +130,7 @@ export function HistoryDialog({ onClose }: { onClose: () => void }): JSX.Element
     void api
       .readDocAtRef(project.path, activeDoc.meta.id, selected)
       .then((doc) => setOldBody(doc?.body ?? null))
+      .catch((e: unknown) => setError(errorMessage(e)))
   }, [project, activeDoc, selected])
 
   const restore = (): void => {
@@ -120,7 +139,9 @@ export function HistoryDialog({ onClose }: { onClose: () => void }): JSX.Element
     void restoreActiveDoc(
       selected,
       `Restore “${activeDoc?.meta.title}” to version from ${new Date(commit?.timestamp ?? 0).toLocaleString()}`
-    ).then(onClose)
+    )
+      .then(onClose)
+      .catch((e: unknown) => setError(errorMessage(e)))
   }
 
   return (
@@ -132,7 +153,13 @@ export function HistoryDialog({ onClose }: { onClose: () => void }): JSX.Element
         </div>
         <div className="dialog-body version-body">
           <div className="version-list">
-            {commits?.length === 0 && <div className="dialog-hint">No history yet.</div>}
+            {error != null && <div className="error-text">{error}</div>}
+            {error == null && commits == null && (
+              <div className="dialog-hint">Reading history…</div>
+            )}
+            {error == null && commits?.length === 0 && (
+              <div className="dialog-hint">No checkpoints for this document yet.</div>
+            )}
             {commits?.map((commit) => (
               <button
                 type="button"
@@ -188,11 +215,15 @@ export function VariantsDialog({ onClose }: { onClose: () => void }): JSX.Elemen
   const [variants, setVariants] = useState<VariantInfo[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [variantBody, setVariantBody] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
   const refresh = (): void => {
     if (!project || !activeDoc) return
-    void api.listVariants(project.path, activeDoc.meta.id).then(setVariants)
+    void api
+      .listVariants(project.path, activeDoc.meta.id)
+      .then(setVariants)
+      .catch((e: unknown) => setError(errorMessage(e)))
   }
 
   useEffect(refresh, [project, activeDoc])
@@ -202,15 +233,19 @@ export function VariantsDialog({ onClose }: { onClose: () => void }): JSX.Elemen
     void api
       .readDocAtRef(project.path, activeDoc.meta.id, selected)
       .then((doc) => setVariantBody(doc?.body ?? null))
+      .catch((e: unknown) => setError(errorMessage(e)))
   }, [project, activeDoc, selected])
 
   const saveVariant = (): void => {
     const name = nameRef.current?.value.trim()
     if (!name) return
-    void createVariant(name).then(() => {
-      if (nameRef.current) nameRef.current.value = ''
-      refresh()
-    })
+    setError(null)
+    void createVariant(name)
+      .then(() => {
+        if (nameRef.current) nameRef.current.value = ''
+        refresh()
+      })
+      .catch((e: unknown) => setError(errorMessage(e)))
   }
 
   const adopt = (): void => {
@@ -219,16 +254,21 @@ export function VariantsDialog({ onClose }: { onClose: () => void }): JSX.Elemen
     void restoreActiveDoc(
       selected,
       `Adopt variant “${variant?.name}” of “${activeDoc?.meta.title}”`
-    ).then(onClose)
+    )
+      .then(onClose)
+      .catch((e: unknown) => setError(errorMessage(e)))
   }
 
   const remove = (): void => {
     if (!project || !selected) return
-    void api.deleteVariant(project.path, selected).then(() => {
-      setSelected(null)
-      setVariantBody(null)
-      refresh()
-    })
+    void api
+      .deleteVariant(project.path, selected)
+      .then(() => {
+        setSelected(null)
+        setVariantBody(null)
+        refresh()
+      })
+      .catch((e: unknown) => setError(errorMessage(e)))
   }
 
   return (
@@ -257,7 +297,13 @@ export function VariantsDialog({ onClose }: { onClose: () => void }): JSX.Elemen
           </fieldset>
           <div className="version-body">
             <div className="version-list">
-              {variants?.length === 0 && <div className="dialog-hint">No variants yet.</div>}
+              {error != null && <div className="error-text">{error}</div>}
+              {error == null && variants == null && (
+                <div className="dialog-hint">Reading variants…</div>
+              )}
+              {error == null && variants?.length === 0 && (
+                <div className="dialog-hint">No variants yet.</div>
+              )}
               {variants?.map((variant) => (
                 <button
                   type="button"
