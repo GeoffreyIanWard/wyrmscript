@@ -248,7 +248,7 @@ export interface WyrmApi {
 
   getSyncStatus(path: string): Promise<SyncStatus>
   /** One-time app setup: the GitHub OAuth app's client id (public, not a secret). */
-  setSyncClientId(clientId: string): Promise<SyncStatus>
+  setSyncClientId(path: string, clientId: string): Promise<SyncStatus>
   /** Begin the GitHub device flow. */
   signInStart(): Promise<DeviceCodeInfo>
   /** Poll for the device-flow result; call every few seconds until not pending. */

@@ -27,6 +27,13 @@ const DEVICE_CODE_URL = 'https://github.com/login/device/code'
 const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
 const API = 'https://api.github.com'
 
+/**
+ * GitHub's device endpoints put their real diagnosis in the JSON body — and
+ * do not always pair it with a 2xx. Throwing on status alone would replace
+ * "device flow is not enabled on this OAuth app", the single likeliest setup
+ * mistake, with an opaque number. So the body is read first and only an
+ * unreadable one falls back to the status.
+ */
 async function postJson(
   fetchFn: FetchLike,
   url: string,
@@ -37,8 +44,15 @@ async function postJson(
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   })
-  if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${url}`)
-  return (await response.json()) as Record<string, unknown>
+  const data = (await response.json().catch(() => null)) as Record<string, unknown> | null
+  if (data == null) {
+    throw new Error(
+      response.status === 404
+        ? 'GitHub did not recognise that client id. Check it, and that the OAuth app has Device Flow enabled.'
+        : `GitHub answered ${response.status} for ${url}`
+    )
+  }
+  return data
 }
 
 export async function startDeviceFlow(
@@ -47,6 +61,13 @@ export async function startDeviceFlow(
 ): Promise<DeviceFlowSession> {
   // scope=repo: private repositories are the default for manuscripts.
   const data = await postJson(fetchFn, DEVICE_CODE_URL, { client_id: clientId, scope: 'repo' })
+  if (typeof data.device_code !== 'string' || !data.device_code) {
+    throw new Error(
+      data.error === 'device_flow_disabled'
+        ? 'That OAuth app does not have Device Flow enabled — turn it on in its GitHub settings.'
+        : String(data.error_description ?? data.error ?? 'GitHub would not start the sign-in.')
+    )
+  }
   const expiresIn = Number(data.expires_in ?? 900)
   return {
     deviceCode: String(data.device_code ?? ''),

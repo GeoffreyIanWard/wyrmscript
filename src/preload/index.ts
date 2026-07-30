@@ -33,7 +33,7 @@ const api: WyrmApi = {
   restoreFromBackup: () => ipcRenderer.invoke('backup:restore'),
 
   getSyncStatus: (path) => ipcRenderer.invoke('sync:status', path),
-  setSyncClientId: (clientId) => ipcRenderer.invoke('sync:clientId', clientId),
+  setSyncClientId: (path, clientId) => ipcRenderer.invoke('sync:clientId', path, clientId),
   signInStart: () => ipcRenderer.invoke('sync:signInStart'),
   signInPoll: () => ipcRenderer.invoke('sync:signInPoll'),
   signOut: (path) => ipcRenderer.invoke('sync:signOut', path),
