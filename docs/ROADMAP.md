@@ -11,14 +11,14 @@ Product spec lives in [design-brief.md](design-brief.md); this file tracks execu
 
 The phased build order from design-brief.md §11. One PR (or small series) per phase.
 
-| #   | Phase                      | Status | Notes                                                                                                                                                         |
-| --- | -------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Scaffold & aesthetic proof | ✅     | Electron+React+TS+Vite, 1-bit design system, both typefaces, phosphor themes. PR #1                                                                           |
-| 2   | Core loop                  | ✅     | `.wyrm` format, binder, TipTap terminal, autosave, local git from day one. PR #2                                                                              |
-| 3   | Version control UI         | ✅     | Commit dialog, per-doc history, prose word-diff, restore, snapshot variants. PR #3, with the bug fixes and this roadmap following in PR #4                    |
-| 4   | Story bible                | 🔨     | Entity index over glossary/characters/world, debounced auto-linking in the terminal, click-to-side-panel, add-from-selection, entry editors, backlinks. PR #5 |
-| 5   | GitHub sync                | 📋     | OAuth device flow, push/pull, offline queue, merge-conflict resolution UI. See F-01 — local-only must stay first-class                                        |
-| 6   | Suggested extras           | 📋     | Compile/export, corkboard, full-project search, writing stats, command palette                                                                                |
+| #   | Phase                      | Status | Notes                                                                                                                                                              |
+| --- | -------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Scaffold & aesthetic proof | ✅     | Electron+React+TS+Vite, 1-bit design system, both typefaces, phosphor themes. PR #1                                                                                |
+| 2   | Core loop                  | ✅     | `.wyrm` format, binder, TipTap terminal, autosave, local git from day one. PR #2                                                                                   |
+| 3   | Version control UI         | ✅     | Commit dialog, per-doc history, prose word-diff, restore, snapshot variants. PR #3, with the bug fixes and this roadmap following in PR #4                         |
+| 4   | Story bible                | ✅     | Entity index over glossary/characters/world, debounced auto-linking in the terminal, click-to-side-panel, add-from-selection, entry editors, backlinks. PRs #5, #6 |
+| 5   | GitHub sync                | 📋     | OAuth device flow, push/pull, offline queue, merge-conflict resolution UI. See F-01 — local-only must stay first-class                                             |
+| 6   | Suggested extras           | 📋     | Compile/export, corkboard, full-project search, writing stats, command palette                                                                                     |
 
 **Locked v1 decisions** (confirmed 2026-07-29): 1-bit default palette with entity links distinguished per type; entity click opens a side panel; character/world entries free-form; compile/export, backlinks, auto-commit safety net, and command palette all in v1; variants are frozen snapshots (not editable branches).
 
