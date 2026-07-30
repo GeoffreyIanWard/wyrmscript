@@ -6,6 +6,7 @@ import { Editor } from './components/Editor'
 import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog } from './components/Dialogs'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { useWyrm } from './store'
 import { isElectron } from './lib/api'
 
@@ -55,6 +56,7 @@ function StatusBar(): JSX.Element {
 function App(): JSX.Element {
   const [accents, setAccents] = useState<AccentTheme>('1bit')
   const [terminal, setTerminal] = useState<TerminalTheme>('paper')
+  const [firstLineIndent, setFirstLineIndent] = useState(false)
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
@@ -99,6 +101,7 @@ function App(): JSX.Element {
       className={`screen${isElectronMac ? ' is-electron-mac' : ''}`}
       data-accents={accents}
       data-terminal={terminal}
+      data-indent={firstLineIndent ? 'on' : 'off'}
     >
       <MenuBar
         onAbout={() => setAboutOpen(true)}
@@ -131,15 +134,34 @@ function App(): JSX.Element {
           <PrefsDialog
             accents={accents}
             terminal={terminal}
+            firstLineIndent={firstLineIndent}
             onAccents={setAccents}
             onTerminal={setTerminal}
+            onFirstLineIndent={setFirstLineIndent}
             onClose={() => setPrefsOpen(false)}
           />
         )}
         {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
-        {versionDialog === 'commit' && <CommitDialog onClose={() => setVersionDialog(null)} />}
-        {versionDialog === 'history' && <HistoryDialog onClose={() => setVersionDialog(null)} />}
-        {versionDialog === 'variants' && <VariantsDialog onClose={() => setVersionDialog(null)} />}
+        {versionDialog !== null && (
+          <ErrorBoundary
+            label={
+              versionDialog === 'commit'
+                ? 'Checkpoint'
+                : versionDialog === 'history'
+                  ? 'History'
+                  : 'Variants'
+            }
+            onDismiss={() => setVersionDialog(null)}
+          >
+            {versionDialog === 'commit' && <CommitDialog onClose={() => setVersionDialog(null)} />}
+            {versionDialog === 'history' && (
+              <HistoryDialog onClose={() => setVersionDialog(null)} />
+            )}
+            {versionDialog === 'variants' && (
+              <VariantsDialog onClose={() => setVersionDialog(null)} />
+            )}
+          </ErrorBoundary>
+        )}
       </div>
     </div>
   )
