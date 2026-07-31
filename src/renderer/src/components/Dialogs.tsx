@@ -193,14 +193,20 @@ export function PrefsDialog({
               onPick={() => pickPalette('collegiate')}
             />
             <Radio
-              label="NES (CRT) — Nintendo red glow"
-              on={appearance.palette === 'nes'}
-              onPick={() => pickPalette('nes')}
+              label="Virtual Wyrm (CRT) — red glow"
+              on={appearance.palette === 'virtualwyrm'}
+              onPick={() => pickPalette('virtualwyrm')}
+            />
+            <Radio
+              label="Famicom — full-colour NES palette"
+              on={appearance.palette === 'famicom'}
+              onPick={() => pickPalette('famicom')}
             />
             <div className="dialog-hint">
-              Green, amber, vaporwave and NES add scanlines and glow. Ledger and arcade keep a
-              second highlight colour on purpose. Every other palette is the same strict two colours
-              as the default — comfort or period flavour, not novelty.
+              Green, amber, vaporwave and Virtual Wyrm add scanlines and glow. Ledger and arcade
+              keep a second highlight colour on purpose, and Famicom goes further still with a full
+              roster of real NES colours. Every other palette is the same strict two colours as the
+              default — comfort or period flavour, not novelty.
             </div>
           </fieldset>
           <fieldset className="fieldset">
