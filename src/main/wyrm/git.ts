@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import git from 'isomorphic-git'
 import type { CommitInfo, VariantInfo } from '../../shared/types'
 
-export const author = { name: 'Wyrmscript', email: 'wyrmscript@local' }
+export const author = { name: 'WyrmStar', email: 'wyrmstar@local' }
 
 export async function initRepo(dir: string): Promise<void> {
   await git.init({ fs, dir, defaultBranch: 'main' })

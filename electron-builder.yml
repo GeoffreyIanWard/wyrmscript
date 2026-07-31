@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: wyrm-scaffold
+appId: com.geoffreyianward.wyrmstar
+productName: WyrmStar
 directories:
   buildResources: build
 files:
@@ -12,7 +12,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: wyrm-scaffold
+  executableName: WyrmStar
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -21,10 +21,8 @@ nsis:
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    - NSDocumentsFolderUsageDescription: WyrmStar reads and writes your novel projects here.
+    - NSDownloadsFolderUsageDescription: WyrmStar can export compiled manuscripts here.
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}
@@ -33,11 +31,15 @@ linux:
     - AppImage
     - snap
     - deb
-  maintainer: electronjs.org
+  maintainer: Geoffrey Ward
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
+# Used only to upload built installers to GitHub Releases from CI (`--publish
+# always`); the app has no auto-updater wired in, so this isn't a live
+# update channel yet.
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: GeoffreyIanWard
+  repo: wyrmscript

@@ -4,7 +4,7 @@ import type { JSONContent } from '@tiptap/core'
 import type Token from 'markdown-it/lib/token.mjs'
 
 /**
- * Wyrmscript stores prose as Markdown: paragraphs plus the three supported
+ * WyrmStar stores prose as Markdown: paragraphs plus the three supported
  * marks — **bold**, *italic*, ==highlight== (markdown-it-mark syntax).
  * These converters translate between that format and TipTap's JSON document.
  */

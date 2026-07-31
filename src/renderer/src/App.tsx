@@ -303,7 +303,7 @@ function App(): JSX.Element {
                 {
                   id: 'prefs',
                   title: 'Preferences…',
-                  subtitle: 'Wyrmscript',
+                  subtitle: 'WyrmStar',
                   run: () => setPrefsOpen(true)
                 },
                 {
