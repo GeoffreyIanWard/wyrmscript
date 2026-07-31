@@ -132,12 +132,26 @@ export interface CompileResult {
 export type AccentTheme = '1bit' | '4bit'
 
 /**
- * Whole-app palette. `paper` is the 1-bit default; `green`/`amber` add the
- * CRT glow and scanlines; the rest are comfort variants — same strict
- * two-colour discipline, chosen to be easy on the eyes rather than
- * period-accurate.
+ * Whole-app palette. `paper` is the 1-bit default; `green`/`amber`/`vaporwave`
+ * add CRT glow and scanlines; `ereader`/`night`/`dark`/`halftone`/`blueprint`/
+ * `bios` keep the same strict two-colour discipline as the default, chosen
+ * for comfort or period flavour rather than novelty; `ledger`/`arcade` are
+ * the two that deliberately keep a second highlight colour rather than
+ * flattening to monochrome.
  */
-export type PaletteTheme = 'paper' | 'ereader' | 'night' | 'dark' | 'green' | 'amber'
+export type PaletteTheme =
+  | 'paper'
+  | 'ereader'
+  | 'night'
+  | 'dark'
+  | 'green'
+  | 'amber'
+  | 'vaporwave'
+  | 'halftone'
+  | 'ledger'
+  | 'arcade'
+  | 'blueprint'
+  | 'bios'
 
 export interface AppearanceSettings {
   accents: AccentTheme
