@@ -157,9 +157,40 @@ export function PrefsDialog({
               on={appearance.palette === 'amber'}
               onPick={() => pickPalette('amber')}
             />
+            <Radio
+              label="Vaporwave (CRT) — magenta glow"
+              on={appearance.palette === 'vaporwave'}
+              onPick={() => pickPalette('vaporwave')}
+            />
+            <Radio
+              label="Halftone — newsprint dot screen"
+              on={appearance.palette === 'halftone'}
+              onPick={() => pickPalette('halftone')}
+            />
+            <Radio
+              label="Ledger — cream stock, rust correction ink"
+              on={appearance.palette === 'ledger'}
+              onPick={() => pickPalette('ledger')}
+            />
+            <Radio
+              label="Arcade — marquee stripes, hot colour"
+              on={appearance.palette === 'arcade'}
+              onPick={() => pickPalette('arcade')}
+            />
+            <Radio
+              label="Blueprint — drafting navy & cyan"
+              on={appearance.palette === 'blueprint'}
+              onPick={() => pickPalette('blueprint')}
+            />
+            <Radio
+              label="BIOS — classic setup-screen blue"
+              on={appearance.palette === 'bios'}
+              onPick={() => pickPalette('bios')}
+            />
             <div className="dialog-hint">
-              Green and amber add scanlines and glow. Paper, e-reader and night are the same strict
-              two colours as the default, just easier on the eyes.
+              Green, amber and vaporwave add scanlines and glow. Ledger and arcade keep a second
+              highlight colour on purpose. Every other palette is the same strict two colours as the
+              default — comfort or period flavour, not novelty.
             </div>
           </fieldset>
           <fieldset className="fieldset">
