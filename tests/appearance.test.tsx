@@ -75,7 +75,7 @@ describe('appearance persistence', () => {
 })
 
 describe('the Preferences controls', () => {
-  it('offers all fourteen palettes — comfort, CRT and novelty variants alike', () => {
+  it('offers all sixteen palettes — comfort, CRT and novelty variants alike', () => {
     renderPrefs()
     for (const label of [
       /^Paper —/,
@@ -91,7 +91,8 @@ describe('the Preferences controls', () => {
       /^Blueprint/,
       /^BIOS/,
       /^Collegiate/,
-      /^NES/
+      /^Virtual Wyrm/,
+      /^Famicom/
     ]) {
       expect(screen.getByText(label)).toBeTruthy()
     }

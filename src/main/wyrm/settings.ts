@@ -51,7 +51,14 @@ export async function readAppearance(): Promise<AppearanceSettings> {
   const settings = await readSettings()
   // Merged over the defaults rather than replacing them, so a settings file
   // written by an older build keeps working when new fields appear.
-  return { ...DEFAULT_APPEARANCE, ...settings.appearance }
+  const appearance = { ...DEFAULT_APPEARANCE, ...settings.appearance }
+  // I-09: 'nes' briefly meant the red-on-near-black CRT palette, now called
+  // Virtual Wyrm — the genuine NES palette added afterward is 'famicom'
+  // instead, precisely so this value stays retired and safe to remap.
+  if ((settings.appearance?.palette as string | undefined) === 'nes') {
+    appearance.palette = 'virtualwyrm'
+  }
+  return appearance
 }
 
 export async function writeAppearance(
