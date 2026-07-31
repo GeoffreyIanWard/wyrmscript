@@ -1,4 +1,4 @@
-# Wyrmscript — working notes for Claude
+# WyrmStar — working notes for Claude
 
 Retro desktop word processor for long-form fiction. WordStar focus, Scrivener structure, early-Mac face, git underneath.
 

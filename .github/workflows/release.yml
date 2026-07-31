@@ -1,0 +1,53 @@
+name: Release
+
+# Tag-triggered so a release is a deliberate act (git tag vX.Y.Z && git push --tags),
+# not something that happens on every merge to develop. workflow_dispatch is there
+# for re-running a build without cutting a new tag (e.g. after fixing a CI-only issue).
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  # Runs once, before any of the three (slower, billed-per-OS) build jobs — a broken
+  # test/typecheck/lint shouldn't burn mac+win+linux runner minutes to discover.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run test
+      - run: npm run typecheck
+      - run: npm run lint
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            flag: --mac
+          - os: windows-latest
+            flag: --win
+          - os: ubuntu-latest
+            flag: --linux
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # electron-builder reads GH_TOKEN to upload installers as release assets.
+      # No code signing secrets are configured — see electron-builder.yml's
+      # notarize:false; this is an unsigned test-round build, not a public release.
+      - run: npx electron-vite build && npx electron-builder --publish always ${{ matrix.flag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

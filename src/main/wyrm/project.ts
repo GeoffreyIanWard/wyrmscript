@@ -101,7 +101,7 @@ export async function createProject(projectPath: string, title: string): Promise
 
   await fsp.writeFile(
     join(projectPath, '.gitignore'),
-    '# Wyrmscript project — everything is versioned\n.DS_Store\n',
+    '# WyrmStar project — everything is versioned\n.DS_Store\n',
     'utf8'
   )
   await saveProject(projectPath, data)

@@ -1,4 +1,4 @@
-# Wyrmscript — Design & Build Brief
+# WyrmStar — Design & Build Brief
 
 You are building a desktop word processor for long-form fiction writing. Two lodestars: **WordStar** (distraction-free, keyboard-driven, terminal-era prose composition) and **Scrivener** (hierarchical project organization, corkboard/outline thinking, compile-to-manuscript). The visual language is **early Mac OS (Lisa / System 1–6)**: chunky, bold, 1-to-4-bit, unapologetically retro.
 
@@ -135,9 +135,9 @@ Beyond what's above, these fit the WordStar/Scrivener lineage well:
 
 ## 11. Development Process (for the app's own codebase — separate from §6/§7 above)
 
-This is about building Wyrmscript itself, not the in-app manuscript version control feature — note that **GitHub is now used in two unrelated capacities**: once as where Wyrmscript's own source code lives (this section), and once as the sync/version-control backbone for each user's _novel_ repos (§6/§7). Don't let the two get conflated in implementation — they're different repos, different accounts even (Geoffrey's dev GitHub vs. whatever GitHub account each user signs the app into).
+This is about building WyrmStar itself, not the in-app manuscript version control feature — note that **GitHub is now used in two unrelated capacities**: once as where WyrmStar's own source code lives (this section), and once as the sync/version-control backbone for each user's _novel_ repos (§6/§7). Don't let the two get conflated in implementation — they're different repos, different accounts even (Geoffrey's dev GitHub vs. whatever GitHub account each user signs the app into).
 
-- Standard git repo (GitHub) for Wyrmscript's own source, with the agent working in feature branches and opening PRs for review rather than pushing directly to main. Geoffrey reviews and approves; rollback = revert the PR/commit. This gives him the "approve or roll back agent changes" control he asked for as engineering-manager-in-the-loop.
+- Standard git repo (GitHub) for WyrmStar's own source, with the agent working in feature branches and opening PRs for review rather than pushing directly to main. Geoffrey reviews and approves; rollback = revert the PR/commit. This gives him the "approve or roll back agent changes" control he asked for as engineering-manager-in-the-loop.
 - **Recommended phased build order**, each phase its own PR (or small PR series):
   1. **Scaffold & aesthetic proof**: Electron+React+TS+Vite shell with the Lisa-style window chrome and both typefaces in place, no real functionality yet. Cheap to course-correct on the most subjective part (the look) before investing in features.
   2. **Core loop**: binder tree + writing terminal + local file save/load against the `.wyrm` folder format, with the folder initialized as a local git repo from day one (even before push/pull exists, local commits give you the safety net immediately).
