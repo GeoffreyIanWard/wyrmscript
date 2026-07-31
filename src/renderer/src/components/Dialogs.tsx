@@ -187,10 +187,20 @@ export function PrefsDialog({
               on={appearance.palette === 'bios'}
               onPick={() => pickPalette('bios')}
             />
+            <Radio
+              label="Collegiate — hunter green & varsity gold"
+              on={appearance.palette === 'collegiate'}
+              onPick={() => pickPalette('collegiate')}
+            />
+            <Radio
+              label="NES (CRT) — Nintendo red glow"
+              on={appearance.palette === 'nes'}
+              onPick={() => pickPalette('nes')}
+            />
             <div className="dialog-hint">
-              Green, amber and vaporwave add scanlines and glow. Ledger and arcade keep a second
-              highlight colour on purpose. Every other palette is the same strict two colours as the
-              default — comfort or period flavour, not novelty.
+              Green, amber, vaporwave and NES add scanlines and glow. Ledger and arcade keep a
+              second highlight colour on purpose. Every other palette is the same strict two colours
+              as the default — comfort or period flavour, not novelty.
             </div>
           </fieldset>
           <fieldset className="fieldset">
