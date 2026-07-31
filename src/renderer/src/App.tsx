@@ -102,6 +102,11 @@ function App(): JSX.Element {
   const [syncOpen, setSyncOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  // Distraction-free writing (F-09): binder, side panel and status bar hide;
+  // the page keeps its own measure and centres in the space that's left.
+  // Deliberately not persisted — a fresh launch always starts in the normal
+  // view.
+  const [focusMode, setFocusMode] = useState(false)
   // Set by MenuBar so ⌥F / F10 can move focus into the bar without App
   // reaching into its DOM (F-07).
   const focusMenusRef = useRef<(() => void) | null>(null)
@@ -117,9 +122,13 @@ function App(): JSX.Element {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      // F10 and ⌥F enter the menu bar — the two conventions writers arrive
-      // with, and the only way in without a mouse (F-07).
-      if (e.key === 'F10' || (e.altKey && (e.key === 'f' || e.key === 'F'))) {
+      // Enter the menu bar. Checked by e.code (the physical key), not e.key:
+      // macOS remaps Option+letter to an accented/special character at the
+      // .key layer — Option+F reports as 'ƒ', never 'f' — so an e.key check
+      // here silently never fires. F10 stays too, for the Windows convention
+      // and because it needs no modifier at all, but it needs Fn on most Mac
+      // keyboards, which was the actual complaint (F-07).
+      if (e.key === 'F10' || (e.altKey && !e.metaKey && !e.shiftKey && e.code === 'KeyF')) {
         e.preventDefault()
         focusMenusRef.current?.()
         return
@@ -143,12 +152,17 @@ function App(): JSX.Element {
       } else if ((e.key === 'E' || (e.key === 'e' && e.shiftKey)) && state.project) {
         e.preventDefault()
         setCompileOpen(true)
-      } else if (e.key === 'k' && state.project) {
+      } else if (e.key === 'k' && !e.altKey && state.project) {
         e.preventDefault()
         setPaletteOpen(true)
-      } else if ((e.key === 'F' || (e.key === 'f' && e.shiftKey)) && state.project) {
+      } else if ((e.key === 'F' || (e.key === 'f' && e.shiftKey)) && !e.altKey && state.project) {
         e.preventDefault()
         setSearchOpen(true)
+      } else if (e.altKey && e.metaKey && !e.shiftKey && e.code === 'KeyF' && state.project) {
+        // ⌥⌘F — Focus mode (F-09). Same e.code reasoning as the menu-bar
+        // entry above: Option remaps e.key, so this must not check 'f'.
+        e.preventDefault()
+        setFocusMode((v) => !v)
       } else if (e.key === ',') {
         e.preventDefault()
         setPrefsOpen(true)
@@ -188,6 +202,8 @@ function App(): JSX.Element {
         onSyncSettings={() => setSyncOpen(true)}
         onSearch={() => setSearchOpen(true)}
         onPalette={() => setPaletteOpen(true)}
+        focusMode={focusMode}
+        onFocusMode={() => setFocusMode((v) => !v)}
         registerFocusMenus={(focus) => {
           focusMenusRef.current = focus
         }}
@@ -198,16 +214,24 @@ function App(): JSX.Element {
             <div className="title-bar">
               <span className="close-box" />
               <span className="title">{project.data.title}</span>
-              <span className="zoom-box" />
+              {/* The zoom box is the period-correct glyph for "fill the
+                  screen" — reusing it beats inventing a modern expand icon. */}
+              <button
+                type="button"
+                className="zoom-box"
+                aria-label={focusMode ? 'Exit Focus Mode' : 'Enter Focus Mode'}
+                aria-pressed={focusMode}
+                onClick={() => setFocusMode((v) => !v)}
+              />
             </div>
             <div className="window-body">
-              <Binder />
+              {!focusMode && <Binder />}
               <ErrorBoundary label="Story bible" onDismiss={() => useWyrm.getState().showDoc()}>
                 <MainPane />
               </ErrorBoundary>
-              <EntityPanel />
+              {!focusMode && <EntityPanel />}
             </div>
-            <StatusBar />
+            {!focusMode && <StatusBar />}
           </div>
         ) : (
           booted && <Welcome />
