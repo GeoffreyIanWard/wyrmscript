@@ -1369,3 +1369,45 @@ button {
 .account-line .spacer {
   flex: 1;
 }
+
+/* ---------- keyboard navigation (F-07) ---------- */
+
+/* Every focusable control gets a visible ring. The chrome is 1-bit, so this
+   is an offset outline rather than a glow — and it must never be removed
+   without a replacement: an invisible focus position is an unusable keyboard. */
+.menu-title:focus-visible,
+.btn:focus-visible,
+.control-row:focus-visible,
+.version-row:focus-visible,
+.binder-scroll:focus-visible,
+.text-field:focus-visible,
+.close-box:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+/* Keyboard highlight inside an open menu — same inversion the mouse gets on
+   hover, so both pointers speak one language. */
+.menu-item.active:not(.disabled) {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.menu-item.active .shortcut {
+  color: var(--paper);
+}
+
+/* The binder's keyboard cursor. Distinct from `.selected` (the open document)
+   because arrowing browses without opening — showing them identically would
+   claim a document had been opened when it had not. */
+.binder-row.cursor:not(.selected) {
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.binder-scroll:focus {
+  outline: none;
+}
+
+.binder-scroll:focus-visible {
+  outline-offset: -2px;
+}

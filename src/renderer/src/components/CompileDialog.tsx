@@ -4,6 +4,7 @@ import type { BinderNode, CompileFormat, CompileOptions, DocFile } from '../../.
 import { DEFAULT_COMPILE_OPTIONS, allDocIds, compile } from '../lib/compile'
 import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 /** Longest preview we render — a whole novel in one <pre> would crawl. */
 const PREVIEW_LIMIT = 8000
@@ -117,6 +118,7 @@ function SelectionRows({
 }
 
 export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const project = useWyrm((s) => s.project)
   const loadAllDocs = useWyrm((s) => s.loadAllDocs)
   const compileManuscript = useWyrm((s) => s.compileManuscript)
@@ -196,7 +198,7 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
 
   return (
     <div className="dialog-overlay" onMouseDown={onClose}>
-      <div className="dialog wide" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog wide" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">Compile Manuscript</span>

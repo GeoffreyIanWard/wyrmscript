@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { DEFAULT_APPEARANCE } from '../src/shared/types'
 import type { AppearanceSettings } from '../src/shared/types'
@@ -20,19 +20,6 @@ function renderPrefs(appearance: AppearanceSettings = DEFAULT_APPEARANCE): {
   render(<PrefsDialog appearance={appearance} onChange={onChange} onClose={() => {}} />)
   return { onChange }
 }
-
-beforeAll(() => {
-  // The last test mounts the whole App, which brings a real TipTap editor with
-  // it; ProseMirror asks text nodes for layout rects when scrolling the
-  // selection into view and jsdom has no layout engine. A jsdom gap, not app
-  // behaviour, so it is stubbed rather than worked around in the component.
-  if (!('getClientRects' in Text.prototype)) {
-    Object.defineProperty(Text.prototype, 'getClientRects', {
-      value: () => [],
-      configurable: true
-    })
-  }
-})
 
 beforeEach(() => {
   vi.restoreAllMocks()

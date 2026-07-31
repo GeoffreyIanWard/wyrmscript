@@ -5,6 +5,8 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx']
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    // Stubs the DOM methods jsdom lacks; a no-op in the node-environment tests.
+    setupFiles: ['tests/setup.ts']
   }
 })

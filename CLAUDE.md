@@ -9,9 +9,9 @@ Retro desktop word processor for long-form fiction. WordStar focus, Scrivener st
 
 ## Where things stand
 
-Phases 1–4 are shipped: the retro shell and design system, the `.wyrm` project format with a binder and a TipTap writing terminal, the version-control UI (checkpoints, per-document history, prose word-diff, restore, snapshot variants), and the story bible (entity index, auto-linking, side panel, backlinks). **Geoffrey writes in this app for real** — his project lives at `~/Documents/testoria.wyrm`, which is useful for reproducing bugs against real data, and it means regressions cost him actual work.
+All six phases are shipped, plus compile/export, local backup, GitHub sync, and the comfort/navigation halves of the quality-of-life batch. **Geoffrey writes in this app for real** — his project lives at `~/Documents/testoria.wyrm`, which is useful for reproducing bugs against real data, and it means regressions cost him actual work.
 
-Next up is Compile/Export — see the Execution order section of the roadmap for the reasoning and the agreed sequence after it.
+Next up is writing stats (4c), then the story-structure cluster — which is **gated on designing F-10 (pins & tags) first**, since the timeline, plot graph, character graph and world map are all views over that one metadata model. See the Execution order section of the roadmap.
 
 ## Workflow
 
@@ -39,6 +39,9 @@ Worth reading before touching the neighbouring code:
 - `lib/compile.ts` — compile/export. Binder + documents are flattened into a format-independent block list (`CompileBlock` in `shared/types.ts`) first, and every output format is a pure function of that list, so selection/order/separator rules exist once. Markdown output goes back through `docToMarkdown`, which is what makes compiled Markdown byte-identical to the stored files. `lib/docx.ts` is a dependency-free OOXML + ZIP writer; keep it that way.
 - `main/wyrm/sync.ts` — the GitHub sync engine. **The working tree is the single source of truth for every sync commit**: isomorphic-git's `merge` never touches the working directory, so it is only ever used as a conflict detector and a content oracle (`noUpdateBranch` both times), and the merged state is materialized to disk before being committed with explicit parents. Prose never auto-merges — frontmatter merges structurally, but both-device edits to a document's text always go to the writer. The header comment explains which silent-data-loss bug each rule prevents; do not "simplify" any of them away. Transport is injected (`SyncTransport`), which is how the whole engine is tested against real repos with no network.
 - `main/wyrm/backup.ts` — mirrors a project into a second repo on disk. **isomorphic-git has no local transport** (`push` demands an HTTP client; `file://` and bare paths both fail), so this copies objects then moves refs, the way git's dumb protocol does. Three invariants hold it together and none are optional: objects land before refs move, every object is staged and renamed into place, and updates are fast-forward only with nothing ever deleted. The comment block at the top explains why each one prevents a specific, silent corruption.
+- `lib/search.ts` — one index behind both ⌘K and ⇧⌘F, so "what is findable" is decided once. **Searches the plain-text projection, never the stored Markdown**: bodies carry `**`/`==` mid-sentence, so raw search silently misses any phrase spanning a mark and shows storage syntax in snippets. Parsed bodies are cached by string.
+- `lib/useFocusTrap.ts` — dialog keyboard containment. Without it Tab walks out of a modal into the manuscript behind it, letting a keyboard-only writer type into a document they cannot see. Filters focusables by attribute, not layout, so it does not depend on a real layout engine.
+- `components/MenuBar.tsx` — the WAI-ARIA menubar pattern (roving tabindex, ←/→ with or without a menu open, type-ahead, Esc). Follow the pattern rather than extending ad hoc; it is also what makes the bar screen-reader navigable.
 - `components/ErrorBoundary.tsx` — wraps the root and each dialog. An error thrown from a React effect otherwise unmounts the whole tree, which once left the app a dead white window with no way back to the manuscript.
 
 ## Testing

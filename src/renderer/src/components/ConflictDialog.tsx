@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import type { ConflictResolution, SyncConflict } from '../../../shared/types'
 import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
+import { useFocusTrap } from '../lib/useFocusTrap'
 import { DiffView } from './VersionDialogs'
 
 /**
@@ -31,6 +32,8 @@ function kindLabel(kind: SyncConflict['kind']): string {
 }
 
 export function ConflictDialog(): JSX.Element | null {
+  const dismiss = useWyrm((s) => s.dismissConflicts)
+  const trapRef = useFocusTrap<HTMLDivElement>(dismiss)
   const conflicts = useWyrm((s) => s.syncConflicts)
   const resolveConflicts = useWyrm((s) => s.resolveConflicts)
   const dismissConflicts = useWyrm((s) => s.dismissConflicts)
@@ -69,7 +72,7 @@ export function ConflictDialog(): JSX.Element | null {
 
   return (
     <div className="dialog-overlay">
-      <div className="dialog wide" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog wide" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button
             type="button"

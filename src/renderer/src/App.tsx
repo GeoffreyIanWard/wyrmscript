@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import { MenuBar } from './components/MenuBar'
 import { Binder } from './components/Binder'
@@ -12,6 +12,8 @@ import { CompileDialog } from './components/CompileDialog'
 import { BackupDialog } from './components/BackupDialog'
 import { SyncDialog } from './components/SyncDialog'
 import { ConflictDialog } from './components/ConflictDialog'
+import { CommandPalette } from './components/CommandPalette'
+import { SearchDialog } from './components/SearchDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useWyrm } from './store'
 import { isElectron } from './lib/api'
@@ -98,6 +100,11 @@ function App(): JSX.Element {
   const [compileOpen, setCompileOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  // Set by MenuBar so ⌥F / F10 can move focus into the bar without App
+  // reaching into its DOM (F-07).
+  const focusMenusRef = useRef<(() => void) | null>(null)
   const syncConflicts = useWyrm((s) => s.syncConflicts)
 
   const project = useWyrm((s) => s.project)
@@ -110,6 +117,13 @@ function App(): JSX.Element {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      // F10 and ⌥F enter the menu bar — the two conventions writers arrive
+      // with, and the only way in without a mouse (F-07).
+      if (e.key === 'F10' || (e.altKey && (e.key === 'f' || e.key === 'F'))) {
+        e.preventDefault()
+        focusMenusRef.current?.()
+        return
+      }
       if (!(e.metaKey || e.ctrlKey)) return
       const state = useWyrm.getState()
       if (e.key === 's') {
@@ -129,6 +143,12 @@ function App(): JSX.Element {
       } else if ((e.key === 'E' || (e.key === 'e' && e.shiftKey)) && state.project) {
         e.preventDefault()
         setCompileOpen(true)
+      } else if (e.key === 'k' && state.project) {
+        e.preventDefault()
+        setPaletteOpen(true)
+      } else if ((e.key === 'F' || (e.key === 'f' && e.shiftKey)) && state.project) {
+        e.preventDefault()
+        setSearchOpen(true)
       } else if (e.key === ',') {
         e.preventDefault()
         setPrefsOpen(true)
@@ -166,6 +186,11 @@ function App(): JSX.Element {
         onCompile={() => setCompileOpen(true)}
         onBackup={() => setBackupOpen(true)}
         onSyncSettings={() => setSyncOpen(true)}
+        onSearch={() => setSearchOpen(true)}
+        onPalette={() => setPaletteOpen(true)}
+        registerFocusMenus={(focus) => {
+          focusMenusRef.current = focus
+        }}
       />
       <div className="desktop">
         {project ? (
@@ -208,6 +233,74 @@ function App(): JSX.Element {
         {syncOpen && (
           <ErrorBoundary label="Sync" onDismiss={() => setSyncOpen(false)}>
             <SyncDialog onClose={() => setSyncOpen(false)} />
+          </ErrorBoundary>
+        )}
+        {paletteOpen && (
+          <ErrorBoundary label="Go To" onDismiss={() => setPaletteOpen(false)}>
+            <CommandPalette
+              onClose={() => setPaletteOpen(false)}
+              actions={[
+                {
+                  id: 'compile',
+                  title: 'Compile Manuscript…',
+                  subtitle: 'File',
+                  run: () => setCompileOpen(true)
+                },
+                {
+                  id: 'search',
+                  title: 'Find in Project…',
+                  subtitle: 'Project',
+                  run: () => setSearchOpen(true)
+                },
+                {
+                  id: 'checkpoint',
+                  title: 'Commit Checkpoint…',
+                  subtitle: 'File',
+                  run: () => setVersionDialog('commit')
+                },
+                {
+                  id: 'history',
+                  title: 'History',
+                  subtitle: 'File',
+                  run: () => setVersionDialog('history')
+                },
+                {
+                  id: 'backup',
+                  title: 'Backup…',
+                  subtitle: 'Project',
+                  run: () => setBackupOpen(true)
+                },
+                {
+                  id: 'sync',
+                  title: 'Sync Settings…',
+                  subtitle: 'Project',
+                  run: () => setSyncOpen(true)
+                },
+                {
+                  id: 'prefs',
+                  title: 'Preferences…',
+                  subtitle: 'Wyrmscript',
+                  run: () => setPrefsOpen(true)
+                },
+                {
+                  id: 'new-doc',
+                  title: 'New Document',
+                  subtitle: 'File',
+                  run: () => void useWyrm.getState().addDoc(null)
+                },
+                {
+                  id: 'new-folder',
+                  title: 'New Folder',
+                  subtitle: 'File',
+                  run: () => void useWyrm.getState().addFolder(null)
+                }
+              ]}
+            />
+          </ErrorBoundary>
+        )}
+        {searchOpen && (
+          <ErrorBoundary label="Find in Project" onDismiss={() => setSearchOpen(false)}>
+            <SearchDialog onClose={() => setSearchOpen(false)} />
           </ErrorBoundary>
         )}
         {syncConflicts != null && (

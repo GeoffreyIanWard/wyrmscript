@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { JSX } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { JSX, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { EntityType } from '../../../shared/types'
 import { useWyrm } from '../store'
 import { WyrmIcon } from './icons'
@@ -17,6 +17,10 @@ type MenuBarProps = {
   onCompile: () => void
   onBackup: () => void
   onSyncSettings: () => void
+  onSearch: () => void
+  onPalette: () => void
+  /** Set by App to a function that moves keyboard focus into the menu bar (F-07). */
+  registerFocusMenus?: (focus: () => void) => void
 }
 
 export function MenuBar({
@@ -25,9 +29,24 @@ export function MenuBar({
   onVersionDialog,
   onCompile,
   onBackup,
-  onSyncSettings
+  onSyncSettings,
+  onSearch,
+  onPalette,
+  registerFocusMenus
 }: MenuBarProps): JSX.Element {
   const [open, setOpen] = useState<string | null>(null)
+  /** Index of the highlighted item in the open menu; -1 when none. */
+  const [activeItem, setActiveItem] = useState(-1)
+  /** Which title holds the bar's single tab stop (roving tabindex). */
+  const [focusedMenu, setFocusedMenu] = useState('wyrm')
+  const barRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    registerFocusMenus?.(() => {
+      const first = barRef.current?.querySelector<HTMLElement>('.menu-title')
+      first?.focus()
+    })
+  }, [registerFocusMenus])
   const project = useWyrm((s) => s.project)
   const editor = useWyrm((s) => s.editor)
   const newProjectAction = (): void => {
@@ -160,7 +179,13 @@ export function MenuBar({
         { kind: 'item', label: 'Composition Mode', shortcut: '⌥⌘F', disabled: true },
         { kind: 'sep' },
         { kind: 'item', label: 'Corkboard', disabled: true },
-        { kind: 'item', label: 'Command Palette…', shortcut: '⌘K', disabled: true }
+        {
+          kind: 'item',
+          label: 'Command Palette…',
+          shortcut: '⌘K',
+          disabled: !hasProject,
+          action: onPalette
+        }
       ]
     },
     {
@@ -194,7 +219,13 @@ export function MenuBar({
           action: () => void useWyrm.getState().syncNow(true)
         },
         { kind: 'item', label: 'Sync Settings…', disabled: !hasProject, action: onSyncSettings },
-        { kind: 'item', label: 'Project Search…', shortcut: '⇧⌘F', disabled: true }
+        {
+          kind: 'item',
+          label: 'Project Search…',
+          shortcut: '⇧⌘F',
+          disabled: !hasProject,
+          action: onSearch
+        }
       ]
     }
   ]
@@ -202,25 +233,156 @@ export function MenuBar({
   const runItem = (item: MenuItem): void => {
     if (item.kind !== 'item' || item.disabled) return
     setOpen(null)
+    setActiveItem(-1)
+    barRef.current?.querySelector<HTMLElement>('.menu-title')?.blur()
     item.action?.()
+  }
+
+  /** Enabled items only — arrow keys must skip what cannot be chosen. */
+  const enabledIndexes = (key: string): number[] => {
+    const menu = menus.find((m) => m.key === key)
+    if (!menu) return []
+    return menu.items.flatMap((item, i) => (item.kind === 'item' && !item.disabled ? [i] : []))
+  }
+
+  const openMenu = (key: string, land: 'first' | 'last' | 'none' = 'none'): void => {
+    setOpen(key)
+    const enabled = enabledIndexes(key)
+    setActiveItem(
+      land === 'first'
+        ? (enabled[0] ?? -1)
+        : land === 'last'
+          ? (enabled[enabled.length - 1] ?? -1)
+          : -1
+    )
+  }
+
+  const step = (delta: number): void => {
+    if (open === null) return
+    const enabled = enabledIndexes(open)
+    if (enabled.length === 0) return
+    const at = enabled.indexOf(activeItem)
+    // Wraps at both ends: a menu is a ring, not a list with dead stops.
+    const next =
+      at === -1
+        ? delta > 0
+          ? 0
+          : enabled.length - 1
+        : (at + delta + enabled.length) % enabled.length
+    setActiveItem(enabled[next])
+  }
+
+  const siblingMenu = (delta: number): void => {
+    const at = menus.findIndex((m) => m.key === open)
+    if (at === -1) return
+    const next = menus[(at + delta + menus.length) % menus.length]
+    openMenu(next.key, 'none')
+  }
+
+  /** The WAI-ARIA menubar keys, implemented on the bar rather than invented. */
+  const onBarKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (open === null) {
+      const key = (e.target as HTMLElement).closest('.menu-slot')?.getAttribute('data-menu')
+      if (!key) return
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        openMenu(key, 'first')
+        return
+      }
+      // Walking the bar without opening anything is half the ARIA menubar
+      // pattern; without it, F10 then → does nothing at all.
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault()
+        const at = menus.findIndex((m) => m.key === key)
+        const delta = e.key === 'ArrowRight' ? 1 : -1
+        const next = menus[(at + delta + menus.length) % menus.length]
+        setFocusedMenu(next.key)
+        barRef.current?.querySelector<HTMLElement>(`[data-menu="${next.key}"] .menu-title`)?.focus()
+      }
+      return
+    }
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        step(1)
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        step(-1)
+        break
+      case 'ArrowRight':
+        e.preventDefault()
+        siblingMenu(1)
+        break
+      case 'ArrowLeft':
+        e.preventDefault()
+        siblingMenu(-1)
+        break
+      case 'Home':
+        e.preventDefault()
+        setActiveItem(enabledIndexes(open)[0] ?? -1)
+        break
+      case 'End': {
+        e.preventDefault()
+        const enabled = enabledIndexes(open)
+        setActiveItem(enabled[enabled.length - 1] ?? -1)
+        break
+      }
+      case 'Enter':
+      case ' ': {
+        e.preventDefault()
+        const menu = menus.find((m) => m.key === open)
+        if (menu && activeItem >= 0) runItem(menu.items[activeItem])
+        break
+      }
+      case 'Escape':
+        e.preventDefault()
+        setOpen(null)
+        setActiveItem(-1)
+        break
+      default: {
+        // Type-ahead: jump to the next enabled item starting with that letter,
+        // wrapping past the current one so repeats cycle synonyms.
+        if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return
+        const menu = menus.find((m) => m.key === open)
+        if (!menu) return
+        const letter = e.key.toLowerCase()
+        const enabled = enabledIndexes(open)
+        const from = enabled.indexOf(activeItem)
+        const ordered = [...enabled.slice(from + 1), ...enabled.slice(0, from + 1)]
+        const hit = ordered.find((i) => {
+          const item = menu.items[i]
+          return item.kind === 'item' && item.label.toLowerCase().startsWith(letter)
+        })
+        if (hit !== undefined) {
+          e.preventDefault()
+          setActiveItem(hit)
+        }
+      }
+    }
   }
 
   return (
     <>
-      <div className="menu-bar">
+      <div className="menu-bar" role="menubar" ref={barRef} onKeyDown={onBarKeyDown}>
         {menus.map((menu) => (
           <div
             key={menu.key}
             className="menu-slot"
-            onMouseEnter={() => open !== null && setOpen(menu.key)}
+            data-menu={menu.key}
+            onMouseEnter={() => open !== null && openMenu(menu.key, 'none')}
           >
             <button
               type="button"
+              role="menuitem"
               aria-haspopup="menu"
               aria-expanded={open === menu.key}
               aria-label={menu.key === 'wyrm' ? 'Wyrmscript menu' : undefined}
+              // Roving tabindex: the bar is one tab stop, arrows move within.
+              tabIndex={menu.key === focusedMenu ? 0 : -1}
+              onFocus={() => setFocusedMenu(menu.key)}
               className={`menu-title${menu.key === 'wyrm' ? ' wyrm-mark' : ''}${open === menu.key ? ' open' : ''}`}
-              onMouseDown={() => setOpen(open === menu.key ? null : menu.key)}
+              onMouseDown={() => (open === menu.key ? setOpen(null) : openMenu(menu.key, 'none'))}
             >
               {menu.title}
             </button>
@@ -235,7 +397,9 @@ export function MenuBar({
                       type="button"
                       role="menuitem"
                       disabled={item.disabled}
-                      className={`menu-item${item.disabled ? ' disabled' : ''}`}
+                      data-active={i === activeItem ? 'true' : undefined}
+                      className={`menu-item${item.disabled ? ' disabled' : ''}${i === activeItem ? ' active' : ''}`}
+                      onMouseEnter={() => !item.disabled && setActiveItem(i)}
                       onMouseDown={(e) => {
                         e.stopPropagation()
                         runItem(item)
