@@ -133,11 +133,15 @@ export type AccentTheme = '1bit' | '4bit'
 
 /**
  * Whole-app palette. `paper` is the 1-bit default; `green`/`amber`/`vaporwave`/
- * `nes` add CRT glow and scanlines; `ereader`/`night`/`dark`/`halftone`/
+ * `virtualwyrm` add CRT glow and scanlines; `ereader`/`night`/`dark`/`halftone`/
  * `blueprint`/`bios`/`collegiate` keep the same strict two-colour discipline
  * as the default, chosen for comfort or period flavour rather than novelty;
- * `ledger`/`arcade` are the two that deliberately keep a second highlight
- * colour rather than flattening to monochrome.
+ * `ledger`/`arcade` deliberately keep a second highlight colour rather than
+ * flattening to monochrome; `famicom` goes further still, breaking the
+ * two-colour discipline entirely to run a full roster of real NES-palette
+ * colours across ink/paper/accents/highlight (named `famicom` rather than
+ * `nes` so it can't collide with the retired I-09 value in old settings
+ * files — see the migration note in `main/wyrm/settings.ts`).
  */
 export type PaletteTheme =
   | 'paper'
@@ -153,7 +157,8 @@ export type PaletteTheme =
   | 'blueprint'
   | 'bios'
   | 'collegiate'
-  | 'nes'
+  | 'virtualwyrm'
+  | 'famicom'
 
 export interface AppearanceSettings {
   accents: AccentTheme
