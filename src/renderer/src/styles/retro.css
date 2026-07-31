@@ -1437,13 +1437,91 @@ button {
   --accent-glossary: #64b0ff;
   --accent-label: #b53120;
   --highlight-bg: rgba(243, 106, 255, 0.35);
-  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%23fffeff'/%3E%3C/svg%3E");
-  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%23fffeff'/%3E%3C/svg%3E");
+  /* The two most-used dither densities are baked in accent colour rather than
+     ink — a red-fleck/green-checker texture instead of a flat grey wash — so
+     every bar built from --dither-25/50 (title pinstripes excepted, styled
+     directly below) already carries colour with no per-selector work.
+     --dither-75 stays ink: nothing in the app currently renders it, but a
+     palette must restate all five regardless (see the house rule). */
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%23b53120'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%235ce430'/%3E%3C/svg%3E");
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23fffeff'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23fffeff'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23fffeff'/%3E%3C/svg%3E");
   color: var(--ink);
   background: var(--paper);
+}
+
+/* Famicom chrome: Geoffrey asked for the colour to reach further than the
+   entity-link accents — directory icons/names, buttons, titles and the
+   desktop itself, not just prose links. Everything here reuses the same
+   four-accent-plus-highlight roster already defined above (no new hex
+   values), just applied to more surfaces than any other palette touches.
+   Every rule guards `:not(.selected)` where a row can also be selected, so
+   the ink/paper selection invert (or the red selection bar below) always
+   wins the cascade regardless of source order. */
+[data-palette='famicom'] .title-bar {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 3px,
+    var(--accent-label) 3px 4px,
+    transparent 4px 7px
+  );
+}
+
+[data-palette='famicom'] .title-bar .title {
+  color: var(--accent-character);
+}
+
+[data-palette='famicom'] .mac-window {
+  border-color: var(--accent-label);
+}
+
+[data-palette='famicom'] .btn {
+  border-color: var(--accent-glossary);
+}
+
+[data-palette='famicom'] .btn:active {
+  background: var(--accent-label);
+  border-color: var(--accent-label);
+  color: var(--paper);
+}
+
+[data-palette='famicom'] .btn.default {
+  outline-color: var(--accent-world);
+}
+
+[data-palette='famicom'] .menu-title.open,
+[data-palette='famicom'] .menu-title:active,
+[data-palette='famicom'] .menu-item:hover:not(.disabled) {
+  background: var(--accent-label);
+  color: var(--paper);
+}
+
+[data-palette='famicom'] .binder-row.selected {
+  background: var(--accent-label);
+  color: var(--paper);
+}
+
+/* Directories, entries and Trash each get their own hue from the roster
+   above (folders and Character Book share gold on purpose — coins and
+   character portraits read the same way on an NES title screen). Documents
+   stay plain ink: a blank page next to a coloured folder is the point. */
+[data-palette='famicom'] .binder-row[data-node-type='folder']:not(.selected),
+[data-palette='famicom'] .binder-row[data-entity-type='character']:not(.selected) {
+  color: var(--accent-character);
+}
+
+[data-palette='famicom'] .binder-row[data-entity-type='world']:not(.selected) {
+  color: var(--accent-world);
+}
+
+[data-palette='famicom'] .binder-row[data-entity-type='glossary']:not(.selected) {
+  color: var(--accent-glossary);
+}
+
+[data-palette='famicom'] .binder-row[data-node-type='trash']:not(.selected) {
+  color: var(--accent-label);
 }
 
 /* ---------- compile / export ---------- */

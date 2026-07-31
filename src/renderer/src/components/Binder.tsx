@@ -84,6 +84,7 @@ function BinderRow({
   return (
     <div
       data-node-id={node.id}
+      data-node-type={node.type}
       className={[
         'binder-row',
         node.id === activeId ? 'selected' : '',
@@ -155,7 +156,7 @@ function BibleSection({
 
   return (
     <>
-      <div className="binder-row" onClick={() => setOpen((v) => !v)}>
+      <div className="binder-row" data-entity-type={type} onClick={() => setOpen((v) => !v)}>
         <span className={`twist${open ? ' open' : ''}`} aria-hidden>
           ▸
         </span>
@@ -171,6 +172,7 @@ function BibleSection({
               className={`binder-row${
                 mainView.kind === 'entity' && mainView.id === entity.id ? ' selected' : ''
               }`}
+              data-entity-type={type}
               style={{ paddingLeft: 8 + 16 }}
               onClick={() => showEntity(entity.id)}
             >
@@ -342,7 +344,7 @@ export function Binder(): JSX.Element {
       >
         {renderNodes(project.data.binder, 0, false)}
         <div className="binder-sep" />
-        <div className="binder-row" onClick={() => setTrashOpen((v) => !v)}>
+        <div className="binder-row" data-node-type="trash" onClick={() => setTrashOpen((v) => !v)}>
           <span className={`twist${trashOpen ? ' open' : ''}`} aria-hidden>
             ▸
           </span>
