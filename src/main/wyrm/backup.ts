@@ -243,6 +243,6 @@ export async function restoreBackup(backupPath: string, destPath: string): Promi
   await git.checkout({ fs, dir: destPath, ref: head.replace('refs/heads/', ''), force: true })
 
   const raw = await fsp.readFile(join(destPath, 'project.json'), 'utf8').catch(() => null)
-  if (raw == null) throw new Error('That backup does not contain a Wyrmscript project.')
+  if (raw == null) throw new Error('That backup does not contain a WyrmStar project.')
   return JSON.parse(raw) as ProjectData
 }

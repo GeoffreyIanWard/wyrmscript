@@ -1,10 +1,10 @@
 {
-  "name": "wyrmscript",
+  "name": "wyrmstar",
   "version": "0.1.0",
   "description": "A retro word processor for novel writing",
   "main": "./out/main/index.js",
   "author": "Geoffrey Ward",
-  "homepage": "https://electron-vite.org",
+  "homepage": "https://github.com/GeoffreyIanWard/wyrmscript",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
