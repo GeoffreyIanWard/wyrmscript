@@ -252,6 +252,19 @@ Worth splitting into a cheap pass (margin bars + paragraph marks, CSS-only) and 
 
 Requested 2026-07-31. Sounds like a CSS tweak and isn't one: browsers don't reliably support a block-shaped text caret through standard CSS (the experimental `caret-shape` property has no meaningful stable support), so an authentic block cursor needs `caret-color: transparent` plus a positioned decoration element tracking the real cursor — a small TipTap/ProseMirror plugin, not a palette-block change. Comparable in kind to the Manuscript-tier work above even though the ask reads small.
 
+### F-24 · Close project + a real home screen with recents 📋
+
+Requested 2026-07-31. Two things bundled together:
+
+- **Close the open project.** The main window's title-bar close-box (`App.tsx`, the `<span className="close-box" />` next to the project title) is currently decorative — no `onClick`, not even a `<button>`. It should close the project (return to the state below) the way every other System-era close-box closes its window.
+- **A real home screen.** `Welcome.tsx` already exists and covers new/open/restore, but today it's only reachable by accident: `boot()` in `store.ts` silently reopens `getLastProjectPath()` on every launch, so a returning writer never sees it. Once the close-box works, closing a project should land here — and it should also gain a **recent projects list** to pick from, not just Create/Open/Restore buttons.
+
+Open questions worth settling before building:
+
+- **Does auto-reopen-on-boot go away?** If Welcome is meant to double as a "recents" home screen, silently skipping past it on every launch defeats the point — but some writers may want straight back into their manuscript with zero clicks. Candidate: keep auto-reopen, but make the close-box's destination this same home screen (so it's still one click away), rather than removing auto-reopen outright.
+- **Where does "recent projects" live?** Nothing today tracks project history beyond the single `lastProjectPath` in `main/wyrm/settings.ts`. Needs a small ordered list (path + title + last-opened time) instead, capped and pruned when a path no longer opens (moved/deleted project folder).
+- **Does closing autosave first?** Every other operation that could lose work checkpoints first (house rule: nothing is ever lost) — closing a project should be no exception.
+
 ### CRT family: found in review 📋 — glow ✅ fixed, see I-09 for the rename
 
 Two notes from reviewing PR #16, both affecting the whole CRT palette group (`green`/`amber`/`vaporwave`/`virtualwyrm`, formerly named `nes` — see I-09):

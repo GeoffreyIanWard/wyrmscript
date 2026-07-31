@@ -106,7 +106,7 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
             }}
           />
           <div className="dialog-hint">
-            Every alias auto-links in your prose, just like the name.
+            Every alias auto-links in your manuscript, just like the name.
           </div>
         </div>
         <div className="entry-field">
@@ -156,7 +156,7 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
             Delete Entry
           </button>
           <span className="dialog-hint">
-            Removes it from the bible and stops auto-linking. Your prose is untouched.
+            Removes it from the bible and stops auto-linking. Your manuscript is untouched.
           </span>
         </div>
       </div>

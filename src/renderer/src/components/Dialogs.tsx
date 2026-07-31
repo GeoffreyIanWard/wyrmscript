@@ -163,6 +163,11 @@ export function PrefsDialog({
               onPick={() => pickPalette('vaporwave')}
             />
             <Radio
+              label="Virtual Wyrm (CRT) — red glow"
+              on={appearance.palette === 'virtualwyrm'}
+              onPick={() => pickPalette('virtualwyrm')}
+            />
+            <Radio
               label="Halftone — newsprint dot screen"
               on={appearance.palette === 'halftone'}
               onPick={() => pickPalette('halftone')}
@@ -193,21 +198,11 @@ export function PrefsDialog({
               onPick={() => pickPalette('collegiate')}
             />
             <Radio
-              label="Virtual Wyrm (CRT) — red glow"
-              on={appearance.palette === 'virtualwyrm'}
-              onPick={() => pickPalette('virtualwyrm')}
-            />
-            <Radio
               label="Famicom — full-colour NES palette"
               on={appearance.palette === 'famicom'}
               onPick={() => pickPalette('famicom')}
             />
-            <div className="dialog-hint">
-              Green, amber, vaporwave and Virtual Wyrm add scanlines and glow. Ledger and arcade
-              keep a second highlight colour on purpose, and Famicom goes further still with a full
-              roster of real NES colours. Every other palette is the same strict two colours as the
-              default — comfort or period flavour, not novelty.
-            </div>
+            <div className="dialog-hint">CRT variants add scanlines and glow.</div>
           </fieldset>
           <fieldset className="fieldset">
             <legend>ACCENTS</legend>
@@ -222,7 +217,7 @@ export function PrefsDialog({
               onPick={() => pickAccents('4bit')}
             />
             <div className="dialog-hint">
-              Accents only tint labels and story-bible links — never the prose.
+              Accents only tint labels and story-bible links — never the manuscript.
             </div>
           </fieldset>
           <fieldset className="fieldset">
