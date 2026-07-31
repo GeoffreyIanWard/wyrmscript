@@ -42,8 +42,13 @@ appImage:
 npmRebuild: false
 # Used only to upload built installers to GitHub Releases from CI (`--publish
 # always`); the app has no auto-updater wired in, so this isn't a live
-# update channel yet.
+# update channel yet. draft:false because electron-builder's default is a
+# draft release, invisible to the public and to /releases/latest — the
+# first real release run landed as an unpublished draft with a working
+# download page pointing at nothing, and it took a manual `gh release edit
+# --draft=false` to fix. Never rely on remembering that step again.
 publish:
   provider: github
   owner: GeoffreyIanWard
   repo: wyrmscript
+  draft: false
