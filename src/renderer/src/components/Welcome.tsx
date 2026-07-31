@@ -13,14 +13,14 @@ export function Welcome(): JSX.Element {
     <div className="dialog-overlay">
       <div className="dialog welcome">
         <div className="title-bar">
-          <span className="title">Welcome to Wyrmscript</span>
+          <span className="title">Welcome to WyrmStar</span>
         </div>
         <div className="dialog-body">
           <div className="about-art">
             <WyrmIcon size={48} />
           </div>
           <div className="about-small" style={{ marginBottom: 16 }}>
-            <div>WYRMSCRIPT</div>
+            <div>WYRMSTAR</div>
             <div>Nothing is ever truly lost.</div>
           </div>
           <fieldset className="fieldset">

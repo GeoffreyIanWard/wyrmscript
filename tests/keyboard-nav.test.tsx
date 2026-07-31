@@ -152,7 +152,7 @@ describe('menu bar', () => {
   it('walks the bar with the arrows before any menu is open', async () => {
     await openProject()
     renderMenuBar()
-    const wyrm = screen.getByLabelText('Wyrmscript menu')
+    const wyrm = screen.getByLabelText('WyrmStar menu')
     act(() => wyrm.focus())
 
     fireEvent.keyDown(wyrm, { key: 'ArrowRight' })

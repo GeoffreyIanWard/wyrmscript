@@ -1,4 +1,4 @@
-# Wyrmscript
+# WyrmStar
 
 A bespoke desktop word processor for long-form fiction. WordStar's focus, Scrivener's structure, System 6's face — and git underneath, so nothing is ever truly lost.
 

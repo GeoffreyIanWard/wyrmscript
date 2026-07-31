@@ -287,14 +287,14 @@ export function AboutDialog({ onClose }: { onClose: () => void }): JSX.Element {
       <div className="dialog" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
-          <span className="title">About Wyrmscript</span>
+          <span className="title">About WyrmStar</span>
         </div>
         <div className="dialog-body">
           <div className="about-art">
             <WyrmIcon size={48} />
           </div>
           <div className="about-small">
-            <div>WYRMSCRIPT 0.1.0</div>
+            <div>WYRMSTAR 0.1.0</div>
             <div>A retro word processor for novel writing.</div>
             <div>Nothing is ever truly lost.</div>
           </div>

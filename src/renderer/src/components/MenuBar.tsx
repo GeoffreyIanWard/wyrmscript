@@ -71,7 +71,7 @@ export function MenuBar({
       key: 'wyrm',
       title: <WyrmIcon />,
       items: [
-        { kind: 'item', label: 'About Wyrmscript…', action: onAbout },
+        { kind: 'item', label: 'About WyrmStar…', action: onAbout },
         { kind: 'sep' },
         { kind: 'item', label: 'Preferences…', shortcut: '⌘,', action: onPreferences }
       ]
@@ -387,7 +387,7 @@ export function MenuBar({
               role="menuitem"
               aria-haspopup="menu"
               aria-expanded={open === menu.key}
-              aria-label={menu.key === 'wyrm' ? 'Wyrmscript menu' : undefined}
+              aria-label={menu.key === 'wyrm' ? 'WyrmStar menu' : undefined}
               // Roving tabindex: the bar is one tab stop, arrows move within.
               tabIndex={menu.key === focusedMenu ? 0 : -1}
               onFocus={() => setFocusedMenu(menu.key)}

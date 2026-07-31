@@ -1,4 +1,4 @@
-# Wyrmscript Roadmap
+# WyrmStar Roadmap
 
 Single source of truth for what's built, what's next, and what's known broken.
 Product spec lives in [design-brief.md](design-brief.md); this file tracks execution against it.
@@ -100,7 +100,7 @@ Requested features, not yet scheduled. Stable IDs so they can be referenced in c
 
 ### F-01 · Local-only version control (no GitHub required) 📋
 
-Users who want everything on their own machine must get full version-control parity — history, diff, restore, variants, branches — with no account and no network. Wyrmscript already uses **isomorphic-git** (open-source, MIT), so the entire engine is local; GitHub is only a _remote_. Work needed:
+Users who want everything on their own machine must get full version-control parity — history, diff, restore, variants, branches — with no account and no network. WyrmStar already uses **isomorphic-git** (open-source, MIT), so the entire engine is local; GitHub is only a _remote_. Work needed:
 
 - ✅ "No remote" is an explicit, first-class choice — the sync setup screen's first question, with local-only phrased as a peer of GitHub, not a fallback (PR #11).
 - ✅ **Optional local backup target** — shipped in PR #10 (see Execution order §2). Note for whoever does the rest: isomorphic-git has **no local transport**, so this was built from git plumbing rather than `push`; GitHub sync gets a real HTTP transport and cannot reuse that code path.
@@ -264,6 +264,15 @@ Open questions worth settling before building:
 - **Does auto-reopen-on-boot go away?** If Welcome is meant to double as a "recents" home screen, silently skipping past it on every launch defeats the point — but some writers may want straight back into their manuscript with zero clicks. Candidate: keep auto-reopen, but make the close-box's destination this same home screen (so it's still one click away), rather than removing auto-reopen outright.
 - **Where does "recent projects" live?** Nothing today tracks project history beyond the single `lastProjectPath` in `main/wyrm/settings.ts`. Needs a small ordered list (path + title + last-opened time) instead, capped and pruned when a path no longer opens (moved/deleted project folder).
 - **Does closing autosave first?** Every other operation that could lose work checkpoints first (house rule: nothing is ever lost) — closing a project should be no exception.
+
+### F-25 · Story-bible section headers need visual hierarchy 📋
+
+Requested 2026-07-31. In the binder's Glossary/Character Book/World Book sections, the header row (`BibleSection` in `Binder.tsx`) and its entries render through the exact same `.binder-row` class as everything else — same font size, same weight, same padding. Nothing distinguishes "this is a section" from "this is an entry"; a header currently reads as just another row that happens to be first. Two directions worth weighing, not chosen yet:
+
+- **Make the headers visually distinct** — bolder/larger chrome type, a different background wash, or a rule under them — cheap, CSS-only, matches how `.fieldset legend` already gets its own treatment elsewhere in the chrome.
+- **Nest entries under headers** — indent them further than the current single `paddingLeft: 8 + 16` step (`Binder.tsx`'s entity row), so the tree structure itself carries the hierarchy the way folders already do for the manuscript binder above it.
+
+These aren't mutually exclusive — the manuscript binder's folder rows already indent children by depth, so doing the same for story-bible entries plus a distinct header treatment would bring the two trees into visual agreement rather than leaving story-bible sections as the one flat exception.
 
 ### CRT family: found in review 📋 — glow ✅ fixed, see I-09 for the rename
 

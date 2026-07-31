@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error(`[wyrmscript] ${this.props.label ?? 'app'} failed:`, error, info.componentStack)
+    console.error(`[wyrmstar] ${this.props.label ?? 'app'} failed:`, error, info.componentStack)
   }
 
   private dismiss = (): void => {

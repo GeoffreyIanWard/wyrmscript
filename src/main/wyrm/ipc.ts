@@ -64,7 +64,7 @@ export function registerIpc(): void {
     const win = focusedWindow()
     if (!win) return null
     const result = await dialog.showSaveDialog(win, {
-      title: 'New Wyrmscript Project',
+      title: 'New WyrmStar Project',
       // Absolute default: a relative path would resolve against the app's
       // working directory (the repo, in dev) instead of somewhere sensible.
       defaultPath: join(app.getPath('documents'), `${title || 'My Novel'}.wyrm`),
@@ -82,14 +82,14 @@ export function registerIpc(): void {
     const win = focusedWindow()
     if (!win) return null
     const result = await dialog.showOpenDialog(win, {
-      title: 'Open Wyrmscript Project',
+      title: 'Open WyrmStar Project',
       properties: ['openDirectory'],
       buttonLabel: 'Open'
     })
     if (result.canceled || result.filePaths.length === 0) return null
     const path = result.filePaths[0]
     if (!existsSync(join(path, 'project.json'))) {
-      dialog.showErrorBox('Not a Wyrmscript project', 'The selected folder has no project.json.')
+      dialog.showErrorBox('Not a WyrmStar project', 'The selected folder has no project.json.')
       return null
     }
     const info = await openProject(path)
@@ -190,7 +190,7 @@ export function registerIpc(): void {
     if (picked.canceled || picked.filePaths.length === 0) return null
     const source = picked.filePaths[0]
     if (!existsSync(join(source, 'objects'))) {
-      dialog.showErrorBox('Not a Wyrmscript backup', 'That folder is not a backup repository.')
+      dialog.showErrorBox('Not a WyrmStar backup', 'That folder is not a backup repository.')
       return null
     }
     const destination = await dialog.showSaveDialog(win, {
