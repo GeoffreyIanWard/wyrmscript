@@ -75,7 +75,7 @@ describe('appearance persistence', () => {
 })
 
 describe('the Preferences controls', () => {
-  it('offers all six palettes, comfort variants included', () => {
+  it('offers all twelve palettes — comfort, CRT and novelty variants alike', () => {
     renderPrefs()
     for (const label of [
       /^Paper —/,
@@ -83,10 +83,24 @@ describe('the Preferences controls', () => {
       /^Night —/,
       /^Dark —/,
       /^Green phosphor/,
-      /^Amber phosphor/
+      /^Amber phosphor/,
+      /^Vaporwave/,
+      /^Halftone/,
+      /^Ledger/,
+      /^Arcade/,
+      /^Blueprint/,
+      /^BIOS/
     ]) {
       expect(screen.getByText(label)).toBeTruthy()
     }
+  })
+
+  it('wires a novelty palette through exactly like the others', () => {
+    const { onChange } = renderPrefs()
+
+    fireEvent.click(screen.getByText(/^BIOS/))
+
+    expect(onChange).toHaveBeenCalledWith({ palette: 'bios' })
   })
 
   it('reports only the field that changed', () => {
