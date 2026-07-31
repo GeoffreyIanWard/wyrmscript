@@ -132,12 +132,12 @@ export interface CompileResult {
 export type AccentTheme = '1bit' | '4bit'
 
 /**
- * Whole-app palette. `paper` is the 1-bit default; `green`/`amber`/`vaporwave`
- * add CRT glow and scanlines; `ereader`/`night`/`dark`/`halftone`/`blueprint`/
- * `bios` keep the same strict two-colour discipline as the default, chosen
- * for comfort or period flavour rather than novelty; `ledger`/`arcade` are
- * the two that deliberately keep a second highlight colour rather than
- * flattening to monochrome.
+ * Whole-app palette. `paper` is the 1-bit default; `green`/`amber`/`vaporwave`/
+ * `nes` add CRT glow and scanlines; `ereader`/`night`/`dark`/`halftone`/
+ * `blueprint`/`bios`/`collegiate` keep the same strict two-colour discipline
+ * as the default, chosen for comfort or period flavour rather than novelty;
+ * `ledger`/`arcade` are the two that deliberately keep a second highlight
+ * colour rather than flattening to monochrome.
  */
 export type PaletteTheme =
   | 'paper'
@@ -152,6 +152,8 @@ export type PaletteTheme =
   | 'arcade'
   | 'blueprint'
   | 'bios'
+  | 'collegiate'
+  | 'nes'
 
 export interface AppearanceSettings {
   accents: AccentTheme
