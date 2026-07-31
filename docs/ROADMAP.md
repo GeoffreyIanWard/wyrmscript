@@ -138,6 +138,10 @@ More themes, more intensely period. Remaining candidates: Apple II / Commodore 6
 
 The theme axis is `data-palette` (renamed from `data-terminal` in PR #12 — it always recoloured the whole app, not just the writing pane). Dithers are inline SVG data-URIs carrying a hardcoded fill per palette; **a palette that forgets to restate all five (three dithers, two scrollbar arrows) keeps the previous theme's patterns and looks subtly broken** — this is the single easiest way to introduce a broken palette, called out in both `CLAUDE.md` and the CSS itself.
 
+**Two more, palette-tier** (requested 2026-07-31) — 🔨 in progress tonight: **Collegiate** (dark hunter-green ground, varsity gold ink — retro football-program energy) and **NES** (near-black ground, Nintendo red ink, joins the CRT family for scanlines and glow). Same mechanism as the twelve above; no new component work.
+
+**Four more, requested at Manuscript-tier** — real mechanics and content changes, not palette blocks. See F-15 through F-18 below.
+
 ### F-06 · Editor margins & measure control ✅
 
 Shipped in PR #12 (Execution order 4a): line measure, text size and line spacing are steppers in Preferences → THE PAGE, applied live as root custom properties and persisted app-level. First-line indent shipped earlier with the I-03 drift fix.
@@ -194,8 +198,36 @@ Esc should pop the writer to whatever they were looking at before, not just clos
 
 - Needs a real navigation stack, not a single "previous view" pointer — a chain (doc → entity → a different entity opened from a backlink → …) has to unwind one step at a time, the way a browser's back button does, not jump straight to the start.
 - Where does the stack live? `mainView` (`{kind:'doc'} | {kind:'entity', id}`) is the obvious base, but it's `App`/store state today with no history. A `MainView[]` in the store, pushed on every `showEntity`/`showDoc` and popped on Esc, is probably the shape — needs to be capped (unbounded growth from restless clicking) and pruned when an entity is deleted out from under a stack entry.
-- Interacts with F-09: what does Esc do while both a dialog is open *and* focus mode is active? Dialogs already close on Esc (`useFocusTrap`) — that has to keep winning; the view-history pop is next in line only once nothing is open on top.
+- Interacts with F-09: what does Esc do while both a dialog is open _and_ focus mode is active? Dialogs already close on Esc (`useFocusTrap`) — that has to keep winning; the view-history pop is next in line only once nothing is open on top.
 - Scope question worth settling before building: does the stack also cover binder navigation (doc → doc → doc), or only the doc↔entity hop the request describes? The narrower scope is a lot less state to get right.
+
+### F-15 · Manuscript mode 💭
+
+A fully medieval palette, a period display face for chrome (still legible), and — the real feature, not a palette trick — the first letter of each paragraph rendered as a giant illuminated capital. Requested 2026-07-30, explicitly asked to be "on par with" the visual weight of a full theme rather than a `[data-palette]` recolour.
+
+- The drop cap is cheap in principle — CSS `::first-letter` on `.page p` naturally targets the first letter of a block, no editor changes needed — but it wants a genuine calligraphic/blackletter face for just that one glyph, which the app doesn't have today. `@fontsource` likely has a workable option (something in the Fraktur/uncial family) for the capital, kept separate from a _legible_ period-flavoured serif for the body text — the request is explicit that body prose must "still be readable," so the two faces can't be the same one.
+- New font dependency, so it's worth its own PR rather than folding into a batch of palette blocks — this is the one item in this group with a real, if small, supply-chain footprint (a license to check, a file to vendor).
+- Ties into the paid-variant idea below more than any other item here, since it's the most visually complete of the four.
+
+### F-16 · Wargames mode 💭
+
+"Vectorized retro tech" — reads as wanting real vector-line rendering (the `WarGames`/`Aliens`-terminal glowing-outline look) rather than a flat two-colour swap; a plain green-on-black palette would just be a dimmer copy of the existing phosphor themes (green/amber/vaporwave) and miss what makes the reference recognisable. Requested 2026-07-31, explicitly "on par with" Manuscript's visual refactor.
+
+- Needs a design pass on what "vectorized" means concretely for a text app that is fundamentally rendering glyphs, not line art — outlined/stroke-only text rendering? A scanning CRT vector-monitor persistence trail on the caret? Worth prototyping the caret/cursor effect in isolation before committing to an approach, since that's likely the highest-risk, highest-payoff piece.
+
+### F-17 · Hacker mode 💭
+
+"Retro film hacker aesthetic" — the Hollywood-invented, green-cascade, oversized-chunky-terminal look (`Hackers`, `The Matrix`-adjacent), not anything a real 1990s terminal looked like. Requested 2026-07-31, "on par with" Manuscript.
+
+- Likely wants motion (something scrolling or cascading) as part of its identity — every palette shipped so far is deliberately static. Worth deciding explicitly whether animation is in scope for a "palette" at all before building, since "the page is sacred — no notifications, nothing moves in the writing terminal" has been a house rule since Phase 1. If motion is allowed here, it should be scoped tightly (chrome only, never the prose itself) and easy to disable.
+
+### F-18 · Gothic mode 💭
+
+"A gothic literary overhaul." Requested 2026-07-31, "on par with" Manuscript. Overlaps with F-15 (illuminated capitals, a period display face, a dark ornamented palette) but reads as a distinct identity — cathedral/blackletter rather than illuminated-scriptorium. Worth designing F-15 first and then deciding whether Gothic is a sibling built on the same drop-cap/period-font mechanism or wants its own.
+
+### F-19 · Paid supporter tier for premium variants 💭 — product decision, not a design one
+
+Geoffrey raised charging a few dollars for supporters to unlock the Manuscript-tier variants (F-15 through F-18) as a way to fund development. Worth taking seriously, but it's a different kind of work than anything shipped so far, and deserves its own conversation before any code: the app is local-first, offline-capable and account-less by design (F-01, brief §7's local-only requirement) — a purchase/unlock flow needs an answer for what "unlocked" even means with no account and no server. Candidate mechanisms, none evaluated yet: a one-time license file dropped into the settings directory; a separate paid build with the extra palettes compiled in versus a free build without them; something else entirely. Not started.
 
 ---
 
