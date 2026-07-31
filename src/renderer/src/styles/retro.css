@@ -418,16 +418,17 @@ button {
   text-indent: 2ch;
 }
 
+/* WordStar block-marker box, unconditional — not just under 1-bit accents.
+   A palette that suppresses the 4-bit colour wash (comfort/period palettes
+   set --highlight-bg: transparent for a monochrome look) used to leave 4-bit
+   accents with no fallback at all: no colour, no outline, mark invisible.
+   The box is now always present, so a highlight can never fully disappear;
+   palettes that keep a colour wash just get the box as a frame around it.
+   The negative margin cancels the padding so marking text never nudges the
+   glyphs sideways — highlighting must not move the line. */
 .page mark {
   background: var(--highlight-bg);
   color: inherit;
-}
-
-[data-accents='1bit'] .page mark {
-  /* 1-bit "highlighter": thin box around the phrase, WordStar block-marker style.
-     The negative margin cancels the padding so marking text never nudges the
-     glyphs sideways — highlighting must not move the line. */
-  background: none;
   box-shadow: 0 0 0 1px var(--page-ink);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
@@ -1008,7 +1009,8 @@ button {
 }
 
 [data-palette='green'],
-[data-palette='amber'] {
+[data-palette='amber'],
+[data-palette='vaporwave'] {
   --diff-ins: var(--ink);
   --diff-del: var(--ink);
 }
@@ -1166,7 +1168,10 @@ button {
    no scanlines — those belong to the CRT palettes below. */
 [data-palette='ereader'],
 [data-palette='night'],
-[data-palette='dark'] {
+[data-palette='dark'],
+[data-palette='halftone'],
+[data-palette='blueprint'],
+[data-palette='bios'] {
   --page-bg: var(--paper);
   --page-ink: var(--ink);
   --accent-character: var(--ink);
@@ -1213,9 +1218,60 @@ button {
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23e6e6e6'/%3E%3C/svg%3E");
 }
 
+/* Newsprint: the dithers are halftone dot screens (circles growing with
+   density) rather than the checkerboard every other palette shares — the one
+   place texture, not colour, carries the period reference. */
+[data-palette='halftone'] {
+  --ink: #101010;
+  --paper: #f2ede0;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Ccircle cx='0.5' cy='0.5' r='0.42' fill='%23101010'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Ccircle cx='1' cy='1' r='0.85' fill='%23101010'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Ccircle cx='1' cy='1' r='1.15' fill='%23101010'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23101010'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23101010'/%3E%3C/svg%3E");
+}
+
+/* Drafting table: navy ground, icy cyan-white ink, dithers as grid-paper
+   ruling (an L of horizontal + vertical rule per tile) instead of dots or
+   checkerboard. */
+[data-palette='blueprint'] {
+  --ink: #eaf6ff;
+  --paper: #0b3d62;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v0.3H0zM0 0h0.3v2H0z' fill='%23eaf6ff'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v0.6H0zM0 0h0.6v2H0z' fill='%23eaf6ff'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 0h1v2H0z' fill='%23eaf6ff'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23eaf6ff'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23eaf6ff'/%3E%3C/svg%3E");
+}
+
+/* Setup-screen blue: the checkerboard dither is unchanged from the default —
+   real BIOS screens are flat colour with no texture, so the reference here is
+   entirely the navy ground and the cyan selected-row bar below. */
+[data-palette='bios'] {
+  --ink: #d0d0d0;
+  --paper: #0000aa;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%23d0d0d0'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%23d0d0d0'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23d0d0d0'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23d0d0d0'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23d0d0d0'/%3E%3C/svg%3E");
+}
+
+/* Classic AMI/Award BIOS setup screens highlight the selected row as a solid
+   cyan bar with black text, distinct from every other palette's ink-coloured
+   inversion — the one deliberate chrome-selector override in this file. */
+[data-palette='bios'] .binder-row.selected,
+[data-palette='bios'] .version-row.selected,
+[data-palette='bios'] .menu-title.open,
+[data-palette='bios'] .menu-item.active:not(.disabled) {
+  background: #00aaaa;
+  color: #000000;
+}
+
 /* Phosphor CRTs: palette plus glow, with scanlines added further down. */
 [data-palette='green'],
-[data-palette='amber'] {
+[data-palette='amber'],
+[data-palette='vaporwave'] {
   --page-bg: var(--paper);
   --page-ink: var(--ink);
   --accent-character: var(--ink);
@@ -1249,9 +1305,22 @@ button {
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23ffb000'/%3E%3C/svg%3E");
 }
 
+/* Synthwave monitor: magenta on near-black purple, same checkerboard shape as
+   the other two phosphors — this one is about colour, not texture. */
+[data-palette='vaporwave'] {
+  --ink: #ff2e9a;
+  --paper: #170821;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%23ff2e9a'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%23ff2e9a'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23ff2e9a'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23ff2e9a'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23ff2e9a'/%3E%3C/svg%3E");
+}
+
 /* CRT scanlines over everything, dialogs included */
 [data-palette='green']::after,
-[data-palette='amber']::after {
+[data-palette='amber']::after,
+[data-palette='vaporwave']::after {
   content: '';
   position: fixed;
   inset: 0;
@@ -1260,14 +1329,61 @@ button {
   background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.25) 2px 3px);
 }
 
-/* Highlight becomes inverse video on phosphor (overrides the 1-bit box) */
+/* Highlight becomes inverse video on phosphor (overrides the always-on box) */
 [data-palette='green'] .page mark,
-[data-palette='amber'] .page mark {
+[data-palette='amber'] .page mark,
+[data-palette='vaporwave'] .page mark {
   background: var(--ink);
   color: var(--paper);
   text-shadow: none;
   box-shadow: none;
   padding: 1px 2px;
+}
+
+/* Ledger book: cream card stock, dark ledger-green ink, and a rust
+   "correction ink" wash on highlighted text instead of the usual flat
+   suppression — one of two palettes that keeps a second colour on purpose.
+   Dithers are horizontal ruling bands rather than checkerboard or dots. */
+[data-palette='ledger'] {
+  --ink: #1f3d2b;
+  --paper: #ecdfb8;
+  --page-bg: var(--paper);
+  --page-ink: var(--ink);
+  --accent-character: var(--ink);
+  --accent-world: var(--ink);
+  --accent-glossary: var(--ink);
+  --accent-label: var(--ink);
+  --highlight-bg: rgba(139, 26, 26, 0.32);
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 1.7h2v0.3H0z' fill='%231f3d2b'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 1h2v1H0z' fill='%231f3d2b'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0.5h2v1.5H0z' fill='%231f3d2b'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%231f3d2b'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%231f3d2b'/%3E%3C/svg%3E");
+  color: var(--ink);
+  background: var(--paper);
+}
+
+/* Arcade marquee: black ground, hot orange ink, and pink/orange diagonal
+   marquee stripes baked directly into the dithers — three colours at once by
+   construction, the most literal break from the 1-bit discipline here. The
+   other palette that keeps its own highlight colour rather than flattening. */
+[data-palette='arcade'] {
+  --ink: #ff6a00;
+  --paper: #0a0a0a;
+  --page-bg: var(--paper);
+  --page-ink: var(--ink);
+  --accent-character: var(--ink);
+  --accent-world: var(--ink);
+  --accent-glossary: var(--ink);
+  --accent-label: var(--ink);
+  --highlight-bg: rgba(255, 46, 110, 0.35);
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpolygon points='0,4 4,4 4,2' fill='%23ff6a00'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpolygon points='0,4 4,4 4,0' fill='%23ff2e6e'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpolygon points='0,4 4,4 4,0 0,2' fill='%23ff6a00'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23ff6a00'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23ff6a00'/%3E%3C/svg%3E");
+  color: var(--ink);
+  background: var(--paper);
 }
 
 /* ---------- compile / export ---------- */
