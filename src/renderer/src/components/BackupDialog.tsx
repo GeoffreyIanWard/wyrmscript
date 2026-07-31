@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import type { BackupOutcome } from '../../../shared/types'
 import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 function timeAgo(timestamp: number): string {
   const mins = Math.floor((Date.now() - timestamp) / 60000)
@@ -66,6 +67,7 @@ function OutcomeView({ outcome }: { outcome: BackupOutcome }): JSX.Element {
 }
 
 export function BackupDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const project = useWyrm((s) => s.project)
   const backupSettings = useWyrm((s) => s.backupSettings)
   const loadBackupSettings = useWyrm((s) => s.loadBackupSettings)
@@ -129,7 +131,7 @@ export function BackupDialog({ onClose }: { onClose: () => void }): JSX.Element 
 
   return (
     <div className="dialog-overlay" onMouseDown={onClose}>
-      <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">Backup</span>

@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import type { DeviceCodeInfo, SyncOutcome, SyncStatus } from '../../../shared/types'
 import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 type Screen =
   | 'loading'
@@ -117,6 +118,7 @@ function OutcomeView({ outcome }: { outcome: SyncOutcome }): JSX.Element {
 }
 
 export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const project = useWyrm((s) => s.project)
   const syncStatus = useWyrm((s) => s.syncStatus)
   const loadSyncStatus = useWyrm((s) => s.loadSyncStatus)
@@ -300,7 +302,7 @@ export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
 
   return (
     <div className="dialog-overlay" onMouseDown={onClose}>
-      <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">Sync</span>

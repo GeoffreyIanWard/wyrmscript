@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { JSX, DragEvent, MouseEvent } from 'react'
+import type { JSX, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react'
 import type { BinderNode, EntityType } from '../../../shared/types'
 import type { DropPosition } from '../lib/tree'
 import { useWyrm } from '../store'
@@ -53,7 +53,8 @@ function BinderRow({
   onToggle,
   onMenu,
   dropHint,
-  setDropHint
+  setDropHint,
+  cursorId
 }: {
   node: BinderNode
   depth: number
@@ -63,6 +64,7 @@ function BinderRow({
   onMenu: (e: MouseEvent, node: BinderNode, inTrash: boolean) => void
   dropHint: DropHint | null
   setDropHint: (hint: DropHint | null) => void
+  cursorId: string | null
 }): JSX.Element {
   const activeId = useWyrm((s) => s.activeId)
   const selectDoc = useWyrm((s) => s.selectDoc)
@@ -81,7 +83,13 @@ function BinderRow({
 
   return (
     <div
-      className={['binder-row', node.id === activeId ? 'selected' : '', hint ? `drop-${hint}` : '']
+      data-node-id={node.id}
+      className={[
+        'binder-row',
+        node.id === activeId ? 'selected' : '',
+        node.id === cursorId ? 'cursor' : '',
+        hint ? `drop-${hint}` : ''
+      ]
         .filter(Boolean)
         .join(' ')}
       style={{ paddingLeft: 8 + depth * 16 }}
@@ -195,11 +203,17 @@ export function Binder(): JSX.Element {
   const startRename = useWyrm((s) => s.startRename)
   const moveToTrash = useWyrm((s) => s.moveToTrash)
   const restoreFromTrash = useWyrm((s) => s.restoreFromTrash)
+  const activeId = useWyrm((s) => s.activeId)
+  const selectDoc = useWyrm((s) => s.selectDoc)
+  const renamingId = useWyrm((s) => s.renamingId)
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [dropHint, setDropHint] = useState<DropHint | null>(null)
   const [trashOpen, setTrashOpen] = useState(false)
+  /** Keyboard cursor; follows the open document until the arrows move it. */
+  const [cursorId, setCursorId] = useState<string | null>(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
 
   if (!project) return <div className="binder" />
 
@@ -231,6 +245,7 @@ export function Binder(): JSX.Element {
           onMenu={openMenu}
           dropHint={dropHint}
           setDropHint={setDropHint}
+          cursorId={cursorId}
         />
       )
       const children =
@@ -238,9 +253,93 @@ export function Binder(): JSX.Element {
       return [row, ...children]
     })
 
+  /** Rows the arrows walk: the visible binder, in the order it is drawn. */
+  const visibleRows = (): BinderNode[] => {
+    const rows: BinderNode[] = []
+    const descend = (nodes: BinderNode[]): void => {
+      for (const node of nodes) {
+        rows.push(node)
+        if (node.children && !collapsedIds.has(node.id)) descend(node.children)
+      }
+    }
+    descend(project.data.binder)
+    return rows
+  }
+
+  const cursor = cursorId ?? activeId
+  const moveCursor = (delta: number): void => {
+    const rows = visibleRows()
+    if (rows.length === 0) return
+    const at = rows.findIndex((n) => n.id === cursor)
+    const next = at === -1 ? 0 : Math.min(rows.length - 1, Math.max(0, at + delta))
+    const node = rows[next]
+    setCursorId(node.id)
+    // Selecting as the cursor moves would open every document it passes over,
+    // so movement is separate from opening (Enter) — arrowing is browsing.
+    scrollRef.current
+      ?.querySelector<HTMLElement>(`[data-node-id="${node.id}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
+  }
+
+  const onBinderKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    // A rename field owns every key while it is open.
+    if (renamingId !== null) return
+    const rows = visibleRows()
+    const node = rows.find((n) => n.id === cursor)
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        moveCursor(1)
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        moveCursor(-1)
+        break
+      case 'ArrowRight':
+        if (!node || node.type !== 'folder') return
+        e.preventDefault()
+        if (collapsedIds.has(node.id)) toggle(node.id)
+        else moveCursor(1)
+        break
+      case 'ArrowLeft':
+        if (!node) return
+        e.preventDefault()
+        if (node.type === 'folder' && !collapsedIds.has(node.id)) toggle(node.id)
+        break
+      case 'Enter':
+        if (!node) return
+        e.preventDefault()
+        if (node.type === 'doc') void selectDoc(node.id)
+        else toggle(node.id)
+        break
+      case 'F2':
+        if (!node) return
+        e.preventDefault()
+        startRename(node.id)
+        break
+      case 'Backspace':
+      case 'Delete':
+        if (!node) return
+        e.preventDefault()
+        // Trash is reversible (and the roadmap's "nothing is ever lost"), so
+        // this needs no confirmation — Restore is a right-click away.
+        setCursorId(null)
+        void moveToTrash(node.id)
+        break
+    }
+  }
+
   return (
     <div className="binder" onContextMenu={(e) => openMenu(e, null, false)}>
-      <div className="binder-scroll">
+      <div
+        className="binder-scroll"
+        ref={scrollRef}
+        role="tree"
+        aria-label="Binder"
+        tabIndex={0}
+        onKeyDown={onBinderKeyDown}
+        data-cursor={cursor ?? undefined}
+      >
         {renderNodes(project.data.binder, 0, false)}
         <div className="binder-sep" />
         <div className="binder-row" onClick={() => setTrashOpen((v) => !v)}>
