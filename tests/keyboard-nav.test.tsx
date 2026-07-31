@@ -28,6 +28,8 @@ function renderMenuBar(overrides: Partial<Parameters<typeof MenuBar>[0]> = {}): 
       onSyncSettings={noop}
       onSearch={noop}
       onPalette={noop}
+      focusMode={false}
+      onFocusMode={noop}
       {...overrides}
     />
   )

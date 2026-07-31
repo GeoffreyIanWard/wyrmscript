@@ -19,6 +19,8 @@ type MenuBarProps = {
   onSyncSettings: () => void
   onSearch: () => void
   onPalette: () => void
+  focusMode: boolean
+  onFocusMode: () => void
   /** Set by App to a function that moves keyboard focus into the menu bar (F-07). */
   registerFocusMenus?: (focus: () => void) => void
 }
@@ -32,6 +34,8 @@ export function MenuBar({
   onSyncSettings,
   onSearch,
   onPalette,
+  focusMode,
+  onFocusMode,
   registerFocusMenus
 }: MenuBarProps): JSX.Element {
   const [open, setOpen] = useState<string | null>(null)
@@ -176,7 +180,13 @@ export function MenuBar({
       title: 'View',
       items: [
         { kind: 'item', label: 'Typewriter Scrolling', disabled: true },
-        { kind: 'item', label: 'Composition Mode', shortcut: '⌥⌘F', disabled: true },
+        {
+          kind: 'item',
+          label: focusMode ? 'Exit Focus Mode' : 'Focus Mode',
+          shortcut: '⌥⌘F',
+          disabled: !hasProject,
+          action: onFocusMode
+        },
         { kind: 'sep' },
         { kind: 'item', label: 'Corkboard', disabled: true },
         {
