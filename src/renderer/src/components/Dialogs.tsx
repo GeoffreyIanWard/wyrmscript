@@ -1,4 +1,5 @@
 import type { JSX } from 'react'
+import { useFocusTrap } from '../lib/useFocusTrap'
 import { WyrmIcon } from './icons'
 import type { AppearanceSettings, AccentTheme, PaletteTheme } from '../../../shared/types'
 
@@ -112,12 +113,13 @@ export function PrefsDialog({
   onChange: (patch: Partial<AppearanceSettings>) => void
   onClose: () => void
 }): JSX.Element {
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const pickPalette = (palette: PaletteTheme): void => onChange({ palette })
   const pickAccents = (accents: AccentTheme): void => onChange({ accents })
 
   return (
     <div className="dialog-overlay" onMouseDown={onClose}>
-      <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">Preferences</span>
@@ -237,9 +239,10 @@ export function PrefsDialog({
 }
 
 export function AboutDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   return (
     <div className="dialog-overlay" onMouseDown={onClose}>
-      <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">About Wyrmscript</span>

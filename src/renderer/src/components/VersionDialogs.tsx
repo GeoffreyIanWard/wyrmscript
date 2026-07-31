@@ -5,6 +5,7 @@ import type { CommitInfo, VariantInfo } from '../../../shared/types'
 import { api } from '../lib/api'
 import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 function timeAgo(timestamp: number): string {
   const mins = Math.floor((Date.now() - timestamp) / 60000)
@@ -41,6 +42,7 @@ export function DiffView({ oldText, newText }: { oldText: string; newText: strin
 /* ---------- Commit checkpoint ---------- */
 
 export function CommitDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const commitNow = useWyrm((s) => s.commitNow)
   const lastCommitAt = useWyrm((s) => s.lastCommitAt)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -54,7 +56,7 @@ export function CommitDialog({ onClose }: { onClose: () => void }): JSX.Element 
 
   return (
     <div className="dialog-overlay" onMouseDown={onClose}>
-      <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">Commit Checkpoint</span>
@@ -96,6 +98,7 @@ export function CommitDialog({ onClose }: { onClose: () => void }): JSX.Element 
 /* ---------- History (per active document) ---------- */
 
 export function HistoryDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const project = useWyrm((s) => s.project)
   const activeDoc = useWyrm((s) => s.activeDoc)
   const restoreActiveDoc = useWyrm((s) => s.restoreActiveDoc)
@@ -142,7 +145,7 @@ export function HistoryDialog({ onClose }: { onClose: () => void }): JSX.Element
 
   return (
     <div className="dialog-overlay" onMouseDown={onClose}>
-      <div className="dialog wide" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog wide" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">History — {activeDoc?.meta.title}</span>
@@ -203,6 +206,7 @@ export function HistoryDialog({ onClose }: { onClose: () => void }): JSX.Element
 /* ---------- Variants (snapshot branches per document) ---------- */
 
 export function VariantsDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const project = useWyrm((s) => s.project)
   const activeDoc = useWyrm((s) => s.activeDoc)
   const createVariant = useWyrm((s) => s.createVariant)
@@ -269,7 +273,7 @@ export function VariantsDialog({ onClose }: { onClose: () => void }): JSX.Elemen
 
   return (
     <div className="dialog-overlay" onMouseDown={onClose}>
-      <div className="dialog wide" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog wide" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">Variants — {activeDoc?.meta.title}</span>
