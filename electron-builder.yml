@@ -27,9 +27,13 @@ mac:
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
+  # snap dropped: it needs snapcraft installed plus separate Snap Store
+  # credentials neither of which CI has, and it fails the whole build step
+  # (a single electron-builder process covers all three targets) even after
+  # AppImage and deb have already built and uploaded successfully. AppImage
+  # + deb cover desktop Linux users for this test round.
   target:
     - AppImage
-    - snap
     - deb
   maintainer: Geoffrey Ward
   category: Utility
