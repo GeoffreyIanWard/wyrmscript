@@ -80,11 +80,17 @@ Split in two, because "appearance you can live in" and "navigation you can drive
 - F-06 geometry (`--measure` in `ch`, `--prose-size`, `--prose-leading`) rides as inline custom properties on the root, so the page reflows live. The measure is in `ch` on purpose: the column stays the same number of characters wide at any text size, which is what actually governs readability.
 - Dialogs became a flex column with a scrolling body and a `92vh` cap — the enlarged Preferences pushed its own title bar and Close button off-screen, and losing the way out of a dialog is worse than a scrollbar.
 
-**4b. Navigation 📋 — next up.** F-07 (full keyboard navigation), full-project search, the ⌘K command palette, and writing stats. Still the best delegation candidates in the plan; F-07 should follow the WAI-ARIA menubar pattern rather than inventing one, since that also makes the app screen-reader navigable.
+**4b. Navigation ✅** — F-07, full-project search and the ⌘K palette, shipped in PR #13. **⌘K** jumps to any document, story-bible entry or command; **⇧⌘F** searches inside the prose; **F10** or **⌥F** enters the menu bar.
 
-### 5. Story-structure trio (F-02, F-03, F-04) 💭
+- F-07 follows the WAI-ARIA menubar pattern rather than an invented one (roving tabindex, ←/→ between menus with or without one open, ↑/↓ within, Home/End, type-ahead, Esc), which also makes the bar screen-reader navigable. Dialogs get a real focus trap — without one, Tab walks out of a modal into the manuscript behind it, so a keyboard-only writer can type into a document they cannot see. The binder gets ↑/↓/←/→, Enter, F2, ⌫, with the **keyboard cursor kept distinct from the open document**: arrowing browses, Enter opens. Showing them identically would claim a document had been opened when it had not.
+- `lib/search.ts` backs both surfaces so "what is findable" is decided once. Search is plain case-insensitive substring (fuzzy matching inside 100,000 words returns noise); the palette is fuzzy subsequence with a bias toward word starts. Trash is excluded from both, as in compile.
+- **Search runs against the plain-text projection, not the stored Markdown.** Bodies carry `**` and `==` mid-sentence, so searching the raw text silently fails for any phrase spanning a bold word — "Not louder. Exactly" never matches `Not louder. **Exactly**` — and snippets show storage syntax instead of prose. Parsed results are cached by body string, since bodies do not change while a query is being typed.
 
-Timeline, plot graph, and plotline tracking. **Design these together before building any of them**: all three hang off scene-level metadata (chronology, tension, plotline tags), so the metadata model should be designed once rather than three incompatible times. High-value thinking, low-volume output.
+**4c. Writing stats 📋 — next up.** Session word count, daily goal, streak. Held back from 4b deliberately: "words written today" is a net-change measurement over time, not a snapshot, and it needs its own data model rather than being wedged into a navigation change.
+
+### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) 💭
+
+Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **Design F-10 (pins & tags) first and build nothing else until it settles.** Every item here hangs off scene-level metadata, which is precisely what F-10 defines; the roadmap has deferred that model twice already, and the 2026-07-30 requests made it the gating item rather than one feature among several. Once pins and tags exist, the timeline, the plot graph and the character graph are all _views over the same data_ rather than three incompatible metadata schemes. High-value thinking, low-volume output.
 
 ---
 
@@ -136,7 +142,7 @@ Design note before building: today there are two theme axes — `data-accents` (
 
 Shipped in PR #12 (Execution order 4a): line measure, text size and line spacing are steppers in Preferences → THE PAGE, applied live as root custom properties and persisted app-level. First-line indent shipped earlier with the I-03 drift fix.
 
-### F-07 · Full keyboard navigation 📋
+### F-07 · Full keyboard navigation ✅
 
 Every menu and panel reachable and operable without the mouse — the WordStar half of the app's lineage (design-brief.md §1, pillar 3) currently only holds inside the editor. What exists today: global shortcuts (⌘S, ⌘Y, ⌘N, ⇧⌘N, ⌘,), and menu items are already real `<button>`s with `role="menuitem"`, so the semantics are in place. What's missing:
 
@@ -155,6 +161,32 @@ Clicking a folder in the binder currently only expands or collapses it. It shoul
 - Clicking a row opens that document; the folder view is a _destination_, so `MainView` gains a `{ kind: 'folder'; id }` case alongside `doc` and `entity` (see I-05 — that union is what decides the main pane).
 - Word counts for non-open documents need every body read, which `readAllDocs` already does; the compile dialog does the same thing and could share the loader.
 - Open question: does clicking a folder replace expand/collapse, or does the twist stay the expander and the row body become the navigation target? The second is less surprising and matches the Finder lineage.
+
+### F-09 · Focus mode 📋
+
+An icon on an open document expands the editor pane to the whole screen; the same icon returns to the standard view. Requested 2026-07-30. Small and self-contained — binder, side panel, and status bar hide, the page keeps its measure and centres. Wants a period-correct glyph rather than a modern expand arrow: the System-era idiom is a **zoom box** (the little nested-squares control already drawn in the main window's title bar), so reuse that vocabulary. Note there is already a disabled `Composition Mode` (⌥⌘F) item in the View menu — this is that item, and it should adopt the shortcut rather than inventing a second one.
+
+### F-10 · Pins & tags 💭 — **design this before F-02/F-03/F-04**
+
+Pin and tag characters, events, scenes and locations: "Protagonist", "Viewpoint character", "Antagonist", "Rising Action". Pinning a document as a **scene** is what lets it be ordered and plotted. Requested 2026-07-30. Slightly skeuomorphic UI — pins with actual pin heads, tags shaped like little luggage tags; old-school cool, still 1-bit.
+
+**This is the scene-level metadata model the roadmap has been deferring.** F-02 (timeline), F-03 (plot graph) and F-04 (plotline tracking) all need exactly this and were explicitly held back so it would be designed once. It is now the gating item for that whole cluster — design it first, and the other three become views over it. Design questions:
+
+- Are tags a free vocabulary the writer invents, a fixed set the app ships, or both (ship a starter set, let it grow)?
+- Do pins live on `DocMeta`/`Entity` (simple, versioned with the file, diffs cleanly) or in a separate index in `project.json` (queryable without reading every document, but a second source of truth)? The first fits "everything is plain text on purpose"; the second is faster for graph views. Frontmatter probably wins — the story bible already proves that shape works.
+- Does "scene" become a first-class document kind, or a tag that some documents happen to carry? A tag is less disruptive to the binder and reversible.
+
+### F-11 · Graph views 💭
+
+Maps rather than lists: a **character graph** where characters can be grouped and joined by relationship edges, alongside the plot graph of F-03. Requested 2026-07-30. Depends on F-10 for what the nodes are and what edges mean. Open: are relationships their own entity (typed, directional, with a label like "brother of"), or free edges? Directional typed edges are more work but are the only version that can answer "who is estranged from whom".
+
+### F-12 · World map 💭
+
+Lay out World Book locations on a gridded map, with chunky old-school map tools: legends, borders, landmarks, topography. Requested 2026-07-30. Fantasy-cartography feel in 1-bit — hatching and dither patterns instead of colour fills, which the dither variables already provide. Depends on F-10 (locations need to be placeable things) and on F-13 for the hierarchy. Biggest open question is storage: a map is spatial data that does not diff or merge as prose does, so it needs its own file per map and a deliberate answer for what a sync conflict on one means.
+
+### F-13 · Nested locations 💭
+
+Locations nest: a building inside a neighbourhood inside a city inside a country. Requested 2026-07-30. The story bible is currently flat (`glossary/`, `characters/`, `world/`, one file each), so this is the first hierarchy inside it — the binder's tree shape is the obvious precedent. Feeds F-12 directly (zooming a map is walking that tree) and affects auto-linking: mentioning a building might reasonably surface its city in the side panel.
 
 ---
 

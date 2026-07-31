@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "wyrmscript-renderer",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "src/renderer", "--strictPort"],
+      "port": 5173,
+      "autoPort": true
+    }
+  ]
+}
