@@ -1381,7 +1381,8 @@ button {
 .version-row:focus-visible,
 .binder-scroll:focus-visible,
 .text-field:focus-visible,
-.close-box:focus-visible {
+.close-box:focus-visible,
+.zoom-box:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 1px;
 }

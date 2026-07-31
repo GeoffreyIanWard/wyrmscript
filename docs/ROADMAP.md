@@ -188,6 +188,15 @@ Lay out World Book locations on a gridded map, with chunky old-school map tools:
 
 Locations nest: a building inside a neighbourhood inside a city inside a country. Requested 2026-07-30. The story bible is currently flat (`glossary/`, `characters/`, `world/`, one file each), so this is the first hierarchy inside it — the binder's tree shape is the obvious precedent. Feeds F-12 directly (zooming a map is walking that tree) and affects auto-linking: mentioning a building might reasonably surface its city in the side panel.
 
+### F-14 · Escape as "back" 💭
+
+Esc should pop the writer to whatever they were looking at before, not just close the topmost dialog — opening a glossary entry from a document and hitting Esc should return to that document, not to the Welcome screen or nowhere. Requested 2026-07-30.
+
+- Needs a real navigation stack, not a single "previous view" pointer — a chain (doc → entity → a different entity opened from a backlink → …) has to unwind one step at a time, the way a browser's back button does, not jump straight to the start.
+- Where does the stack live? `mainView` (`{kind:'doc'} | {kind:'entity', id}`) is the obvious base, but it's `App`/store state today with no history. A `MainView[]` in the store, pushed on every `showEntity`/`showDoc` and popped on Esc, is probably the shape — needs to be capped (unbounded growth from restless clicking) and pruned when an entity is deleted out from under a stack entry.
+- Interacts with F-09: what does Esc do while both a dialog is open *and* focus mode is active? Dialogs already close on Esc (`useFocusTrap`) — that has to keep winning; the view-history pop is next in line only once nothing is open on top.
+- Scope question worth settling before building: does the stack also cover binder navigation (doc → doc → doc), or only the doc↔entity hop the request describes? The narrower scope is a lot less state to get right.
+
 ---
 
 ## Known issues
