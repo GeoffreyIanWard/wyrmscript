@@ -9,6 +9,7 @@ import type {
   Entity,
   EntityType,
   ProjectData,
+  StatsSettings,
   SyncOutcome,
   SyncStatus
 } from '../../shared/types'
@@ -28,13 +29,16 @@ import {
   readAppearance,
   readBackupSettings,
   readSettings,
+  readStatsSettings,
   readSyncProject,
   writeAppearance,
   writeBackupSettings,
   writeSettings,
+  writeStatsSettings,
   writeSyncProject
 } from './settings'
 import { backupNameFor, backupProject, restoreBackup } from './backup'
+import { dailyStats } from './stats'
 import {
   clearRemote,
   getRemoteUrl,
@@ -140,6 +144,23 @@ export function registerIpc(): void {
   ipcMain.handle('appearance:set', (_e, patch: Partial<AppearanceSettings>) =>
     writeAppearance(patch)
   )
+
+  /* ---------- writing stats (4c) ---------- */
+
+  ipcMain.handle('stats:settings:get', () => readStatsSettings())
+  ipcMain.handle('stats:settings:set', (_e, patch: Partial<StatsSettings>) =>
+    writeStatsSettings(patch)
+  )
+
+  // Checkpoint before reading, the same way compile does: the history is the
+  // only source of these numbers, so uncommitted work would otherwise be
+  // invisible and a writer who just wrote 300 words would be told they wrote
+  // none. Committing first makes the answer exact rather than up-to-five-
+  // minutes stale.
+  ipcMain.handle('stats:daily', async (_e, path: string) => {
+    await commitAll(path, 'Autosave').catch(() => false)
+    return dailyStats(path)
+  })
 
   /* ---------- local backup (F-01) ---------- */
 

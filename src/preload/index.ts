@@ -28,6 +28,10 @@ const api: WyrmApi = {
   getAppearance: () => ipcRenderer.invoke('appearance:get'),
   setAppearance: (patch) => ipcRenderer.invoke('appearance:set', patch),
 
+  getStatsSettings: () => ipcRenderer.invoke('stats:settings:get'),
+  setStatsSettings: (patch) => ipcRenderer.invoke('stats:settings:set', patch),
+  getDailyStats: (path) => ipcRenderer.invoke('stats:daily', path),
+
   getBackupSettings: (path) => ipcRenderer.invoke('backup:get', path),
   chooseBackupLocation: (path) => ipcRenderer.invoke('backup:choose', path),
   setBackupAuto: (path, auto) => ipcRenderer.invoke('backup:auto', path, auto),

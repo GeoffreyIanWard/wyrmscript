@@ -181,6 +181,60 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   lineHeight: 1.7
 }
 
+/* ---------- Writing stats (4c, brief §8) ---------- */
+
+/**
+ * How "words written today" is measured. The brief warns against making this
+ * obnoxiously gamified, and the three modes disagree most on exactly the day
+ * that matters: one spent cutting.
+ */
+export type WordCountMode =
+  /** End-of-day total minus yesterday's. A day spent cutting reads negative,
+   *  and the app says so rather than flattering the writer. */
+  | 'net'
+  /** Only additions counted, deletions ignored. Kinder to revision days, but
+   *  retyping the same sentence counts every time. */
+  | 'added'
+  /** Net, floored at zero — a cutting day reads 0 instead of negative. */
+  | 'net-positive'
+
+/** One calendar day of writing, derived from git history (main/wyrm/stats.ts). */
+export interface DayStat {
+  /** Local calendar date, YYYY-MM-DD. */
+  date: string
+  /** Total manuscript words at this day's last checkpoint. */
+  total: number
+  /** This day's end-of-day total minus the previous active day's. May be negative. */
+  net: number
+  /** Sum of the positive per-checkpoint changes within the day. Never negative. */
+  added: number
+  /** Checkpoints recorded on this day. */
+  commits: number
+}
+
+export interface StatsSettings {
+  /** Words per day the writer is aiming for. */
+  dailyGoal: number
+  mode: WordCountMode
+  /**
+   * Whether word counts appear while writing — the editor's header count, the
+   * status bar's count, and the today-vs-goal indicator, all together.
+   *
+   * Off is a real writing preference, not a niche one: a number that ticks up
+   * beside the cursor invites watching it instead of the sentence. Turning it
+   * off hides the ambient counters only; Writing Stats still reports
+   * everything on demand, because choosing not to be watched while drafting
+   * is different from not wanting to know.
+   */
+  showCounter: boolean
+}
+
+export const DEFAULT_STATS: StatsSettings = {
+  dailyGoal: 500,
+  mode: 'net',
+  showCounter: true
+}
+
 /* ---------- Local backup (F-01) ---------- */
 
 export interface BackupSettings {
@@ -293,6 +347,13 @@ export interface WyrmApi {
   /** Appearance is app-level, not per-project — it follows the writer. */
   getAppearance(): Promise<AppearanceSettings>
   setAppearance(patch: Partial<AppearanceSettings>): Promise<AppearanceSettings>
+
+  /** Daily goal and counting mode — app-level, like appearance. */
+  getStatsSettings(): Promise<StatsSettings>
+  setStatsSettings(patch: Partial<StatsSettings>): Promise<StatsSettings>
+  /** Per-day writing history for a project, oldest first, derived from its
+   *  git history. Checkpoints first so uncommitted work is included. */
+  getDailyStats(path: string): Promise<DayStat[]>
 
   getBackupSettings(path: string): Promise<BackupSettings>
   /** Pick a backup location for this project. Null if cancelled. */
