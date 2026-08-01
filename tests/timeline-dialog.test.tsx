@@ -123,4 +123,51 @@ describe('TimelineDialog', () => {
     fireEvent.blur(input)
     expect(setTimelineDate).not.toHaveBeenCalled()
   })
+
+  // Regression: a drag reorder persisted correctly but the dialog kept
+  // rendering its stale, fetched-once doc list, so the visible order never
+  // changed until the dialog was closed and reopened.
+  it('re-renders in the new order immediately after a drop, with no remount', async () => {
+    await renderDialog([
+      doc('a', 'A', { tags: ['scene'] }),
+      doc('b', 'B', { tags: ['scene'] }),
+      doc('c', 'C', { tags: ['scene'] })
+    ])
+    expect(screen.getAllByRole('button', { name: /^[ABC]$/ }).map((el) => el.textContent)).toEqual([
+      'A',
+      'B',
+      'C'
+    ])
+
+    const rows = document.querySelectorAll('.timeline-row')
+    fireEvent.drop(rows[0], { dataTransfer: { getData: () => 'c' } })
+
+    expect(screen.getAllByRole('button', { name: /^[ABC]$/ }).map((el) => el.textContent)).toEqual([
+      'C',
+      'A',
+      'B'
+    ])
+  })
+
+  it('keeps a dragged card in its new position after a second, unrelated reorder', async () => {
+    await renderDialog([
+      doc('a', 'A', { tags: ['scene'] }),
+      doc('b', 'B', { tags: ['scene'] }),
+      doc('c', 'C', { tags: ['scene'] })
+    ])
+
+    // Move C to the front, then move B to the front — C must not snap back.
+    fireEvent.drop(document.querySelectorAll('.timeline-row')[0], {
+      dataTransfer: { getData: () => 'c' }
+    })
+    fireEvent.drop(document.querySelectorAll('.timeline-row')[0], {
+      dataTransfer: { getData: () => 'b' }
+    })
+
+    expect(screen.getAllByRole('button', { name: /^[ABC]$/ }).map((el) => el.textContent)).toEqual([
+      'B',
+      'C',
+      'A'
+    ])
+  })
 })
