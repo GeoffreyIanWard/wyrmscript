@@ -65,6 +65,12 @@ interface WyrmState {
   /** Restore the active doc to a commit oid or variant branch, as a new commit. */
   restoreActiveDoc(ref: string, label: string): Promise<void>
   createVariant(name: string): Promise<void>
+  /**
+   * Tags/pins on the active document (F-10). Written immediately rather than
+   * riding the prose debounce — metadata isn't keystroke-frequent, and a
+   * writer toggling a pin shouldn't wait 800ms to see it land.
+   */
+  updateDocMeta(patch: { tags?: string[]; pins?: string[] }): Promise<void>
   /** Palette, accents and page geometry (F-05, F-06); null until loaded. */
   appearance: AppearanceSettings | null
   loadAppearance(): Promise<void>
@@ -339,6 +345,26 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // Same doc id, so the editor isn't recreated — load the restored text
       // in place. It lands on the undo stack, so even the restore is ⌘Z-able.
       editor?.commands.setContent(markdownToDoc(doc.body), { emitUpdate: false })
+    },
+
+    async updateDocMeta(patch) {
+      const { project, activeDoc } = get()
+      if (!project || !activeDoc) return
+      const meta = { ...activeDoc.meta }
+      // Omit the key entirely rather than writing `tags: undefined` —
+      // gray-matter's YAML dumper throws on an explicit undefined value.
+      if (patch.tags !== undefined) {
+        if (patch.tags.length) meta.tags = patch.tags
+        else delete meta.tags
+      }
+      if (patch.pins !== undefined) {
+        if (patch.pins.length) meta.pins = patch.pins
+        else delete meta.pins
+      }
+      const doc: DocFile = { ...activeDoc, meta }
+      await api.writeDoc(project.path, doc)
+      set({ activeDoc: doc })
+      commitDirty = true
     },
 
     async createVariant(name) {

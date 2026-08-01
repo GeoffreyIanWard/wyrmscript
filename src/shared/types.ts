@@ -9,11 +9,41 @@ export interface BinderNode {
 
 export type DocStatus = 'draft' | 'revised' | 'final'
 
+/**
+ * The document-scoped pin vocabulary (F-10). Pins are a closed, app-shipped
+ * set — unlike tags, writers cannot invent new ones. "Scene" is deliberately
+ * absent: it is a tag (`SCENE_TAG` below), not a pin, so any document can be
+ * marked plottable without a document-kind change.
+ */
+export const DOC_PINS = [
+  'Setup',
+  'Rising Action',
+  'Climax',
+  'Falling Action',
+  'Resolution'
+] as const
+export type DocPin = (typeof DOC_PINS)[number]
+
+/** The character-scoped pin vocabulary (F-10). World/glossary entities have none yet. */
+export const CHARACTER_PINS = ['Protagonist', 'Antagonist', 'Viewpoint Character'] as const
+export type CharacterPin = (typeof CHARACTER_PINS)[number]
+
+/**
+ * The tag that makes a document orderable/plottable (F-02/F-03/F-04 filter on
+ * this). Not a new BinderNodeType — any document can carry it and keep being
+ * treated as an ordinary document everywhere else in the app.
+ */
+export const SCENE_TAG = 'scene'
+
 export interface DocMeta {
   id: string
   title: string
   label?: string
   status?: DocStatus
+  /** Free-form, writer-invented, including `SCENE_TAG`. */
+  tags?: string[]
+  /** From `DOC_PINS`. */
+  pins?: string[]
   created: string
   modified: string
 }
@@ -47,6 +77,13 @@ export interface Entity {
   aliases: string[]
   /** Free-form definition / bio / description (Markdown). */
   body: string
+  /**
+   * Free-form, writer-invented (F-10). Factions are not a separate mechanism —
+   * a faction is just a tag shared by several entities (e.g. "House Voss").
+   */
+  tags?: string[]
+  /** From `CHARACTER_PINS`. Meaningless and left empty on `world`/`glossary` entities. */
+  pins?: string[]
   created: string
   modified: string
 }

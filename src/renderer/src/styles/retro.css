@@ -362,11 +362,24 @@ button {
   background: var(--page-bg);
 }
 
-.terminal-top {
+/* Wraps terminal-top and doc-meta-bar so both fade in/out together on
+   hover — "the page is sacred" (house rule): chrome never sits over the
+   prose except on request, and tags/pins are chrome, not prose. */
+.terminal-chrome {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 120ms steps(2, end);
+}
+
+.terminal:hover .terminal-chrome {
+  opacity: 1;
+}
+
+.terminal-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -375,13 +388,90 @@ button {
   background: var(--page-bg);
   color: var(--page-ink);
   border-bottom: 1px solid var(--page-ink);
-  opacity: 0;
-  transition: opacity 120ms steps(2, end);
-  z-index: 10;
 }
 
-.terminal:hover .terminal-top {
-  opacity: 1;
+.doc-meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  font-size: 10px;
+  background: var(--page-bg);
+  color: var(--page-ink);
+  border-bottom: 1px solid var(--page-ink);
+}
+
+.pin-chip,
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--page-ink);
+  padding: 1px 6px;
+  letter-spacing: 0.5px;
+}
+
+.pin-chip {
+  background: var(--page-ink);
+  color: var(--page-bg);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.tag-chip button {
+  color: inherit;
+  line-height: 1;
+}
+
+.tag-input {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 10px;
+  width: 64px;
+  outline: none;
+}
+
+.pin-menu-anchor {
+  position: relative;
+}
+
+.pin-menu-anchor .pin-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: auto;
+}
+
+/* Entity editor's tags/pins fields sit on --paper, not the page — a distinct
+   palette pair from the doc-meta-bar chips above, which sit on --page-bg. */
+.entity-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag-chip.on-paper {
+  border-color: var(--ink);
+}
+
+.tag-input.on-paper {
+  width: 100px;
+  flex: none;
+}
+
+.pin-toggle {
+  border: 1px solid var(--ink);
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.pin-toggle.on {
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .terminal-scroll {

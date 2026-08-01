@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
+import { CHARACTER_PINS } from '../../../shared/types'
 import { api } from '../lib/api'
 import { ENTITY_LABELS, findBacklinks, type Backlink } from '../lib/entities'
+import { addTag, removeTag, togglePin } from '../lib/tags'
 import { useWyrm } from '../store'
 
 /**
@@ -23,6 +25,9 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
   const [name, setName] = useState(entity?.name ?? '')
   const [aliases, setAliases] = useState(entity?.aliases.join(', ') ?? '')
   const [body, setBody] = useState(entity?.body ?? '')
+  const [tags, setTags] = useState<string[]>(entity?.tags ?? [])
+  const [tagInput, setTagInput] = useState('')
+  const [pins, setPins] = useState<string[]>(entity?.pins ?? [])
   const [dirty, setDirty] = useState(false)
   const [backlinks, setBacklinks] = useState<Backlink[] | null>(null)
 
@@ -56,7 +61,9 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
         .split(',')
         .map((a) => a.trim())
         .filter(Boolean),
-      body
+      body,
+      tags: tags.length ? tags : undefined,
+      pins: pins.length ? pins : undefined
     })
     setDirty(false)
   }
@@ -109,6 +116,65 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
             Every alias auto-links in your manuscript, just like the name.
           </div>
         </div>
+        <div className="entry-field">
+          <div className="field-name">TAGS</div>
+          <div className="entity-tags">
+            {tags.map((tag) => (
+              <span key={tag} className="tag-chip on-paper">
+                #{tag}
+                <button
+                  type="button"
+                  aria-label={`Remove tag ${tag}`}
+                  onClick={() => {
+                    setTags(removeTag(tags, tag))
+                    setDirty(true)
+                  }}
+                >
+                  x
+                </button>
+              </span>
+            ))}
+            <input
+              className="text-field tag-input on-paper"
+              placeholder="+ tag"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return
+                e.preventDefault()
+                if (!tagInput.trim()) return
+                setTags(addTag(tags, tagInput))
+                setTagInput('')
+                setDirty(true)
+              }}
+            />
+          </div>
+          <div className="dialog-hint">
+            Free-form, writer-owned. A faction (&ldquo;House Voss&rdquo;) is just a tag several
+            entries share.
+          </div>
+        </div>
+        {entity.type === 'character' && (
+          <div className="entry-field">
+            <div className="field-name">PINS</div>
+            <div className="entity-tags">
+              {CHARACTER_PINS.map((pin) => (
+                <button
+                  key={pin}
+                  type="button"
+                  aria-pressed={pins.includes(pin)}
+                  className={pins.includes(pin) ? 'pin-toggle on' : 'pin-toggle'}
+                  onClick={() => {
+                    setPins(togglePin(pins, pin))
+                    setDirty(true)
+                  }}
+                >
+                  {pin}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="entry-field">
           <div className="field-name">{bodyLabel}</div>
           <textarea
