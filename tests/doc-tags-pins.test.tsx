@@ -40,18 +40,18 @@ afterEach(() => {
 
 describe('document tags', () => {
   it('renders existing tags as removable chips', async () => {
-    await renderEditor(makeDoc({ tags: ['scene', 'chapter-one'] }))
-    expect(screen.getByText('#scene')).toBeTruthy()
+    await renderEditor(makeDoc({ tags: ['gothic', 'chapter-one'] }))
+    expect(screen.getByText('#gothic')).toBeTruthy()
     expect(screen.getByText('#chapter-one')).toBeTruthy()
   })
 
   it('adds a typed tag on Enter and clears the input', async () => {
     const updateDocMeta = await renderEditor(makeDoc())
     const input = screen.getByPlaceholderText('+ tag') as HTMLInputElement
-    fireEvent.change(input, { target: { value: 'scene' } })
+    fireEvent.change(input, { target: { value: 'gothic' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 
-    expect(updateDocMeta).toHaveBeenCalledWith({ tags: ['scene'] })
+    expect(updateDocMeta).toHaveBeenCalledWith({ tags: ['gothic'] })
     expect(input.value).toBe('')
   })
 
@@ -65,10 +65,44 @@ describe('document tags', () => {
   })
 
   it('removes a tag when its chip button is clicked', async () => {
-    const updateDocMeta = await renderEditor(makeDoc({ tags: ['scene', 'chapter-one'] }))
-    fireEvent.click(screen.getByLabelText('Remove tag scene'))
+    const updateDocMeta = await renderEditor(makeDoc({ tags: ['gothic', 'chapter-one'] }))
+    fireEvent.click(screen.getByLabelText('Remove tag gothic'))
 
     expect(updateDocMeta).toHaveBeenCalledWith({ tags: ['chapter-one'] })
+  })
+})
+
+describe('the Scene toggle', () => {
+  it('renders unchecked when the document has no scene tag', async () => {
+    await renderEditor(makeDoc())
+    expect(screen.getByRole('checkbox', { name: /Scene/ }).getAttribute('aria-checked')).toBe(
+      'false'
+    )
+  })
+
+  it('renders checked when the document is tagged scene', async () => {
+    await renderEditor(makeDoc({ tags: ['scene'] }))
+    expect(screen.getByRole('checkbox', { name: /Scene/ }).getAttribute('aria-checked')).toBe(
+      'true'
+    )
+  })
+
+  it('adds the scene tag when checked', async () => {
+    const updateDocMeta = await renderEditor(makeDoc({ tags: ['gothic'] }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Scene/ }))
+    expect(updateDocMeta).toHaveBeenCalledWith({ tags: ['gothic', 'scene'] })
+  })
+
+  it('removes the scene tag when unchecked, leaving other tags alone', async () => {
+    const updateDocMeta = await renderEditor(makeDoc({ tags: ['scene', 'gothic'] }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Scene/ }))
+    expect(updateDocMeta).toHaveBeenCalledWith({ tags: ['gothic'] })
+  })
+
+  it('never shows the scene tag as an ordinary removable chip', async () => {
+    await renderEditor(makeDoc({ tags: ['scene', 'gothic'] }))
+    expect(screen.queryByText('#scene')).toBeNull()
+    expect(screen.queryByLabelText('Remove tag scene')).toBeNull()
   })
 })
 

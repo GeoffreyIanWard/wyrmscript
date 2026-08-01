@@ -111,16 +111,25 @@ Deferred: a live in-session counter (the status bar's per-document count already
 
 ### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) 🔨
 
-Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built** — F-02/F-03/F-04/F-11 can proceed as views over its data rather than three incompatible metadata schemes.
+Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built** — F-02/F-03/F-04/F-11 can proceed as views over its data rather than three incompatible metadata schemes. F-02 is the first of those views, also now built.
 
 **5a. Pins, tags & factions (F-10) ✅** — shipped. `DocMeta` and `Entity` both gain `tags?: string[]`; `DocMeta` gains `pins?: string[]` from `DOC_PINS`, `Entity` gains `pins?: string[]` from `CHARACTER_PINS` (`src/shared/types.ts`). Both are plain frontmatter, matching how the story bible already stores everything — no `project.json` index, so the model versions and diffs with the file it describes.
 
-- **Tags** are free-form, added by typing into the "+ tag" field and pressing Enter; a faction ("House Voss") is nothing but a tag several entities share, and `scene` (`SCENE_TAG`) is nothing but a tag on a document — no new `BinderNodeType`, so F-02/F-03/F-04 can filter on it later without any document-kind change.
+- **Tags** are free-form, added by typing into the "+ tag" field and pressing Enter; a faction ("House Voss") is nothing but a tag several entities share, and `scene` (`SCENE_TAG`) is nothing but a tag on a document — no new `BinderNodeType`, so F-02/F-03/F-04 can filter on it later without any document-kind change. **The Scene tag gets its own checkbox in the doc header, not a typed tag** — found unintuitive in testing ("is this a scene?" is a yes/no question, not a word to remember and spell correctly). The data model is unchanged: the checkbox reads and writes `SCENE_TAG` in the same `tags` array, it's just hidden from the ordinary tag-chip list so it isn't shown twice. Every other tag, including factions, stays free-typed.
 - **Pins** are a closed, app-shipped vocabulary and cannot be invented by the writer — a dropdown toggles membership. Documents get `DOC_PINS` (Setup, Rising Action, Climax, Falling Action, Resolution); characters get `CHARACTER_PINS` (Protagonist, Antagonist, Viewpoint Character). World/glossary entities have no pin vocabulary yet, per the original design — none invented speculatively.
 - **UI split by component's own convention rather than one shared widget**: the writing terminal's tags/pins bar (`Editor.tsx`'s `DocMetaBar`) writes immediately, the same "no debounce for metadata" reasoning as 4c's stats; the story-bible entry editor (`EntityEditor.tsx`) queues tags/pins in local state like every other field there, applied on the existing explicit **Save Entry**. Both bars live in chrome, not on the page itself — the doc header row is a second flex row inside `.terminal-chrome`, which only appears on hover alongside the title/word-count row already there (the page-is-sacred house rule extends to metadata, not just notifications).
 - `entities.ts`'s `writeEntity` omits `tags`/`pins` from frontmatter entirely when empty, so entities untouched by F-10 keep the frontmatter they always had rather than gaining `tags: []` on every save; `gray-matter`'s YAML dumper throws on an explicit `undefined` value, which is why the store's `updateDocMeta` deletes the key rather than setting it to `undefined` when a writer removes the last tag.
 
 Deferred, as scoped at design time: the skeuomorphic treatment (pin heads, luggage-tag-shaped tags, still 1-bit) — the current chips/toggles are functional but plain, matching the rest of the chrome rather than the request's original visual ambition. Revisit alongside F-20/F-21/F-22's other editor-pane visual work rather than blocking F-02/F-03/F-04 on it.
+
+**5b. Timeline (F-02) ✅** — shipped. **Project → Timeline…** (also in the ⌘K palette) lists every `scene`-tagged document as a card, ordered by the new `DocMeta.timelineOrder` with binder order as the fallback for a scene that has never been dragged; an optional `DocMeta.timelineDate` free-text label rides alongside but never affects sort order (`shared/types.ts`).
+
+- **No standalone card entity and no `project.json` index** — a card is nothing but a scene-tagged document, matching F-10's storage philosophy exactly. `lib/timeline.ts`'s `timelineCards` is a pure read-through: filter by `SCENE_TAG`, sort by `timelineOrder ?? <binder position>`.
+- **Reordering never rewrites the rest of the list.** `orderBetween` assigns the dropped card a fractional rank — the midpoint of its new neighbours' `timelineOrder` values (or ±1 past an end) — so moving one card is one `writeDoc` call, not a renumbering pass across every scene.
+- **The store acts on an arbitrary doc id, not just the active document.** `setTimelineOrder`/`setTimelineDate` read whichever document is targeted (falling back to `api.readDoc` when it isn't the one open in the editor), since the card a writer drags on the timeline is rarely the document currently open for writing — unlike F-10's `updateDocMeta`, which only ever touches the active doc.
+- The dialog fetches its own doc list via `api.readAllDocs` on open (same pattern as the entity editor's backlinks) rather than keeping a live store slice — the timeline is opened rarely enough that a fresh read on open is simpler than keeping another piece of global state in sync.
+
+Deferred, as scoped at design time: a real calendar/duration system (explicitly the heavier of the two dated-events options, not chosen); per-thread or per-POV timelines (one timeline per project was chosen); the skeuomorphic card visual (currently a plain row, matching F-10's chips/toggles rather than a corkboard-card look).
 
 ---
 
@@ -140,13 +149,13 @@ Users who want everything on their own machine must get full version-control par
 
 **Note:** this reorders Phase 5 slightly — local-first is the default path, GitHub sync becomes opt-in. Cheap to do now, expensive to retrofit.
 
-### F-02 · Timeline 💭
+### F-02 · Timeline ✅ shipped — see Execution order §5b
 
-Arrange scenes and standalone event cards on a chronological timeline of story events — distinct from binder order, because narrative order ≠ chronology (flashbacks, parallel threads). Design questions to settle:
+Arrange scenes on a chronological timeline of story events — distinct from binder order, because narrative order ≠ chronology (flashbacks, parallel threads). Design settled 2026-08-01, built the same day:
 
-- Do events carry in-world dates (a custom calendar?), relative ordering only, or both?
-- Are timeline cards the same objects as binder scenes, or can they exist independently (backstory that's never a scene)?
-- One timeline per project, or several (per POV, per thread)?
+- **Both relative order and an optional in-world date.** Relative order (`timelineOrder`) is what sorts the timeline; a free-text date label (`timelineDate`) can be attached on top but is never parsed and never governs sort order — no calendar system is assumed. See Execution order §5b.
+- **Cards are the same objects as binder scenes** — any document tagged `scene` (F-10) is a card. No standalone event-card entity; backstory that will never be a scene still needs a document, even a bare one.
+- **One timeline per project.**
 
 ### F-03 · Plot graph 💭
 
