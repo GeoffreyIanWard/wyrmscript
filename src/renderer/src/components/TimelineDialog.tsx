@@ -88,6 +88,16 @@ export function TimelineDialog({ onClose }: { onClose: () => void }): JSX.Elemen
 
   const cards = docs && project ? timelineCards(docs, project.data.binder) : []
 
+  // The dialog fetches its doc list once on open (same pattern as the entity
+  // editor's backlinks) rather than holding a live store slice — so a drag
+  // or date edit has to patch this local copy itself, or the card list never
+  // reflects the change until the dialog is closed and reopened.
+  const patchDocMeta = (id: string, updater: (meta: DocFile['meta']) => DocFile['meta']): void => {
+    setDocs(
+      (prev) => prev?.map((d) => (d.meta.id === id ? { ...d, meta: updater(d.meta) } : d)) ?? prev
+    )
+  }
+
   const handleDrop = (targetIndex: number, draggedId: string, before: boolean): void => {
     const from = cards.findIndex((c) => c.id === draggedId)
     if (from === -1) return
@@ -99,7 +109,19 @@ export function TimelineDialog({ onClose }: { onClose: () => void }): JSX.Elemen
     const insertAt = before ? anchorIndex : anchorIndex + 1
     const beforeOrder = withoutDragged[insertAt - 1]?.order
     const afterOrder = withoutDragged[insertAt]?.order
-    void setTimelineOrder(draggedId, orderBetween(beforeOrder, afterOrder))
+    const order = orderBetween(beforeOrder, afterOrder)
+    patchDocMeta(draggedId, (meta) => ({ ...meta, timelineOrder: order }))
+    void setTimelineOrder(draggedId, order)
+  }
+
+  const changeDate = (id: string, date: string): void => {
+    patchDocMeta(id, (meta) => {
+      const next = { ...meta }
+      if (date.trim()) next.timelineDate = date.trim()
+      else delete next.timelineDate
+      return next
+    })
+    void setTimelineDate(id, date)
   }
 
   const openCard = (id: string): void => {
@@ -130,7 +152,7 @@ export function TimelineDialog({ onClose }: { onClose: () => void }): JSX.Elemen
                   key={card.id}
                   card={card}
                   onOpen={() => openCard(card.id)}
-                  onDateChange={(date) => void setTimelineDate(card.id, date)}
+                  onDateChange={(date) => changeDate(card.id, date)}
                   onDrop={(draggedId, before) => handleDrop(i, draggedId, before)}
                 />
               ))}
