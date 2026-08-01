@@ -12,6 +12,7 @@ import type {
   Entity,
   EntityType,
   DayStat,
+  MapPin,
   Plotline,
   ProjectData,
   ProjectInfo,
@@ -48,6 +49,7 @@ interface MockProject {
   entities: Map<string, Entity>
   plotlines: Map<string, Plotline>
   relationships: Map<string, Relationship>
+  mapPins: Map<string, MapPin>
 }
 
 function snapshotOf(docs: Map<string, DocFile>): Map<string, DocFile> {
@@ -106,7 +108,8 @@ function starterProject(title: string): MockProject {
     variants: new Map(),
     entities: new Map(),
     plotlines: new Map(),
-    relationships: new Map()
+    relationships: new Map(),
+    mapPins: new Map()
   }
   commitInto(project, `Create project “${title}”`)
   return project
@@ -178,7 +181,7 @@ function demoProject(): MockProject {
     [],
     "Elara's younger brother. Laughed at everything, which is the first thing the sea took. Drowned during the Siege; she has never said his name out loud since."
   )
-  mkEntity(
+  const harrowgateId = mkEntity(
     'world',
     'Harrowgate',
     ['the harbor city'],
@@ -225,6 +228,17 @@ function demoProject(): MockProject {
     modified: now
   })
 
+  const mapPins = new Map<string, MapPin>()
+  const mapPinId = id()
+  mapPins.set(mapPinId, {
+    id: mapPinId,
+    entityId: harrowgateId,
+    x: 180,
+    y: 120,
+    created: now,
+    modified: now
+  })
+
   const project: MockProject = {
     info,
     docs,
@@ -232,7 +246,8 @@ function demoProject(): MockProject {
     variants: new Map(),
     entities,
     plotlines,
-    relationships
+    relationships,
+    mapPins
   }
 
   // Fabricate believable history for the demo: three drafts of scene2.
@@ -462,6 +477,16 @@ export function createMockApi(): WyrmApi {
     },
     async deleteRelationship(path: string, id: string): Promise<void> {
       mustGet(path).relationships.delete(id)
+    },
+
+    async listMapPins(path: string): Promise<MapPin[]> {
+      return [...mustGet(path).mapPins.values()].map((p) => ({ ...p }))
+    },
+    async writeMapPin(path: string, pin: MapPin): Promise<void> {
+      mustGet(path).mapPins.set(pin.id, { ...pin, modified: new Date().toISOString() })
+    },
+    async deleteMapPin(path: string, id: string): Promise<void> {
+      mustGet(path).mapPins.delete(id)
     },
 
     async getSyncStatus(path: string): Promise<SyncStatus> {

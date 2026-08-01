@@ -3,6 +3,7 @@ import type {
   DocFile,
   Entity,
   EntityType,
+  MapPin,
   Plotline,
   ProjectData,
   Relationship,
@@ -39,6 +40,10 @@ const api: WyrmApi = {
   writeRelationship: (path, relationship: Relationship) =>
     ipcRenderer.invoke('relationship:write', path, relationship),
   deleteRelationship: (path, id) => ipcRenderer.invoke('relationship:delete', path, id),
+
+  listMapPins: (path) => ipcRenderer.invoke('mapPin:list', path),
+  writeMapPin: (path, pin: MapPin) => ipcRenderer.invoke('mapPin:write', path, pin),
+  deleteMapPin: (path, id) => ipcRenderer.invoke('mapPin:delete', path, id),
 
   exportFile: (defaultName, data) => ipcRenderer.invoke('compile:export', defaultName, data),
 
