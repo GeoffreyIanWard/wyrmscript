@@ -2,8 +2,8 @@ import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 
-import type { AppearanceSettings } from '../../shared/types'
-import { DEFAULT_APPEARANCE } from '../../shared/types'
+import type { AppearanceSettings, StatsSettings } from '../../shared/types'
+import { DEFAULT_APPEARANCE, DEFAULT_STATS } from '../../shared/types'
 import type { BackupSettings } from '../../shared/types'
 
 /** Per-project sync bookkeeping. The remote URL itself lives in .git/config. */
@@ -25,6 +25,10 @@ interface AppSettings {
   syncProjects?: Record<string, SyncProjectSettings>
   /** Palette, accents and page geometry — app-level, follows the writer. */
   appearance?: Partial<AppearanceSettings>
+  /** Daily goal and counting mode. App-level like appearance: a writing habit
+   *  belongs to the writer, not to one manuscript. The counts themselves are
+   *  not stored here — they are derived from each project's git history. */
+  stats?: Partial<StatsSettings>
 }
 
 const NO_BACKUP: BackupSettings = { path: null, auto: false, lastBackupAt: null }
@@ -66,6 +70,17 @@ export async function writeAppearance(
 ): Promise<AppearanceSettings> {
   const next = { ...(await readAppearance()), ...patch }
   await writeSettings({ appearance: next })
+  return next
+}
+
+export async function readStatsSettings(): Promise<StatsSettings> {
+  const settings = await readSettings()
+  return { ...DEFAULT_STATS, ...settings.stats }
+}
+
+export async function writeStatsSettings(patch: Partial<StatsSettings>): Promise<StatsSettings> {
+  const next = { ...(await readStatsSettings()), ...patch }
+  await writeSettings({ stats: next })
   return next
 }
 

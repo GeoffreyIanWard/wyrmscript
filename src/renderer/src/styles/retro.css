@@ -584,6 +584,95 @@ button {
   background: none;
 }
 
+/* ---------- writing stats (4c) ---------- */
+
+/* Goal met inverts rather than colouring, so the "you did it" reads at a
+   glance in every palette including the strictly two-colour ones. */
+.status-bar .stat-goal.met {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.stat-tile {
+  border: 2px solid var(--ink);
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.stat-tile-value {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.stat-tile-label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+
+.stat-goal-track,
+.stat-bar-track {
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.stat-goal-track {
+  height: 16px;
+}
+
+.stat-goal-fill,
+.stat-bar {
+  display: block;
+  height: 100%;
+  background-color: var(--ink);
+  background-image: var(--dither-75);
+  background-size: 4px 4px;
+}
+
+/* A day of cutting is drawn hollow rather than solid — same length, plainly
+   not the same thing as a day of writing. */
+.stat-bar.negative {
+  background-color: var(--paper);
+  background-image: var(--dither-25);
+}
+
+.stat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+}
+
+.stat-day {
+  flex: none;
+  width: 92px;
+}
+
+.stat-row .stat-bar-track {
+  flex: 1;
+  height: 10px;
+}
+
+.stat-words {
+  flex: none;
+  width: 56px;
+  text-align: right;
+}
+
 /* ---------- dialogs ---------- */
 
 .dialog-overlay {
