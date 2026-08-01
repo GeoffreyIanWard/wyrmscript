@@ -269,6 +269,11 @@ export function PrefsDialog({
           </fieldset>
           <fieldset className="fieldset">
             <legend>WRITING STATS</legend>
+            <Check
+              label="Show word counts while writing"
+              on={stats.showCounter}
+              onToggle={(showCounter) => onStatsChange({ showCounter })}
+            />
             <Stepper
               label="DAILY GOAL"
               name="daily goal"

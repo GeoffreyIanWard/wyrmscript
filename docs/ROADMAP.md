@@ -103,6 +103,7 @@ Decisions worth keeping straight:
 - **The streak counts showing up, not hitting the goal.** A day spent cutting three thousand words of flab keeps it. A streak that punished revision would quietly discourage revising, which is the opposite of what a drafting tool should do. An unfinished day is also not a broken streak — nothing written yet today still reads from yesterday.
 - **Reading the stats checkpoints first**, the same way compile does. History is the only source of these numbers, so uncommitted work would otherwise be invisible and a writer who just wrote 300 words would be told they wrote none.
 - `countWords` moved to `src/shared/words.ts`. The status bar counts in the renderer and the engine counts in main, main never imports from renderer, and two copies would drift into quoting different numbers for the same text.
+- **The ambient counters can be switched off entirely** (Preferences → WRITING STATS → "Show word counts while writing"), requested immediately after the first pass. One switch takes the editor header count, the status-bar count and the today indicator together — leaving any one behind would defeat the point. Writing Stats still reports everything on demand: choosing not to be watched while drafting is a different thing from not wanting to know.
 
 **Found while building:** git commit timestamps are whole **seconds**, so checkpoints made in the same second compare equal, and a stable sort left them in `git.log`'s newest-first order — the day's *oldest* commit then defined where the day ended, reporting a full day of writing as a total of zero while `net`/`added` stayed correct, which is what disguised it as a plumbing failure. Ties now break on reversed log order. Not a test artifact: an autosave landing in the same second as a manual checkpoint hits it, as does project creation followed by a first save.
 
@@ -293,6 +294,35 @@ Requested 2026-07-31. In the binder's Glossary/Character Book/World Book section
 - **Nest entries under headers** — indent them further than the current single `paddingLeft: 8 + 16` step (`Binder.tsx`'s entity row), so the tree structure itself carries the hierarchy the way folders already do for the manuscript binder above it.
 
 These aren't mutually exclusive — the manuscript binder's folder rows already indent children by depth, so doing the same for story-bible entries plus a distinct header treatment would bring the two trees into visual agreement rather than leaving story-bible sections as the one flat exception.
+
+### F-26 · Stats page: hotkey, per-day figures, calendar heatmap 📋
+
+Requested 2026-07-31, straight after 4c shipped. The current Writing Stats dialog is the small version of this: today, streak, manuscript total, and a fortnight of bars. The ask is a fuller **page** reachable by hotkey, with:
+
+- **More figures** — words per day, words in this manuscript, presumably also per-document and per-period totals (this month, this draft).
+- **A GitHub-contributions-style calendar.** Every day with a checkpoint is marked; days that beat the goal are marked complete, or better, shaded on a gradient by volume.
+
+Most of the data already exists. `main/wyrm/stats.ts` returns `DayStat[]` for the whole history — `date`, `total`, `net`, `added`, `commits` per day — so a heatmap is a rendering job, not a data job. Things to settle before building:
+
+- **A page, not a dialog?** Everything else in the app that fills the main pane is a `MainView` case (`doc` | `entity`); a stats *page* would be a third. That is the honest way to do it and interacts with F-14's Esc-as-back stack. A hotkey that opens the existing dialog is much cheaper and might be enough — worth deciding rather than drifting.
+- **Gradient buckets.** GitHub uses four shades against a rolling maximum. In a strictly two-colour palette that has to be dither density rather than colour (the `--dither-25/50/75` set is exactly three steps plus solid — a natural fit, and it would look properly period).
+- **Which day counts as "complete"?** Beating the goal is the obvious rule, but 4c deliberately made the *streak* about showing up rather than hitting the target. Two different rules on one screen needs the visual to distinguish "wrote" from "hit goal" rather than conflating them.
+- **`dailyStats` currently walks the whole history on each call** (memoised per blob, so repeat calls are cheap). A year-long heatmap is the first thing that would make a slow first walk noticeable on a large project — worth measuring on real data before optimising.
+
+### F-27 · Line numbers and page view 📋
+
+Requested 2026-07-31. Two related editor-gutter treatments, **both off by default** — the page is sacred, and neither belongs in a writer's default view:
+
+- **Line numbers**, the way a code editor shows them.
+- **Page view**: a dotted rule across the page every N lines, standing in for a page break.
+
+Neither is a CSS-only job, and the reason is the same for both: the editor is a ProseMirror document of paragraphs, and a *visual line* is a wrapped-text artefact that only the layout engine knows about. A paragraph can be one line or forty depending on the measure (F-06), the text size, and the window width — all of which change live. So this needs either a ProseMirror decoration plugin measuring rendered line boxes, or a gutter that re-measures on resize. Same family of work as F-23's block cursor.
+
+Open questions:
+
+- **What is a "page"?** Real pagination depends on a paper size and font metrics; "every N lines" is a decent approximation but will not match what the compiled `.docx` actually paginates to. Worth being honest in the UI about which one it is rather than implying a print preview.
+- **Do line numbers count visual lines or paragraphs?** Visual is what a code editor does and what the request implies; paragraph numbering is far cheaper and arguably more useful for prose (it survives a resize). Ask before assuming.
+- Interacts with F-22's halftone ruler and margin marks — both want gutter furniture, and two independent gutter mechanisms would be a mistake.
 
 ### CRT family: found in review 📋 — glow ✅ fixed, see I-09 for the rename
 

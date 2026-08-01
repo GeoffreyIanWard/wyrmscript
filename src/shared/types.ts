@@ -216,11 +216,23 @@ export interface StatsSettings {
   /** Words per day the writer is aiming for. */
   dailyGoal: number
   mode: WordCountMode
+  /**
+   * Whether word counts appear while writing — the editor's header count, the
+   * status bar's count, and the today-vs-goal indicator, all together.
+   *
+   * Off is a real writing preference, not a niche one: a number that ticks up
+   * beside the cursor invites watching it instead of the sentence. Turning it
+   * off hides the ambient counters only; Writing Stats still reports
+   * everything on demand, because choosing not to be watched while drafting
+   * is different from not wanting to know.
+   */
+  showCounter: boolean
 }
 
 export const DEFAULT_STATS: StatsSettings = {
   dailyGoal: 500,
-  mode: 'net'
+  mode: 'net',
+  showCounter: true
 }
 
 /* ---------- Local backup (F-01) ---------- */
