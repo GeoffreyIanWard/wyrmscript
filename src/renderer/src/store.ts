@@ -13,10 +13,12 @@ import type {
   SyncOutcome,
   SyncStatus,
   CompileResult,
+  DayStat,
   DocFile,
   Entity,
   EntityType,
-  ProjectInfo
+  ProjectInfo,
+  StatsSettings
 } from '../../shared/types'
 import { api } from './lib/api'
 import { compile, compileFileName } from './lib/compile'
@@ -67,6 +69,12 @@ interface WyrmState {
   appearance: AppearanceSettings | null
   loadAppearance(): Promise<void>
   setAppearance(patch: Partial<AppearanceSettings>): Promise<void>
+
+  statsSettings: StatsSettings | null
+  dailyStats: DayStat[]
+  loadStatsSettings(): Promise<void>
+  setStatsSettings(patch: Partial<StatsSettings>): Promise<void>
+  refreshStats(): Promise<void>
 
   /** GitHub sync (Phase 5). */
   syncStatus: SyncStatus | null
@@ -193,6 +201,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     await get().loadEntities()
     await get().loadBackupSettings()
     await get().loadSyncStatus()
+    void get().refreshStats()
     const log = await api.log(info.path)
     if (log.length > 0) set({ lastCommitAt: log[0].timestamp })
   }
@@ -213,6 +222,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
     mainView: { kind: 'doc' },
     backupSettings: null,
     appearance: null,
+    statsSettings: null,
+    dailyStats: [],
     syncStatus: null,
     syncConflicts: null,
     syncNeedsAttention: false,
@@ -222,6 +233,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // chosen palette should be on screen before anything else renders,
       // and it must survive a boot that finds no project at all.
       await get().loadAppearance()
+      await get().loadStatsSettings()
       const last = await api.getLastProjectPath()
       if (last) {
         const info = await api.openProjectPath(last)
@@ -292,7 +304,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await get().flushSave()
       const committed = await api.commit(project.path, message)
       commitDirty = false
-      if (committed) set({ lastCommitAt: Date.now() })
+      if (committed) {
+        set({ lastCommitAt: Date.now() })
+        // The checkpoint just became history, which is where the stats live.
+        void get().refreshStats()
+      }
       // Auto-backup runs after the checkpoint and never blocks it: a missing
       // external drive must not be able to stop the writer saving their work.
       if (committed && get().backupSettings?.auto) {
@@ -346,6 +362,27 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const current = get().appearance
       if (current) set({ appearance: { ...current, ...patch } })
       set({ appearance: await api.setAppearance(patch) })
+    },
+
+    /* ---------- writing stats (4c) ---------- */
+
+    async loadStatsSettings() {
+      set({ statsSettings: await api.getStatsSettings() })
+    },
+
+    async setStatsSettings(patch) {
+      const current = get().statsSettings
+      if (current) set({ statsSettings: { ...current, ...patch } })
+      set({ statsSettings: await api.setStatsSettings(patch) })
+    },
+
+    /** Recomputed from git history rather than accumulated in memory, so it is
+     *  correct after a restore, a sync, or anything else that rewrites what
+     *  the manuscript contains. Cheap enough to call on every checkpoint. */
+    async refreshStats() {
+      const { project } = get()
+      if (!project) return
+      set({ dailyStats: await api.getDailyStats(project.path).catch(() => []) })
     },
 
     /* ---------- GitHub sync (Phase 5) ---------- */

@@ -18,7 +18,7 @@ The phased build order from design-brief.md §11. One PR (or small series) per p
 | 3   | Version control UI         | ✅     | Commit dialog, per-doc history, prose word-diff, restore, snapshot variants. PR #3, with the bug fixes and this roadmap following in PR #4                         |
 | 4   | Story bible                | ✅     | Entity index over glossary/characters/world, debounced auto-linking in the terminal, click-to-side-panel, add-from-selection, entry editors, backlinks. PRs #5, #6 |
 | 5   | GitHub sync                | ✅     | OAuth device flow, sync engine, offline queue, conflict resolution UI, local-only first-class. PR #11                                                              |
-| 6   | Suggested extras           | 🔨     | Compile/export shipped (PR #8); corkboard, full-project search, writing stats, command palette still to come                                                       |
+| 6   | Suggested extras           | 🔨     | Compile/export (PR #8), full-project search + command palette (PR #13) and writing stats (PR #22) shipped; corkboard still to come                                 |
 
 **Locked v1 decisions** (confirmed 2026-07-29): 1-bit default palette with entity links distinguished per type; entity click opens a side panel; character/world entries free-form; compile/export, backlinks, auto-commit safety net, and command palette all in v1; variants are frozen snapshots (not editable branches).
 
@@ -86,7 +86,27 @@ Split in two, because "appearance you can live in" and "navigation you can drive
 - `lib/search.ts` backs both surfaces so "what is findable" is decided once. Search is plain case-insensitive substring (fuzzy matching inside 100,000 words returns noise); the palette is fuzzy subsequence with a bias toward word starts. Trash is excluded from both, as in compile.
 - **Search runs against the plain-text projection, not the stored Markdown.** Bodies carry `**` and `==` mid-sentence, so searching the raw text silently fails for any phrase spanning a bold word — "Not louder. Exactly" never matches `Not louder. **Exactly**` — and snippets show storage syntax instead of prose. Parsed results are cached by body string, since bodies do not change while a query is being typed.
 
-**4c. Writing stats 📋 — next up.** Session word count, daily goal, streak. Held back from 4b deliberately: "words written today" is a net-change measurement over time, not a snapshot, and it needs its own data model rather than being wedged into a navigation change.
+**4c. Writing stats ✅** — daily count, goal and streak, shipped in PR #22. **Project → Writing Stats…**, plus a today-vs-goal indicator in the status bar.
+
+It needed a data model, as predicted — but not a new one. **The stats are derived from git history rather than recorded anywhere.** Every checkpoint is already a timestamped snapshot of the whole manuscript, so "how many words existed on Tuesday" is a question the repository can already answer. That choice fell out of Geoffrey's decision that stats should follow the project across devices, and it beat a tracked `stats.json` on every axis that mattered:
+
+- **No commit churn.** A tracked stats file would dirty the working tree every time the counter moved, turning a quiet session into a stream of commits about nothing.
+- **No merge conflicts.** Two machines writing on the same day would both edit that day's row; instead they contribute commits, and merging commits is what git is for.
+- **It syncs for free**, because history syncs — which is what was actually asked for.
+- **It works retroactively.** Geoffrey's real project reported its whole back-history the first time the feature ran, rather than starting from zero on ship day.
+
+Cost is a walk over history, kept cheap in `main/wyrm/stats.ts` by memoising word counts against blob oids: an oid is a content hash, so an unchanged document is counted once no matter how many commits span it, and the work scales with distinct document versions rather than commits × documents.
+
+Decisions worth keeping straight:
+
+- **Three counting modes, the writer's choice** (Preferences → WRITING STATS). Net, added-only, and net-floored-at-zero disagree most on exactly the day that matters — one spent cutting — so Geoffrey asked for the choice rather than a house opinion. `net` is the default and shows a cutting day as the loss it was.
+- **The streak counts showing up, not hitting the goal.** A day spent cutting three thousand words of flab keeps it. A streak that punished revision would quietly discourage revising, which is the opposite of what a drafting tool should do. An unfinished day is also not a broken streak — nothing written yet today still reads from yesterday.
+- **Reading the stats checkpoints first**, the same way compile does. History is the only source of these numbers, so uncommitted work would otherwise be invisible and a writer who just wrote 300 words would be told they wrote none.
+- `countWords` moved to `src/shared/words.ts`. The status bar counts in the renderer and the engine counts in main, main never imports from renderer, and two copies would drift into quoting different numbers for the same text.
+
+**Found while building:** git commit timestamps are whole **seconds**, so checkpoints made in the same second compare equal, and a stable sort left them in `git.log`'s newest-first order — the day's *oldest* commit then defined where the day ended, reporting a full day of writing as a total of zero while `net`/`added` stayed correct, which is what disguised it as a plumbing failure. Ties now break on reversed log order. Not a test artifact: an autosave landing in the same second as a manual checkpoint hits it, as does project creation followed by a first save.
+
+Deferred: a live in-session counter (the status bar's per-document count already covers "am I writing"), and best-day/total-words-this-month style figures.
 
 ### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) 💭
 

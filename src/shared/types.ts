@@ -336,6 +336,13 @@ export interface WyrmApi {
   getAppearance(): Promise<AppearanceSettings>
   setAppearance(patch: Partial<AppearanceSettings>): Promise<AppearanceSettings>
 
+  /** Daily goal and counting mode — app-level, like appearance. */
+  getStatsSettings(): Promise<StatsSettings>
+  setStatsSettings(patch: Partial<StatsSettings>): Promise<StatsSettings>
+  /** Per-day writing history for a project, oldest first, derived from its
+   *  git history. Checkpoints first so uncommitted work is included. */
+  getDailyStats(path: string): Promise<DayStat[]>
+
   getBackupSettings(path: string): Promise<BackupSettings>
   /** Pick a backup location for this project. Null if cancelled. */
   chooseBackupLocation(path: string): Promise<BackupSettings | null>

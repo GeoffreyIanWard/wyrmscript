@@ -11,12 +11,14 @@ import type {
   DocFile,
   Entity,
   EntityType,
+  DayStat,
   ProjectData,
   ProjectInfo,
+  StatsSettings,
   VariantInfo,
   WyrmApi
 } from '../../../shared/types'
-import { DEFAULT_APPEARANCE } from '../../../shared/types'
+import { DEFAULT_APPEARANCE, DEFAULT_STATS } from '../../../shared/types'
 
 /**
  * In Electron the preload script exposes the real filesystem/git API on
@@ -211,11 +213,44 @@ function demoProject(): MockProject {
 
 const demoBackup = (): BackupSettings => ({ path: null, auto: false, lastBackupAt: null })
 
+/**
+ * A fortnight of plausible writing days, ending today, for the browser
+ * preview. Deliberately includes a day spent cutting (negative net, nothing
+ * added) and a day off, because those are exactly the cases the counting
+ * modes and the streak rule disagree about — a demo of only good days would
+ * make the stats screen look correct when it wasn't.
+ */
+function demoDailyStats(): DayStat[] {
+  // net per day, oldest first; the gap and the cut are the interesting bits.
+  const pattern = [420, 610, 0, 780, 350, -540, 900, 0, 1120, 260, 480, 730, -220, 640]
+  const days: DayStat[] = []
+  let total = 12_000
+  for (let i = pattern.length - 1; i >= 0; i--) {
+    const net = pattern[pattern.length - 1 - i]
+    if (net === 0) continue // a day away from the desk records no checkpoints
+    const at = new Date()
+    at.setDate(at.getDate() - i)
+    const month = String(at.getMonth() + 1).padStart(2, '0')
+    const day = String(at.getDate()).padStart(2, '0')
+    total += net
+    days.push({
+      date: `${at.getFullYear()}-${month}-${day}`,
+      total,
+      net,
+      // A cutting day still had words added before they were cut back out.
+      added: net < 0 ? 0 : net,
+      commits: net < 0 ? 3 : 2
+    })
+  }
+  return days
+}
+
 export function createMockApi(): WyrmApi {
   const demo = demoProject()
   const projects = new Map<string, MockProject>([[demo.info.path, demo]])
   const backups = new Map<string, BackupSettings>()
   let appearance: AppearanceSettings = { ...DEFAULT_APPEARANCE }
+  let statsSettings: StatsSettings = { ...DEFAULT_STATS }
   const sync = new Map<string, SyncStatus>()
   let mockClientIdSet = false
   let mockLogin: string | null = null
@@ -445,6 +480,17 @@ export function createMockApi(): WyrmApi {
     async setAppearance(patch: Partial<AppearanceSettings>): Promise<AppearanceSettings> {
       appearance = { ...appearance, ...patch }
       return { ...appearance }
+    },
+
+    async getStatsSettings(): Promise<StatsSettings> {
+      return { ...statsSettings }
+    },
+    async setStatsSettings(patch: Partial<StatsSettings>): Promise<StatsSettings> {
+      statsSettings = { ...statsSettings, ...patch }
+      return { ...statsSettings }
+    },
+    async getDailyStats(): Promise<DayStat[]> {
+      return demoDailyStats()
     },
 
     async getBackupSettings(path: string): Promise<BackupSettings> {

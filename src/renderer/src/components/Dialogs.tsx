@@ -1,7 +1,12 @@
 import type { JSX } from 'react'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { WyrmIcon } from './icons'
-import type { AppearanceSettings, AccentTheme, PaletteTheme } from '../../../shared/types'
+import type {
+  AppearanceSettings,
+  AccentTheme,
+  PaletteTheme,
+  StatsSettings
+} from '../../../shared/types'
 
 const DEFAULT_GEOMETRY = { measure: 62, fontSize: 17, lineHeight: 1.7 } as const
 
@@ -106,11 +111,15 @@ function Stepper({
 
 export function PrefsDialog({
   appearance,
+  stats,
   onChange,
+  onStatsChange,
   onClose
 }: {
   appearance: AppearanceSettings
+  stats: StatsSettings
   onChange: (patch: Partial<AppearanceSettings>) => void
+  onStatsChange: (patch: Partial<StatsSettings>) => void
   onClose: () => void
 }): JSX.Element {
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
@@ -256,6 +265,39 @@ export function PrefsDialog({
               <button type="button" className="btn" onClick={() => onChange(DEFAULT_GEOMETRY)}>
                 Reset to defaults
               </button>
+            </div>
+          </fieldset>
+          <fieldset className="fieldset">
+            <legend>WRITING STATS</legend>
+            <Stepper
+              label="DAILY GOAL"
+              name="daily goal"
+              value={stats.dailyGoal}
+              min={0}
+              max={5000}
+              step={100}
+              format={(v) => (v === 0 ? 'no goal' : `${v.toLocaleString()} words`)}
+              onChange={(dailyGoal) => onStatsChange({ dailyGoal })}
+            />
+            <Radio
+              label="Net — today's total minus yesterday's"
+              on={stats.mode === 'net'}
+              onPick={() => onStatsChange({ mode: 'net' })}
+            />
+            <Radio
+              label="Added — count words written, ignore cuts"
+              on={stats.mode === 'added'}
+              onPick={() => onStatsChange({ mode: 'added' })}
+            />
+            <Radio
+              label="Net, never below zero"
+              on={stats.mode === 'net-positive'}
+              onPick={() => onStatsChange({ mode: 'net-positive' })}
+            />
+            <div className="dialog-hint">
+              Counts come from your checkpoint history, so they survive a reinstall and follow the
+              project. A day spent cutting reads as a loss under Net — that is the honest number,
+              and your streak counts it as work either way.
             </div>
           </fieldset>
           <fieldset className="fieldset">
