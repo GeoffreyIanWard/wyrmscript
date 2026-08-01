@@ -107,6 +107,41 @@ export interface Entity {
   modified: string
 }
 
+/**
+ * F-04: a plotline is a lightweight entity in its own right (name, colour,
+ * status) — not a story-bible `Entity` (it never auto-links in prose, which
+ * is what `Entity` is fundamentally for) and not just a tag (a tag has
+ * nowhere to hang a colour or a status). A scene belongs to a plotline by
+ * carrying a `DocMeta.tags` entry equal to the plotline's `name` — the same
+ * tag mechanism as everywhere else, just read by name instead of a stored
+ * id, so renaming a plotline is a deliberate, visible act (re-tag the
+ * scenes) rather than a silent id remap.
+ */
+export type PlotlineStatus = 'open' | 'resolved'
+
+/** A small, closed set of swatches — not free-color-picker input — so two
+ *  plotlines are always visually distinguishable without relying on a
+ *  writer's color sense, and so the palette stays finite and printable. */
+export const PLOTLINE_COLOURS = [
+  '#000000',
+  '#8b2e2e',
+  '#2e5f8b',
+  '#3f7a3f',
+  '#8b6f2e',
+  '#6a3f8b'
+] as const
+export type PlotlineColour = (typeof PLOTLINE_COLOURS)[number]
+
+export interface Plotline {
+  id: string
+  name: string
+  colour: string
+  /** Manual — set on the plotline itself, not derived from any scene's pins. */
+  status: PlotlineStatus
+  created: string
+  modified: string
+}
+
 export interface CommitInfo {
   oid: string
   message: string
@@ -396,6 +431,11 @@ export interface WyrmApi {
   deleteEntity(path: string, type: EntityType, id: string): Promise<void>
   /** All documents with metadata — used to compute backlinks. */
   readAllDocs(path: string): Promise<DocFile[]>
+
+  /** F-04: plotlines. Scenes belong to one by tag (see `Plotline`'s doc comment). */
+  listPlotlines(path: string): Promise<Plotline[]>
+  writePlotline(path: string, plotline: Plotline): Promise<void>
+  deletePlotline(path: string, id: string): Promise<void>
 
   /** Show a save dialog and write compiled output. Returns the path, or null if cancelled. */
   exportFile(defaultName: string, data: string | Uint8Array): Promise<string | null>
