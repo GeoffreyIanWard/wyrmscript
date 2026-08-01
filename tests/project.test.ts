@@ -58,6 +58,18 @@ describe('doc read/write', () => {
     expect(after.meta.title).toBe(before.meta.title)
     expect(Date.parse(after.meta.modified)).toBeGreaterThan(Date.parse(before.meta.modified))
   })
+
+  it('round-trips tags and pins (F-10)', async () => {
+    const { dir, docId } = await makeProject()
+    const before = await readDoc(dir, docId)
+    await writeDoc(dir, {
+      meta: { ...before.meta, tags: ['scene', 'chapter-one'], pins: ['Climax'] },
+      body: before.body
+    })
+    const after = await readDoc(dir, docId)
+    expect(after.meta.tags).toEqual(['scene', 'chapter-one'])
+    expect(after.meta.pins).toEqual(['Climax'])
+  })
 })
 
 describe('commitAll', () => {

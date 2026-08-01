@@ -109,6 +109,35 @@ describe('writeEntity / listEntities', () => {
 
     await expect(fsp.stat(join(dir, 'characters', `${character.id}.md`))).resolves.toBeTruthy()
   })
+
+  it('round-trips tags and pins (F-10)', async () => {
+    const dir = await makeProject()
+    const entity = makeEntity({
+      type: 'character',
+      name: 'Elara Voss',
+      tags: ['House Voss', 'harbor-guard'],
+      pins: ['Protagonist']
+    })
+    await writeEntity(dir, entity)
+
+    const [found] = await listEntities(dir)
+    expect(found.tags).toEqual(['House Voss', 'harbor-guard'])
+    expect(found.pins).toEqual(['Protagonist'])
+  })
+
+  it('leaves tags/pins undefined rather than writing empty-array frontmatter', async () => {
+    const dir = await makeProject()
+    const entity = makeEntity({ type: 'glossary', name: 'wyrmlight' })
+    await writeEntity(dir, entity)
+
+    const raw = await fsp.readFile(join(dir, 'glossary', `${entity.id}.md`), 'utf8')
+    expect(raw).not.toContain('tags:')
+    expect(raw).not.toContain('pins:')
+
+    const [found] = await listEntities(dir)
+    expect(found.tags).toBeUndefined()
+    expect(found.pins).toBeUndefined()
+  })
 })
 
 describe('deleteEntity', () => {
