@@ -181,6 +181,48 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   lineHeight: 1.7
 }
 
+/* ---------- Writing stats (4c, brief §8) ---------- */
+
+/**
+ * How "words written today" is measured. The brief warns against making this
+ * obnoxiously gamified, and the three modes disagree most on exactly the day
+ * that matters: one spent cutting.
+ */
+export type WordCountMode =
+  /** End-of-day total minus yesterday's. A day spent cutting reads negative,
+   *  and the app says so rather than flattering the writer. */
+  | 'net'
+  /** Only additions counted, deletions ignored. Kinder to revision days, but
+   *  retyping the same sentence counts every time. */
+  | 'added'
+  /** Net, floored at zero — a cutting day reads 0 instead of negative. */
+  | 'net-positive'
+
+/** One calendar day of writing, derived from git history (main/wyrm/stats.ts). */
+export interface DayStat {
+  /** Local calendar date, YYYY-MM-DD. */
+  date: string
+  /** Total manuscript words at this day's last checkpoint. */
+  total: number
+  /** This day's end-of-day total minus the previous active day's. May be negative. */
+  net: number
+  /** Sum of the positive per-checkpoint changes within the day. Never negative. */
+  added: number
+  /** Checkpoints recorded on this day. */
+  commits: number
+}
+
+export interface StatsSettings {
+  /** Words per day the writer is aiming for. */
+  dailyGoal: number
+  mode: WordCountMode
+}
+
+export const DEFAULT_STATS: StatsSettings = {
+  dailyGoal: 500,
+  mode: 'net'
+}
+
 /* ---------- Local backup (F-01) ---------- */
 
 export interface BackupSettings {
