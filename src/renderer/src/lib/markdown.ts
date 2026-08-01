@@ -131,7 +131,7 @@ export function docToMarkdown(doc: JSONContent): string {
   return paragraphs.join('\n\n') + (paragraphs.length > 0 ? '\n' : '')
 }
 
-export function countWords(text: string): number {
-  const words = text.trim().split(/\s+/).filter(Boolean)
-  return words.length
-}
+// Re-exported so the existing `from './markdown'` imports keep working, but
+// the definition lives in shared/ because the main-process stats engine needs
+// the identical rule — see the note there.
+export { countWords } from '../../../shared/words'
