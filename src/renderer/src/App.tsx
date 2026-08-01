@@ -72,12 +72,17 @@ function StatusBar(): JSX.Element {
       : backupSettings?.path
         ? '◆ LOCAL + BACKUP'
         : '◆ LOCAL'
+  // One switch covers every ambient counter (here and in the editor header):
+  // a writer who does not want to watch a number climb does not want it in
+  // two places. Writing Stats still answers on demand.
+  const showCounter = statsSettings?.showCounter ?? true
+
   return (
     <div className="status-bar">
-      <span>{wordCount.toLocaleString()} WORDS</span>
+      {showCounter && <span>{wordCount.toLocaleString()} WORDS</span>}
       {activeDoc?.meta.status && <span>{activeDoc.meta.status.toUpperCase()}</span>}
       <span>{saveLabel}</span>
-      {today && (
+      {showCounter && today && (
         <span
           className={today.goalMet ? 'stat-goal met' : 'stat-goal'}
           title="Words today, from your checkpoint history"

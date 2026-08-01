@@ -24,6 +24,8 @@ export function Editor(): JSX.Element {
   const activeId = useWyrm((s) => s.activeId)
   const activeDoc = useWyrm((s) => s.activeDoc)
   const wordCount = useWyrm((s) => s.wordCount)
+  // See StatsSettings.showCounter — the ambient counters hide together.
+  const showCounter = useWyrm((s) => s.statsSettings?.showCounter) ?? true
   const setEditor = useWyrm((s) => s.setEditor)
   const editorChanged = useWyrm((s) => s.editorChanged)
   const openEntityPanel = useWyrm((s) => s.openEntityPanel)
@@ -96,7 +98,7 @@ export function Editor(): JSX.Element {
     <div className="terminal">
       <div className="terminal-top">
         <span>{activeDoc?.meta.title ?? ''}</span>
-        <span>{wordCount.toLocaleString()} words</span>
+        {showCounter && <span>{wordCount.toLocaleString()} words</span>}
       </div>
       <div className="terminal-scroll" onContextMenu={onContextMenu}>
         <EditorContent editor={editor} className="editor-host" />

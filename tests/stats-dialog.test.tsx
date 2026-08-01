@@ -120,6 +120,17 @@ describe('the writing stats screen', () => {
     expect(screen.getByText(/\+200 of 500 words/i)).toBeTruthy()
   })
 
+  it('still reports everything when the ambient counters are switched off', async () => {
+    // Turning the counter off is about not being watched while drafting, not
+    // about giving up the numbers — asking for them explicitly still answers.
+    await renderStats([{ date: today, total: 900, net: 900, added: 900, commits: 2 }], {
+      showCounter: false
+    })
+
+    expect(tile('TODAY')).toBe('+900')
+    expect(tile('MANUSCRIPT')).toBe('900')
+  })
+
   it('labels the current day as Today and dates the rest', async () => {
     await renderStats([
       { date: yesterday(), total: 400, net: 400, added: 400, commits: 1 },
