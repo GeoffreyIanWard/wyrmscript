@@ -138,6 +138,30 @@ describe('writeEntity / listEntities', () => {
     expect(found.tags).toBeUndefined()
     expect(found.pins).toBeUndefined()
   })
+
+  it('round-trips parentId (F-13)', async () => {
+    const dir = await makeProject()
+    const country = makeEntity({ type: 'world', name: 'Narrow Coast' })
+    const city = makeEntity({ type: 'world', name: 'Harrowgate', parentId: country.id })
+    await writeEntity(dir, country)
+    await writeEntity(dir, city)
+
+    const all = await listEntities(dir)
+    const found = all.find((e) => e.name === 'Harrowgate')
+    expect(found?.parentId).toBe(country.id)
+  })
+
+  it('leaves parentId undefined rather than writing an empty-string frontmatter value', async () => {
+    const dir = await makeProject()
+    const entity = makeEntity({ type: 'world', name: 'Narrow Coast' })
+    await writeEntity(dir, entity)
+
+    const raw = await fsp.readFile(join(dir, 'world', `${entity.id}.md`), 'utf8')
+    expect(raw).not.toContain('parentId:')
+
+    const [found] = await listEntities(dir)
+    expect(found.parentId).toBeUndefined()
+  })
 })
 
 describe('deleteEntity', () => {
