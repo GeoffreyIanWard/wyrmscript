@@ -103,6 +103,15 @@ export interface Entity {
   tags?: string[]
   /** From `CHARACTER_PINS`. Meaningless and left empty on `world`/`glossary` entities. */
   pins?: string[]
+  /**
+   * F-13: nesting for `world` entities only (a building inside a
+   * neighbourhood inside a city). One field, not a separate hierarchy
+   * structure — the tree is reconstructed on the fly by following parent
+   * pointers, the same "no second source of truth" reasoning behind every
+   * other F-nn this session (tags, pins, plotlines, relationships). Meaningless
+   * on `character`/`glossary` entities.
+   */
+  parentId?: string
   created: string
   modified: string
 }

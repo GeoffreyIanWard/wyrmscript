@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { CHARACTER_PINS } from '../../../shared/types'
 import { api } from '../lib/api'
 import { ENTITY_LABELS, findBacklinks, type Backlink } from '../lib/entities'
+import { locationChain, wouldCreateCycle } from '../lib/locations'
 import { addTag, removeTag, togglePin } from '../lib/tags'
 import { useWyrm } from '../store'
 
@@ -13,6 +14,7 @@ import { useWyrm } from '../store'
  */
 export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
   const project = useWyrm((s) => s.project)
+  const entities = useWyrm((s) => s.entities)
   const entity = useWyrm((s) => s.entities.find((e) => e.id === entityId) ?? null)
   const saveEntity = useWyrm((s) => s.saveEntity)
   const deleteEntity = useWyrm((s) => s.deleteEntity)
@@ -28,6 +30,7 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
   const [tags, setTags] = useState<string[]>(entity?.tags ?? [])
   const [tagInput, setTagInput] = useState('')
   const [pins, setPins] = useState<string[]>(entity?.pins ?? [])
+  const [parentId, setParentId] = useState(entity?.parentId ?? '')
   const [dirty, setDirty] = useState(false)
   const [backlinks, setBacklinks] = useState<Backlink[] | null>(null)
 
@@ -63,10 +66,20 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
         .filter(Boolean),
       body,
       tags: tags.length ? tags : undefined,
-      pins: pins.length ? pins : undefined
+      pins: pins.length ? pins : undefined,
+      parentId: parentId || undefined
     })
     setDirty(false)
   }
+
+  // Live preview of the breadcrumb as the dropdown changes, before Save
+  // Entry commits it — computed against a copy of the list with only this
+  // entity's parentId swapped, so every other entity's chain stays correct.
+  const previewEntities =
+    entity.type === 'world'
+      ? entities.map((e) => (e.id === entity.id ? { ...e, parentId: parentId || undefined } : e))
+      : entities
+  const chain = locationChain(previewEntities, entity.id)
 
   const bodyLabel =
     entity.type === 'glossary'
@@ -173,6 +186,42 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+        {entity.type === 'world' && (
+          <div className="entry-field">
+            <div className="field-name">PARENT LOCATION</div>
+            <select
+              className="text-field"
+              value={parentId}
+              onChange={(e) => {
+                setParentId(e.target.value)
+                setDirty(true)
+              }}
+            >
+              <option value="">None</option>
+              {entities
+                .filter(
+                  (e) =>
+                    e.type === 'world' &&
+                    e.id !== entity.id &&
+                    !wouldCreateCycle(entities, entity.id, e.id)
+                )
+                .map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+            </select>
+            {chain.length > 1 && (
+              <div className="dialog-hint">
+                Located in:{' '}
+                {chain
+                  .slice(0, -1)
+                  .map((a) => a.name)
+                  .join(' → ')}
+              </div>
+            )}
           </div>
         )}
         <div className="entry-field">

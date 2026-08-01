@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import type { Entity } from '../../../shared/types'
 import { api } from '../lib/api'
 import { ENTITY_LABELS, findBacklinks, type Backlink } from '../lib/entities'
+import { locationChain } from '../lib/locations'
 import { useWyrm } from '../store'
 
 /**
@@ -37,6 +38,8 @@ export function EntityPanel(): JSX.Element | null {
 
   if (!entity) return null
 
+  const locatedIn = entity.type === 'world' ? locationChain(entities, entity.id).slice(0, -1) : []
+
   return (
     <div className="entity-panel">
       <div className="panel-title">
@@ -50,6 +53,12 @@ export function EntityPanel(): JSX.Element | null {
       </div>
       <div className="panel-body">
         <h3>{entity.name}</h3>
+        {locatedIn.length > 0 && (
+          <div className="panel-field">
+            <div className="field-name">LOCATED IN</div>
+            <div className="field-value">{locatedIn.map((a) => a.name).join(' → ')}</div>
+          </div>
+        )}
         {entity.aliases.length > 0 && (
           <div className="panel-field">
             <div className="field-name">ALIASES</div>
