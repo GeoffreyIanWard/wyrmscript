@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { DEFAULT_APPEARANCE } from '../src/shared/types'
-import type { AppearanceSettings } from '../src/shared/types'
+import { DEFAULT_APPEARANCE, DEFAULT_STATS } from '../src/shared/types'
+import type { AppearanceSettings, StatsSettings } from '../src/shared/types'
 import { api } from '../src/renderer/src/lib/api'
 import { useWyrm } from '../src/renderer/src/store'
 import { PrefsDialog } from '../src/renderer/src/components/Dialogs'
@@ -13,12 +13,25 @@ import { PrefsDialog } from '../src/renderer/src/components/Dialogs'
  * These cover the store/persistence contract and the Preferences controls.
  */
 
-function renderPrefs(appearance: AppearanceSettings = DEFAULT_APPEARANCE): {
+function renderPrefs(
+  appearance: AppearanceSettings = DEFAULT_APPEARANCE,
+  stats: StatsSettings = DEFAULT_STATS
+): {
   onChange: ReturnType<typeof vi.fn>
+  onStatsChange: ReturnType<typeof vi.fn>
 } {
   const onChange = vi.fn()
-  render(<PrefsDialog appearance={appearance} onChange={onChange} onClose={() => {}} />)
-  return { onChange }
+  const onStatsChange = vi.fn()
+  render(
+    <PrefsDialog
+      appearance={appearance}
+      stats={stats}
+      onChange={onChange}
+      onStatsChange={onStatsChange}
+      onClose={() => {}}
+    />
+  )
+  return { onChange, onStatsChange }
 }
 
 beforeEach(() => {

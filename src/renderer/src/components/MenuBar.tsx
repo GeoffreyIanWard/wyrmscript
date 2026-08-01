@@ -16,6 +16,7 @@ type MenuBarProps = {
   onVersionDialog: (dialog: 'commit' | 'history' | 'variants') => void
   onCompile: () => void
   onBackup: () => void
+  onStats: () => void
   onSyncSettings: () => void
   onSearch: () => void
   onPalette: () => void
@@ -31,6 +32,7 @@ export function MenuBar({
   onVersionDialog,
   onCompile,
   onBackup,
+  onStats,
   onSyncSettings,
   onSearch,
   onPalette,
@@ -220,6 +222,8 @@ export function MenuBar({
           disabled: !hasProject,
           action: () => createEntry('world')
         },
+        { kind: 'sep' },
+        { kind: 'item', label: 'Writing Stats…', disabled: !hasProject, action: onStats },
         { kind: 'sep' },
         { kind: 'item', label: 'Backup…', disabled: !hasProject, action: onBackup },
         {
