@@ -1055,6 +1055,96 @@ button {
   text-decoration: underline;
 }
 
+/* ---------- character graph (F-11) ---------- */
+
+.character-graph-dialog {
+  max-width: 760px;
+}
+
+.character-graph-track {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 8px;
+}
+
+.character-graph-cluster-label {
+  position: absolute;
+  top: 0;
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border-bottom: 1px dashed var(--ink);
+  padding-bottom: 4px;
+}
+
+.character-graph-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+}
+
+.character-graph-edge {
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.character-graph-edge-label {
+  font-size: 9px;
+  fill: var(--ink);
+  text-anchor: middle;
+}
+
+.character-graph-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  padding: 3px 6px;
+  font-size: 10px;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.character-graph-node:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.character-graph-add {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.character-graph-add .text-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.character-graph-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.character-graph-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 4px;
+}
+
 .timeline-date {
   flex: none;
   width: 120px;

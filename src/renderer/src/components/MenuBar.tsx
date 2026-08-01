@@ -20,6 +20,7 @@ type MenuBarProps = {
   onTimeline: () => void
   onPlotGraph: () => void
   onPlotlines: () => void
+  onCharacterGraph: () => void
   onSyncSettings: () => void
   onSearch: () => void
   onPalette: () => void
@@ -39,6 +40,7 @@ export function MenuBar({
   onTimeline,
   onPlotGraph,
   onPlotlines,
+  onCharacterGraph,
   onSyncSettings,
   onSearch,
   onPalette,
@@ -233,6 +235,12 @@ export function MenuBar({
         { kind: 'item', label: 'Timeline…', disabled: !hasProject, action: onTimeline },
         { kind: 'item', label: 'Plot Graph…', disabled: !hasProject, action: onPlotGraph },
         { kind: 'item', label: 'Plotlines…', disabled: !hasProject, action: onPlotlines },
+        {
+          kind: 'item',
+          label: 'Character Graph…',
+          disabled: !hasProject,
+          action: onCharacterGraph
+        },
         { kind: 'sep' },
         { kind: 'item', label: 'Backup…', disabled: !hasProject, action: onBackup },
         {

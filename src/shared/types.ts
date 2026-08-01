@@ -142,6 +142,26 @@ export interface Plotline {
   modified: string
 }
 
+/**
+ * F-11: a character graph edge. Typed and directional — "sibling of" reads
+ * differently forwards and backwards, and only a directional edge can
+ * answer "who is estranged from whom" rather than just "these two are
+ * connected somehow." A new lightweight record, the same shape of decision
+ * as F-04's `Plotline`: not a field on `Entity` (which would drift out of
+ * sync the moment one side of a two-way relationship is edited without the
+ * other), and not a story-bible entity of its own (it never auto-links).
+ */
+export interface Relationship {
+  id: string
+  /** Character entity ids — the direction the label reads, `fromId` → `toId`. */
+  fromId: string
+  toId: string
+  /** e.g. "sibling of", "estranged from". Free-form, writer-owned. */
+  label: string
+  created: string
+  modified: string
+}
+
 export interface CommitInfo {
   oid: string
   message: string
@@ -436,6 +456,11 @@ export interface WyrmApi {
   listPlotlines(path: string): Promise<Plotline[]>
   writePlotline(path: string, plotline: Plotline): Promise<void>
   deletePlotline(path: string, id: string): Promise<void>
+
+  /** F-11: character graph edges. */
+  listRelationships(path: string): Promise<Relationship[]>
+  writeRelationship(path: string, relationship: Relationship): Promise<void>
+  deleteRelationship(path: string, id: string): Promise<void>
 
   /** Show a save dialog and write compiled output. Returns the path, or null if cancelled. */
   exportFile(defaultName: string, data: string | Uint8Array): Promise<string | null>
