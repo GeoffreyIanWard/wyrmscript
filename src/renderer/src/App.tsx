@@ -11,6 +11,7 @@ import { StatsDialog } from './components/StatsDialog'
 import { TimelineDialog } from './components/TimelineDialog'
 import { PlotGraphDialog } from './components/PlotGraphDialog'
 import { PlotlinesDialog } from './components/PlotlinesDialog'
+import { CharacterGraphDialog } from './components/CharacterGraphDialog'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { CompileDialog } from './components/CompileDialog'
 import { BackupDialog } from './components/BackupDialog'
@@ -130,6 +131,7 @@ function App(): JSX.Element {
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [plotGraphOpen, setPlotGraphOpen] = useState(false)
   const [plotlinesOpen, setPlotlinesOpen] = useState(false)
+  const [characterGraphOpen, setCharacterGraphOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
   const [compileOpen, setCompileOpen] = useState(false)
@@ -238,6 +240,7 @@ function App(): JSX.Element {
         onTimeline={() => setTimelineOpen(true)}
         onPlotGraph={() => setPlotGraphOpen(true)}
         onPlotlines={() => setPlotlinesOpen(true)}
+        onCharacterGraph={() => setCharacterGraphOpen(true)}
         onSyncSettings={() => setSyncOpen(true)}
         onSearch={() => setSearchOpen(true)}
         onPalette={() => setPaletteOpen(true)}
@@ -305,6 +308,11 @@ function App(): JSX.Element {
             <PlotlinesDialog onClose={() => setPlotlinesOpen(false)} />
           </ErrorBoundary>
         )}
+        {characterGraphOpen && (
+          <ErrorBoundary label="Character graph" onDismiss={() => setCharacterGraphOpen(false)}>
+            <CharacterGraphDialog onClose={() => setCharacterGraphOpen(false)} />
+          </ErrorBoundary>
+        )}
         {compileOpen && (
           <ErrorBoundary label="Compile" onDismiss={() => setCompileOpen(false)}>
             <CompileDialog onClose={() => setCompileOpen(false)} />
@@ -354,6 +362,12 @@ function App(): JSX.Element {
                   title: 'Plotlines…',
                   subtitle: 'Project',
                   run: () => setPlotlinesOpen(true)
+                },
+                {
+                  id: 'character-graph',
+                  title: 'Character Graph…',
+                  subtitle: 'Project',
+                  run: () => setCharacterGraphOpen(true)
                 },
                 {
                   id: 'checkpoint',

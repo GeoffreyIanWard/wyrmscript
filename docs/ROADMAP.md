@@ -111,7 +111,7 @@ Deferred: a live in-session counter (the status bar's per-document count already
 
 ### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) 🔨
 
-Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built** — F-02/F-03/F-04/F-11 can proceed as views over its data rather than three incompatible metadata schemes. F-02 is the first of those views, also now built; F-29 gave it a second, richer rendering the same day; F-03 is the second view over the same coordinate, plotting tension instead of chronology; F-04 adds a fourth thing scenes can carry (a plotline membership, by tag) alongside tags/pins/timeline position/tension, and unblocks F-03's deferred multi-curve overlay whenever that's picked up.
+Timeline, plot graph, plotline tracking and graph views — now joined by the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built**, and with it, F-02, F-03, F-04 and F-11 — the primary sequence the brief laid out — are all shipped. F-02 is the first view over F-10's data, also now built; F-29 gave it a second, richer rendering the same day; F-03 is the second view over the same coordinate, plotting tension instead of chronology; F-04 adds a fourth thing scenes can carry (a plotline membership, by tag) and unblocks F-03's deferred multi-curve overlay whenever that's picked up; F-11 closes the sequence with a fifth view — a character graph — reusing F-04's plotline-record pattern for typed relationship edges and F-10's tags for faction clustering. Only F-12 (world map) and F-13 (nested locations) remain undesigned in this cluster.
 
 **5a. Pins, tags & factions (F-10) ✅** — shipped. `DocMeta` and `Entity` both gain `tags?: string[]`; `DocMeta` gains `pins?: string[]` from `DOC_PINS`, `Entity` gains `pins?: string[]` from `CHARACTER_PINS` (`src/shared/types.ts`). Both are plain frontmatter, matching how the story bible already stores everything — no `project.json` index, so the model versions and diffs with the file it describes.
 
@@ -161,6 +161,16 @@ Deferred, as scoped at design time: keyboard-driven tension adjustment (Enter op
 - **One curve on the plot graph remains unchanged for now** — F-04 existing is what F-03 was waiting on to make multi-curve overlays possible, but the plot graph itself wasn't touched in this pass; that's a follow-up, not part of what shipped here.
 
 Deferred, as scoped at design time: colour propagating beyond the Plotlines dialog; multi-curve overlays on the F-03 plot graph (now unblocked, not yet built); any automatic "is this plotline actually resolved" inference.
+
+**5f. Character graph (F-11) ✅** — shipped, completing the story-structure cluster's primary sequence (F-10 → F-02/F-29 → F-03 → F-04 → F-11). **Project → Character Graph…** maps characters into faction clusters with typed, directional relationship edges between them. Design settled 2026-08-01:
+
+- **Relationships are typed and directional** — a `Relationship` record (`fromId`, `toId`, `label`) rather than a symmetric, unlabelled edge. "Sibling of" reads the same both ways but "estranged from" doesn't, and only a directional edge can answer the question the original request actually asked ("who is estranged from whom").
+- **A new lightweight record, the same shape of decision as F-04's `Plotline`** — not a field on the character `Entity` (a `relationships: []` list on each character would drift out of sync the moment one side of a two-way relationship was edited without the other) and not its own story-bible entity (it never auto-links). Stored identically to plotlines: one frontmatter-only file per relationship, in a new `relationships/` directory (`main/wyrm/relationships.ts`, mirroring `plotlines.ts` exactly).
+- **Faction clustering reads a character's first tag** — F-10 deliberately never added a dedicated "faction" field (a faction is just a tag on `Entity`), so there is no marked field to group by. `lib/characterGraph.ts`'s `clusterCharacters` takes the first tag as the cluster key; untagged characters land in a single "Ungrouped" column rather than being hidden. This is a reading of existing data, not a new concept — a character with several tags doesn't get a second, more "correct" grouping key defined anywhere.
+- **Layout is deterministic, not manually draggable** — columns per cluster (alphabetical, Ungrouped always last), nodes stacked vertically within one. No node-position storage, no drag-to-reposition; this matches the design pass's scope (edge type, storage model, and graph scope were the three questions settled — manual layout was never one of them).
+- Clicking a node opens the character's full entry (`showEntity`), same as clicking a name anywhere else in the app; the graph's own inline form (two selects plus a label field) is the only way to add a relationship, with a matching list below for editing/deleting one without needing to trace a line on screen.
+
+Deferred, as scoped at design time: manual node dragging/positioning; relationships between non-character entities (world/glossary) — the request was specifically about characters; propagating faction colour the way F-04 keeps plotline colour scoped to its own dialog.
 
 ---
 
@@ -262,9 +272,9 @@ Concretely, once built:
 
 Still open, deliberately left for the implementation pass rather than blocking design sign-off: the exact wording of each fixed pin list; the skeuomorphic UI (pins with actual pin heads, tags shaped like little luggage tags, still 1-bit) that the original request asked for; and how the binder/entity editor surfaces "add a tag" versus "add a pin" as two visually distinct actions given they are two different mechanisms now.
 
-### F-11 · Graph views 💭
+### F-11 · Graph views ✅ shipped — see Execution order §5f
 
-Maps rather than lists: a **character graph** where characters can be grouped and joined by relationship edges, alongside the plot graph of F-03. Requested 2026-07-30. Depends on F-10 for what the nodes are and what edges mean — F-10's factions (§ above) already give one axis of grouping for free once they exist, entities sharing a faction tag. Open: are relationships their own entity (typed, directional, with a label like "brother of"), or free edges? Directional typed edges are more work but are the only version that can answer "who is estranged from whom".
+Maps rather than lists: a **character graph** where characters can be grouped and joined by relationship edges, alongside the plot graph of F-03. Requested 2026-07-30, design settled and built 2026-08-01: relationships are typed and directional (`Relationship`: fromId, toId, label), stored as their own lightweight record the same way F-04's plotlines are; faction clustering reads a character's first tag, since F-10 never added a dedicated faction field. See §5f for what shipped and what's deferred (manual node positioning, non-character relationships).
 
 Reconfirmed 2026-08-01 ("a system for observing relationships between characters") — same feature, no new information beyond what's captured above. F-10 (this depends on) is now built, so this is unblocked whenever it's picked up.
 
