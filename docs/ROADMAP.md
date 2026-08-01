@@ -111,7 +111,7 @@ Deferred: a live in-session counter (the status bar's per-document count already
 
 ### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) 🔨
 
-Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built** — F-02/F-03/F-04/F-11 can proceed as views over its data rather than three incompatible metadata schemes. F-02 is the first of those views, also now built; F-29 gave it a second, richer rendering the same day; F-03 is the second view over the same coordinate, plotting tension instead of chronology.
+Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built** — F-02/F-03/F-04/F-11 can proceed as views over its data rather than three incompatible metadata schemes. F-02 is the first of those views, also now built; F-29 gave it a second, richer rendering the same day; F-03 is the second view over the same coordinate, plotting tension instead of chronology; F-04 adds a fourth thing scenes can carry (a plotline membership, by tag) alongside tags/pins/timeline position/tension, and unblocks F-03's deferred multi-curve overlay whenever that's picked up.
 
 **5a. Pins, tags & factions (F-10) ✅** — shipped. `DocMeta` and `Entity` both gain `tags?: string[]`; `DocMeta` gains `pins?: string[]` from `DOC_PINS`, `Entity` gains `pins?: string[]` from `CHARACTER_PINS` (`src/shared/types.ts`). Both are plain frontmatter, matching how the story bible already stores everything — no `project.json` index, so the model versions and diffs with the file it describes.
 
@@ -151,6 +151,17 @@ Deferred, as scoped at design time: a real calendar/duration system, per-thread 
 
 Deferred, as scoped at design time: keyboard-driven tension adjustment (Enter opens a card same as the other two views; only mouse sets tension); a real "what does tension mean" rubric — it's explicitly whatever the writer says it is.
 
+**5e. Plotline tracking (F-04) ✅** — shipped. **Project → Plotlines…** tracks main plot, B-plots, romance arcs, and any other thread the writer names, answering "which threads are still open?" and "which scenes advance this arc?" Design settled 2026-08-01:
+
+- **A plotline is its own lightweight record** (`Plotline`: name, colour, status) — deliberately neither a story-bible `Entity` (a plotline never auto-links in prose, which is what `Entity` exists for) nor just a tag (a tag has nowhere to hang a colour or a status). Stored the same way as entities — one frontmatter-only file per plotline, in a new `plotlines/` directory (`main/wyrm/plotlines.ts`, mirroring `entities.ts`'s shape exactly) — so it versions and diffs with the project the same way everything else does.
+- **A scene joins a plotline by tag, matching its name** — not a stored id. Typing a plotline's name into a scene's existing "+ tag" field (F-10) is the entire linking mechanism; no new UI on the document side at all. Renaming a plotline is consequently a visible, deliberate act (re-tag the scenes that should follow), never a silent id remap.
+- **Status is a manual toggle on the plotline itself** (open/resolved) — not derived from any scene's pins. Consistent with `DocStatus` (draft/revised/final) already being a plain manual field rather than inferred from anything.
+- **Setup/payoff beats reuse F-10's existing `DOC_PINS`** (`Setup` / `Resolution`) rather than a plotline-specific vocabulary — a scene tagged with a plotline's name *and* pinned `Setup` (or `Resolution`) is read as that plotline's setup (or payoff) beat. One shared vocabulary, no new pin concept to design or maintain.
+- **Colour is a closed set of six swatches** (`PLOTLINE_COLOURS`), not a free color picker — same reasoning as `DOC_PINS`/`CHARACTER_PINS` being closed vocabularies: two plotlines are always visually distinguishable without depending on a writer's color sense, and the swatch list stays finite. Colour is scoped to the Plotlines dialog only, per the design decision — it does not propagate to the binder, timeline, or plot graph (a larger, cross-cutting change explicitly deferred).
+- **One curve on the plot graph remains unchanged for now** — F-04 existing is what F-03 was waiting on to make multi-curve overlays possible, but the plot graph itself wasn't touched in this pass; that's a follow-up, not part of what shipped here.
+
+Deferred, as scoped at design time: colour propagating beyond the Plotlines dialog; multi-curve overlays on the F-03 plot graph (now unblocked, not yet built); any automatic "is this plotline actually resolved" inference.
+
 ---
 
 ## Backlog
@@ -181,9 +192,9 @@ Arrange scenes on a chronological timeline of story events — distinct from bin
 
 Scenes plotted on a graph board to visualize dramatic shape — rising action, climaxes, falling action, resolution. Design settled and built 2026-08-01: x-axis is the F-02/F-29 timeline order (not a separate narrative-order field), y-axis is a manual 0–10 tension value set by dragging a node, one curve only for now (multiple curves per plotline needs F-04's model to exist first). See §5d for what shipped.
 
-### F-04 · Plotline tracking 💭
+### F-04 · Plotline tracking ✅ shipped — see Execution order §5e
 
-Track main plot, B-plots, romance/love-interest arcs, character arcs — and surface unresolved threads. Needs design, but the shape is likely: a **plotline** entity (name, type, colour, status) that scenes get tagged with, plus per-plotline setup/payoff beats so the app can answer "which threads are still open?" and "which scenes advance this arc?" Reuses the Phase 4 entity index and can share the label/colour chrome already in the binder. Natural companion to F-02 and F-03 — all three want scene-level metadata, so design the metadata model once for all of them.
+Track main plot, B-plots, romance/love-interest arcs, character arcs — and surface unresolved threads. Design settled and built 2026-08-01: a lightweight **plotline** record (name, colour, status) that scenes join by tag, with setup/payoff beats read from F-10's existing document pins rather than a new vocabulary. See §5e for what shipped and what's deferred (colour propagating beyond the Plotlines dialog, multi-curve plot-graph overlays).
 
 ### F-05 · More retro visual variants 🔨
 
