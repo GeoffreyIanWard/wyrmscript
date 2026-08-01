@@ -1145,6 +1145,79 @@ button {
   padding-bottom: 4px;
 }
 
+/* ---------- world map (F-12) ---------- */
+
+.world-map-dialog {
+  max-width: 720px;
+}
+
+.world-map-canvas {
+  position: relative;
+  border: 1px solid var(--ink);
+  background-image: var(--dither-25);
+  background-size: 4px 4px;
+  overflow: hidden;
+}
+
+.world-map-pin {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transform: translate(-50%, -100%);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.world-map-pin.dragging {
+  cursor: grabbing;
+  z-index: 2;
+}
+
+.world-map-pin:focus-visible {
+  outline: 1px dashed var(--ink);
+  outline-offset: 2px;
+}
+
+.world-map-pin-glyph {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 10px solid var(--ink);
+}
+
+.world-map-pin-label {
+  font-size: 10px;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 0 3px;
+}
+
+.world-map-list {
+  margin-top: 12px;
+}
+
+.world-map-list + .world-map-list {
+  margin-top: 6px;
+}
+
+.world-map-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--ink);
+  padding: 3px 0;
+}
+
 .timeline-date {
   flex: none;
   width: 120px;

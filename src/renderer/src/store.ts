@@ -17,6 +17,7 @@ import type {
   DocFile,
   Entity,
   EntityType,
+  MapPin,
   Plotline,
   ProjectInfo,
   Relationship,
@@ -61,6 +62,8 @@ interface WyrmState {
   plotlines: Plotline[]
   /** F-11: character graph edges, typed and directional. */
   relationships: Relationship[]
+  /** F-12: world map pin placements — a `world` entity with none isn't on the map yet. */
+  mapPins: MapPin[]
 
   boot(): Promise<void>
   newProject(title: string): Promise<void>
@@ -165,6 +168,12 @@ interface WyrmState {
   createRelationship(fromId: string, toId: string, label: string): Promise<Relationship | null>
   saveRelationship(relationship: Relationship): Promise<void>
   deleteRelationship(relationship: Relationship): Promise<void>
+
+  loadMapPins(): Promise<void>
+  /** Places a location if it has no pin yet, or moves its existing one — the
+   *  same drag/drop operation either way. */
+  setMapPin(entityId: string, x: number, y: number): Promise<void>
+  removeMapPin(pin: MapPin): Promise<void>
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -257,6 +266,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     mainView: { kind: 'doc' },
     plotlines: [],
     relationships: [],
+    mapPins: [],
     backupSettings: null,
     appearance: null,
     statsSettings: null,
@@ -886,6 +896,39 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) return
       await api.deleteRelationship(project.path, relationship.id)
       set({ relationships: get().relationships.filter((r) => r.id !== relationship.id) })
+      commitDirty = true
+    },
+
+    /* ---------- world map (F-12) ---------- */
+
+    async loadMapPins() {
+      const { project } = get()
+      if (!project) return
+      set({ mapPins: await api.listMapPins(project.path) })
+    },
+
+    async setMapPin(entityId, x, y) {
+      const { project } = get()
+      if (!project) return
+      const existing = get().mapPins.find((p) => p.entityId === entityId)
+      const now = new Date().toISOString()
+      const pin: MapPin = existing
+        ? { ...existing, x, y }
+        : { id: newId(), entityId, x, y, created: now, modified: now }
+      await api.writeMapPin(project.path, pin)
+      set({
+        mapPins: existing
+          ? get().mapPins.map((p) => (p.id === pin.id ? pin : p))
+          : [...get().mapPins, pin]
+      })
+      commitDirty = true
+    },
+
+    async removeMapPin(pin) {
+      const { project } = get()
+      if (!project) return
+      await api.deleteMapPin(project.path, pin.id)
+      set({ mapPins: get().mapPins.filter((p) => p.id !== pin.id) })
       commitDirty = true
     }
   }
