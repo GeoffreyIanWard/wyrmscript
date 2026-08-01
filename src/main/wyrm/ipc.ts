@@ -8,6 +8,7 @@ import type {
   DocFile,
   Entity,
   EntityType,
+  Plotline,
   ProjectData,
   StatsSettings,
   SyncOutcome,
@@ -15,6 +16,7 @@ import type {
 } from '../../shared/types'
 import { commitAll, createVariant, deleteVariant, listVariants, logCommits } from './git'
 import { deleteEntity, listEntities, readAllDocs, writeEntity } from './entities'
+import { deletePlotline, listPlotlines, writePlotline } from './plotlines'
 import {
   createProject,
   docRepoPath,
@@ -137,6 +139,12 @@ export function registerIpc(): void {
     deleteEntity(path, type, id)
   )
   ipcMain.handle('doc:readAll', (_e, path: string) => readAllDocs(path))
+
+  ipcMain.handle('plotline:list', (_e, path: string) => listPlotlines(path))
+  ipcMain.handle('plotline:write', (_e, path: string, plotline: Plotline) =>
+    writePlotline(path, plotline)
+  )
+  ipcMain.handle('plotline:delete', (_e, path: string, id: string) => deletePlotline(path, id))
 
   /* ---------- appearance & page geometry (F-05, F-06) ---------- */
 

@@ -12,6 +12,7 @@ import type {
   Entity,
   EntityType,
   DayStat,
+  Plotline,
   ProjectData,
   ProjectInfo,
   StatsSettings,
@@ -44,6 +45,7 @@ interface MockProject {
   commits: MockCommit[] // newest last
   variants: Map<string, (VariantInfo & { doc: DocFile })[]>
   entities: Map<string, Entity>
+  plotlines: Map<string, Plotline>
 }
 
 function snapshotOf(docs: Map<string, DocFile>): Map<string, DocFile> {
@@ -95,7 +97,14 @@ function starterProject(title: string): MockProject {
       trash: []
     }
   }
-  const project: MockProject = { info, docs, commits: [], variants: new Map(), entities: new Map() }
+  const project: MockProject = {
+    info,
+    docs,
+    commits: [],
+    variants: new Map(),
+    entities: new Map(),
+    plotlines: new Map()
+  }
   commitInto(project, `Create project “${title}”`)
   return project
 }
@@ -190,7 +199,18 @@ function demoProject(): MockProject {
     'Harbor deities of uncertain number. Sailors make the harbor-sign with two fingers rather than pray aloud.'
   )
 
-  const project: MockProject = { info, docs, commits: [], variants: new Map(), entities }
+  const plotlines = new Map<string, Plotline>()
+  const plotlineId = id()
+  plotlines.set(plotlineId, {
+    id: plotlineId,
+    name: 'The Siege of the Narrows',
+    colour: '#8b2e2e',
+    status: 'open',
+    created: now,
+    modified: now
+  })
+
+  const project: MockProject = { info, docs, commits: [], variants: new Map(), entities, plotlines }
 
   // Fabricate believable history for the demo: three drafts of scene2.
   const hours = 3600_000
@@ -396,6 +416,16 @@ export function createMockApi(): WyrmApi {
     },
     async readAllDocs(path: string): Promise<DocFile[]> {
       return [...mustGet(path).docs.values()].map(cloneDoc)
+    },
+
+    async listPlotlines(path: string): Promise<Plotline[]> {
+      return [...mustGet(path).plotlines.values()].map((p) => ({ ...p }))
+    },
+    async writePlotline(path: string, plotline: Plotline): Promise<void> {
+      mustGet(path).plotlines.set(plotline.id, { ...plotline, modified: new Date().toISOString() })
+    },
+    async deletePlotline(path: string, id: string): Promise<void> {
+      mustGet(path).plotlines.delete(id)
     },
     async getSyncStatus(path: string): Promise<SyncStatus> {
       // login/clientIdSet are app-level and change after a stored snapshot —

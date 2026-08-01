@@ -973,6 +973,88 @@ button {
   padding: 0 2px;
 }
 
+/* ---------- plotlines (F-04) ---------- */
+
+.plotlines-dialog {
+  max-width: 620px;
+}
+
+.plotline-add {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.plotline-add .text-field {
+  flex: 1;
+}
+
+.plotline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.plotline-row {
+  border: 1px solid var(--ink);
+  padding: 8px;
+}
+
+.plotline-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plotline-swatches {
+  display: flex;
+  gap: 3px;
+  flex: none;
+}
+
+.plotline-swatch {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--ink);
+  flex: none;
+}
+
+.plotline-swatch.on {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.plotline-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.plotline-status {
+  flex: none;
+  border: 1px solid var(--ink);
+  padding: 2px 6px;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+.plotline-status.on {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.plotline-meta {
+  display: flex;
+  gap: 14px;
+  font-size: 10px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.plotline-scene-link {
+  text-decoration: underline;
+}
+
 .timeline-date {
   flex: none;
   width: 120px;

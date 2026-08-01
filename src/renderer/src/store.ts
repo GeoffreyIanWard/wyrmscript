@@ -17,9 +17,11 @@ import type {
   DocFile,
   Entity,
   EntityType,
+  Plotline,
   ProjectInfo,
   StatsSettings
 } from '../../shared/types'
+import { PLOTLINE_COLOURS } from '../../shared/types'
 import { api } from './lib/api'
 import { compile, compileFileName } from './lib/compile'
 import { docToMarkdown, markdownToDoc, countWords } from './lib/markdown'
@@ -53,6 +55,9 @@ interface WyrmState {
   /** Entity shown in the side panel beside the writing terminal. */
   panelEntityId: string | null
   mainView: MainView
+
+  /** F-04. A scene belongs to one by carrying a tag equal to its name. */
+  plotlines: Plotline[]
 
   boot(): Promise<void>
   newProject(title: string): Promise<void>
@@ -147,6 +152,11 @@ interface WyrmState {
   openEntityPanel(id: string | null): void
   showEntity(id: string): void
   showDoc(): void
+
+  loadPlotlines(): Promise<void>
+  createPlotline(name: string): Promise<Plotline | null>
+  savePlotline(plotline: Plotline): Promise<void>
+  deletePlotline(plotline: Plotline): Promise<void>
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -237,6 +247,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     entityIndex: buildEntityIndex([]),
     panelEntityId: null,
     mainView: { kind: 'doc' },
+    plotlines: [],
     backupSettings: null,
     appearance: null,
     statsSettings: null,
@@ -779,6 +790,49 @@ export const useWyrm = create<WyrmState>((set, get) => {
 
     showDoc() {
       set({ mainView: { kind: 'doc' } })
+    },
+
+    /* ---------- plotlines (F-04) ---------- */
+
+    async loadPlotlines() {
+      const { project } = get()
+      if (!project) return
+      set({ plotlines: await api.listPlotlines(project.path) })
+    },
+
+    async createPlotline(name) {
+      const { project } = get()
+      if (!project) return null
+      const now = new Date().toISOString()
+      const plotline: Plotline = {
+        id: newId(),
+        name: name.trim() || 'Untitled',
+        colour: PLOTLINE_COLOURS[get().plotlines.length % PLOTLINE_COLOURS.length],
+        status: 'open',
+        created: now,
+        modified: now
+      }
+      await api.writePlotline(project.path, plotline)
+      set({ plotlines: [...get().plotlines, plotline] })
+      commitDirty = true
+      return plotline
+    },
+
+    async savePlotline(plotline) {
+      const { project } = get()
+      if (!project) return
+      const updated: Plotline = { ...plotline, modified: new Date().toISOString() }
+      await api.writePlotline(project.path, updated)
+      set({ plotlines: get().plotlines.map((p) => (p.id === updated.id ? updated : p)) })
+      commitDirty = true
+    },
+
+    async deletePlotline(plotline) {
+      const { project } = get()
+      if (!project) return
+      await api.deletePlotline(project.path, plotline.id)
+      set({ plotlines: get().plotlines.filter((p) => p.id !== plotline.id) })
+      commitDirty = true
     }
   }
 })
