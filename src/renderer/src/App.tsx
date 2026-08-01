@@ -9,6 +9,7 @@ import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog } from './components/Dialogs'
 import { StatsDialog } from './components/StatsDialog'
 import { TimelineDialog } from './components/TimelineDialog'
+import { PlotGraphDialog } from './components/PlotGraphDialog'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { CompileDialog } from './components/CompileDialog'
 import { BackupDialog } from './components/BackupDialog'
@@ -126,6 +127,7 @@ function App(): JSX.Element {
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [statsOpen, setStatsOpen] = useState(false)
   const [timelineOpen, setTimelineOpen] = useState(false)
+  const [plotGraphOpen, setPlotGraphOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
   const [compileOpen, setCompileOpen] = useState(false)
@@ -232,6 +234,7 @@ function App(): JSX.Element {
         onBackup={() => setBackupOpen(true)}
         onStats={() => setStatsOpen(true)}
         onTimeline={() => setTimelineOpen(true)}
+        onPlotGraph={() => setPlotGraphOpen(true)}
         onSyncSettings={() => setSyncOpen(true)}
         onSearch={() => setSearchOpen(true)}
         onPalette={() => setPaletteOpen(true)}
@@ -289,6 +292,11 @@ function App(): JSX.Element {
             <TimelineDialog onClose={() => setTimelineOpen(false)} />
           </ErrorBoundary>
         )}
+        {plotGraphOpen && (
+          <ErrorBoundary label="Plot graph" onDismiss={() => setPlotGraphOpen(false)}>
+            <PlotGraphDialog onClose={() => setPlotGraphOpen(false)} />
+          </ErrorBoundary>
+        )}
         {compileOpen && (
           <ErrorBoundary label="Compile" onDismiss={() => setCompileOpen(false)}>
             <CompileDialog onClose={() => setCompileOpen(false)} />
@@ -326,6 +334,12 @@ function App(): JSX.Element {
                   title: 'Timeline…',
                   subtitle: 'Project',
                   run: () => setTimelineOpen(true)
+                },
+                {
+                  id: 'plot-graph',
+                  title: 'Plot Graph…',
+                  subtitle: 'Project',
+                  run: () => setPlotGraphOpen(true)
                 },
                 {
                   id: 'checkpoint',

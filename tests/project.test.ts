@@ -82,6 +82,14 @@ describe('doc read/write', () => {
     expect(after.meta.timelineOrder).toBe(1.5)
     expect(after.meta.timelineDate).toBe('Year 3, first thaw')
   })
+
+  it('round-trips tension (F-03)', async () => {
+    const { dir, docId } = await makeProject()
+    const before = await readDoc(dir, docId)
+    await writeDoc(dir, { meta: { ...before.meta, tension: 7 }, body: before.body })
+    const after = await readDoc(dir, docId)
+    expect(after.meta.tension).toBe(7)
+  })
 })
 
 describe('commitAll', () => {
