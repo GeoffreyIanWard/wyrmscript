@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { BinderNode, DocFile } from '../src/shared/types'
-import { orderBetween, timelineCards } from '../src/renderer/src/lib/timeline'
+import {
+  orderBetween,
+  snapToGrid,
+  stackByPosition,
+  timelineCards,
+  type TimelineCard
+} from '../src/renderer/src/lib/timeline'
 
 function doc(id: string, title: string, overrides: Partial<DocFile['meta']> = {}): DocFile {
   const now = new Date().toISOString()
@@ -79,5 +85,51 @@ describe('orderBetween', () => {
 
   it('returns the midpoint when dropped between two cards', () => {
     expect(orderBetween(2, 4)).toBe(3)
+  })
+})
+
+function card(id: string, order: number, date?: string): TimelineCard {
+  return { id, title: id.toUpperCase(), order, date }
+}
+
+describe('snapToGrid', () => {
+  it('rounds to the nearest grid line at the default grid size', () => {
+    expect(snapToGrid(0.4)).toBe(0)
+    expect(snapToGrid(0.6)).toBe(1)
+    expect(snapToGrid(1.3)).toBe(1)
+    expect(snapToGrid(-0.3)).toBe(0)
+  })
+
+  it('honours a custom grid size', () => {
+    expect(snapToGrid(2.4, 1)).toBe(2)
+    expect(snapToGrid(2.6, 1)).toBe(3)
+  })
+})
+
+describe('stackByPosition', () => {
+  it('gives every card its own stack when none share a grid position', () => {
+    const cards = [card('a', 0), card('b', 1), card('c', 2)]
+    expect(stackByPosition(cards)).toEqual([[cards[0]], [cards[1]], [cards[2]]])
+  })
+
+  it('groups cards landing on the same grid position into one stack', () => {
+    const cards = [card('a', 1), card('b', 1), card('c', 5)]
+    expect(stackByPosition(cards)).toEqual([[cards[0], cards[1]], [cards[2]]])
+  })
+
+  it('orders stacks by position ascending, regardless of input order', () => {
+    const cards = [card('c', 5), card('a', 0), card('b', 2)]
+    expect(stackByPosition(cards).map((group) => group[0].id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('preserves each stack’s internal order from the input array', () => {
+    const cards = [card('b', 1), card('a', 1)]
+    expect(stackByPosition(cards)).toEqual([[cards[0], cards[1]]])
+  })
+
+  it('treats near-identical values as the same stack once snapped', () => {
+    // 1.02 and 0.99 both round to the 1.0 grid line at the default 0.25 grid.
+    const cards = [card('a', 1.02), card('b', 0.99)]
+    expect(stackByPosition(cards)).toEqual([[cards[0], cards[1]]])
   })
 })
