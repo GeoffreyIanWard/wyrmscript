@@ -109,9 +109,18 @@ Decisions worth keeping straight:
 
 Deferred: a live in-session counter (the status bar's per-document count already covers "am I writing"), and best-day/total-words-this-month style figures.
 
-### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) 💭
+### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) 🔨
 
-Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **Design F-10 (pins & tags) first and build nothing else until it settles.** Every item here hangs off scene-level metadata, which is precisely what F-10 defines; the roadmap has deferred that model twice already, and the 2026-07-30 requests made it the gating item rather than one feature among several. Once pins and tags exist, the timeline, the plot graph and the character graph are all _views over the same data_ rather than three incompatible metadata schemes. High-value thinking, low-volume output.
+Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built** — F-02/F-03/F-04/F-11 can proceed as views over its data rather than three incompatible metadata schemes.
+
+**5a. Pins, tags & factions (F-10) ✅** — shipped. `DocMeta` and `Entity` both gain `tags?: string[]`; `DocMeta` gains `pins?: string[]` from `DOC_PINS`, `Entity` gains `pins?: string[]` from `CHARACTER_PINS` (`src/shared/types.ts`). Both are plain frontmatter, matching how the story bible already stores everything — no `project.json` index, so the model versions and diffs with the file it describes.
+
+- **Tags** are free-form, added by typing into the "+ tag" field and pressing Enter; a faction ("House Voss") is nothing but a tag several entities share, and `scene` (`SCENE_TAG`) is nothing but a tag on a document — no new `BinderNodeType`, so F-02/F-03/F-04 can filter on it later without any document-kind change.
+- **Pins** are a closed, app-shipped vocabulary and cannot be invented by the writer — a dropdown toggles membership. Documents get `DOC_PINS` (Setup, Rising Action, Climax, Falling Action, Resolution); characters get `CHARACTER_PINS` (Protagonist, Antagonist, Viewpoint Character). World/glossary entities have no pin vocabulary yet, per the original design — none invented speculatively.
+- **UI split by component's own convention rather than one shared widget**: the writing terminal's tags/pins bar (`Editor.tsx`'s `DocMetaBar`) writes immediately, the same "no debounce for metadata" reasoning as 4c's stats; the story-bible entry editor (`EntityEditor.tsx`) queues tags/pins in local state like every other field there, applied on the existing explicit **Save Entry**. Both bars live in chrome, not on the page itself — the doc header row is a second flex row inside `.terminal-chrome`, which only appears on hover alongside the title/word-count row already there (the page-is-sacred house rule extends to metadata, not just notifications).
+- `entities.ts`'s `writeEntity` omits `tags`/`pins` from frontmatter entirely when empty, so entities untouched by F-10 keep the frontmatter they always had rather than gaining `tags: []` on every save; `gray-matter`'s YAML dumper throws on an explicit `undefined` value, which is why the store's `updateDocMeta` deletes the key rather than setting it to `undefined` when a writer removes the last tag.
+
+Deferred, as scoped at design time: the skeuomorphic treatment (pin heads, luggage-tag-shaped tags, still 1-bit) — the current chips/toggles are functional but plain, matching the rest of the chrome rather than the request's original visual ambition. Revisit alongside F-20/F-21/F-22's other editor-pane visual work rather than blocking F-02/F-03/F-04 on it.
 
 ---
 
@@ -191,9 +200,9 @@ Clicking a folder in the binder currently only expands or collapses it. It shoul
 
 An icon on an open document expands the editor pane to the whole screen; the same icon returns to the standard view. Requested 2026-07-30. Small and self-contained — binder, side panel, and status bar hide, the page keeps its measure and centres. Wants a period-correct glyph rather than a modern expand arrow: the System-era idiom is a **zoom box** (the little nested-squares control already drawn in the main window's title bar), so reuse that vocabulary. Note there is already a disabled `Composition Mode` (⌥⌘F) item in the View menu — this is that item, and it should adopt the shortcut rather than inventing a second one.
 
-### F-10 · Pins, tags & factions ✅ designed, 📋 not built — gates F-02/F-03/F-04
+### F-10 · Pins, tags & factions ✅ shipped — see Execution order §5a
 
-Requested 2026-07-30, design settled 2026-08-01 with Geoffrey. **This is the scene-level metadata model the roadmap has been deferring.** F-02 (timeline), F-03 (plot graph) and F-04 (plotline tracking) all need exactly this and were explicitly held back so it would be designed once — build nothing else in the cluster until this lands, and once it does, the other three are views over it.
+Requested 2026-07-30, design settled 2026-08-01, built 2026-08-01. **This is the scene-level metadata model the roadmap was deferring.** F-02 (timeline), F-03 (plot graph) and F-04 (plotline tracking) all need exactly this and were explicitly held back so it would be designed once — see Execution order §5a for what shipped and what's still deferred (the skeuomorphic UI treatment). The design record below is kept as-is for context; F-02/F-03/F-04 can now proceed as views over this data.
 
 **Pins and tags are two different mechanisms, not two names for one idea** — the original framing (both illustrated by the same four examples) blurred that, and it matters for the data model:
 
