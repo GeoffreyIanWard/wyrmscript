@@ -170,19 +170,29 @@ Clicking a folder in the binder currently only expands or collapses it. It shoul
 
 An icon on an open document expands the editor pane to the whole screen; the same icon returns to the standard view. Requested 2026-07-30. Small and self-contained — binder, side panel, and status bar hide, the page keeps its measure and centres. Wants a period-correct glyph rather than a modern expand arrow: the System-era idiom is a **zoom box** (the little nested-squares control already drawn in the main window's title bar), so reuse that vocabulary. Note there is already a disabled `Composition Mode` (⌥⌘F) item in the View menu — this is that item, and it should adopt the shortcut rather than inventing a second one.
 
-### F-10 · Pins & tags 💭 — **design this before F-02/F-03/F-04**
+### F-10 · Pins, tags & factions ✅ designed, 📋 not built — gates F-02/F-03/F-04
 
-Pin and tag characters, events, scenes and locations: "Protagonist", "Viewpoint character", "Antagonist", "Rising Action". Pinning a document as a **scene** is what lets it be ordered and plotted. Requested 2026-07-30. Slightly skeuomorphic UI — pins with actual pin heads, tags shaped like little luggage tags; old-school cool, still 1-bit.
+Requested 2026-07-30, design settled 2026-08-01 with Geoffrey. **This is the scene-level metadata model the roadmap has been deferring.** F-02 (timeline), F-03 (plot graph) and F-04 (plotline tracking) all need exactly this and were explicitly held back so it would be designed once — build nothing else in the cluster until this lands, and once it does, the other three are views over it.
 
-**This is the scene-level metadata model the roadmap has been deferring.** F-02 (timeline), F-03 (plot graph) and F-04 (plotline tracking) all need exactly this and were explicitly held back so it would be designed once. It is now the gating item for that whole cluster — design it first, and the other three become views over it. Design questions:
+**Pins and tags are two different mechanisms, not two names for one idea** — the original framing (both illustrated by the same four examples) blurred that, and it matters for the data model:
 
-- Are tags a free vocabulary the writer invents, a fixed set the app ships, or both (ship a starter set, let it grow)?
-- Do pins live on `DocMeta`/`Entity` (simple, versioned with the file, diffs cleanly) or in a separate index in `project.json` (queryable without reading every document, but a second source of truth)? The first fits "everything is plain text on purpose"; the second is faster for graph views. Frontmatter probably wins — the story bible already proves that shape works.
-- Does "scene" become a first-class document kind, or a tag that some documents happen to carry? A tag is less disruptive to the binder and reversible.
+- **Pins are a closed, curated vocabulary the app ships**, scoped by what they're pinned to rather than one universal list — a pin only appears as an option where it means something. Documents get a scene-structural set (Rising Action, Climax, Setup, and similar — exact wording is a UI-copy pass, not a design blocker); characters get a narrative-role set (Protagonist, Antagonist, Viewpoint Character). World and glossary entities have no pin vocabulary of their own yet — nothing requested one, so none is invented; add one later if a real need shows up rather than filling the gap speculatively now.
+- **Tags are a free vocabulary the writer invents**, no starter set, no fixed list — writer-owned the way the story bible already is.
+- **Factions are not a third mechanism.** A faction is a tag, applied to `Entity` instead of `DocMeta`, following the exact same free-form rule — grouping characters, locations and glossary items into a named faction ("House Voss") is just several entities carrying the same tag value. This reuses the tag field rather than adding a parallel grouping concept, so `Entity` needs a `tags` field for the first time (it does not have one today) precisely so factions can exist. Note this only partly matches `design-brief.md`'s §5 aside that World entries might carry an internal `type` of "faction" — that was one entity being *labelled* a faction; tags let *any* entity, including characters, *belong* to one. The tag reading is more general and is the one to build.
+- **"Scene" is a tag, not a first-class document kind.** A document becomes orderable/plottable by carrying the tag `scene` — no new `BinderNodeType`, fully reversible, and every other part of the app (compile, search, the binder) keeps treating it as an ordinary document. F-02/F-03/F-04 filter on this tag to decide what counts as a plottable unit.
+
+**Storage: document frontmatter, matching `DocMeta`/`Entity`'s existing shape** — versioned with the file, diffs cleanly, no second source of truth, and it is what the story bible already proves works. Losing the queryable-without-reading-every-file property that a `project.json` index would have given is an accepted, deliberate cost — matches "everything is plain text on purpose."
+
+Concretely, once built:
+
+- `DocMeta` gains `tags?: string[]` (free-form, including `scene`) and `pins?: string[]` (from the document-scoped fixed set).
+- `Entity` gains `tags?: string[]` (free-form — factions live here by convention, no dedicated field) and `pins?: string[]` (from the character-scoped fixed set; meaningless and left empty on `world`/`glossary` entities for now).
+
+Still open, deliberately left for the implementation pass rather than blocking design sign-off: the exact wording of each fixed pin list; the skeuomorphic UI (pins with actual pin heads, tags shaped like little luggage tags, still 1-bit) that the original request asked for; and how the binder/entity editor surfaces "add a tag" versus "add a pin" as two visually distinct actions given they are two different mechanisms now.
 
 ### F-11 · Graph views 💭
 
-Maps rather than lists: a **character graph** where characters can be grouped and joined by relationship edges, alongside the plot graph of F-03. Requested 2026-07-30. Depends on F-10 for what the nodes are and what edges mean. Open: are relationships their own entity (typed, directional, with a label like "brother of"), or free edges? Directional typed edges are more work but are the only version that can answer "who is estranged from whom".
+Maps rather than lists: a **character graph** where characters can be grouped and joined by relationship edges, alongside the plot graph of F-03. Requested 2026-07-30. Depends on F-10 for what the nodes are and what edges mean — F-10's factions (§ above) already give one axis of grouping for free once they exist, entities sharing a faction tag. Open: are relationships their own entity (typed, directional, with a label like "brother of"), or free edges? Directional typed edges are more work but are the only version that can answer "who is estranged from whom".
 
 ### F-12 · World map 💭
 
