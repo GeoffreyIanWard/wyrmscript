@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DocFile, Entity, EntityType, ProjectData, WyrmApi } from '../shared/types'
+import type { DocFile, Entity, EntityType, Plotline, ProjectData, WyrmApi } from '../shared/types'
 
 const api: WyrmApi = {
   createProject: (title) => ipcRenderer.invoke('project:create', title),
@@ -22,6 +22,10 @@ const api: WyrmApi = {
   writeEntity: (path, entity: Entity) => ipcRenderer.invoke('entity:write', path, entity),
   deleteEntity: (path, type: EntityType, id) => ipcRenderer.invoke('entity:delete', path, type, id),
   readAllDocs: (path) => ipcRenderer.invoke('doc:readAll', path),
+
+  listPlotlines: (path) => ipcRenderer.invoke('plotline:list', path),
+  writePlotline: (path, plotline: Plotline) => ipcRenderer.invoke('plotline:write', path, plotline),
+  deletePlotline: (path, id) => ipcRenderer.invoke('plotline:delete', path, id),
 
   exportFile: (defaultName, data) => ipcRenderer.invoke('compile:export', defaultName, data),
 
