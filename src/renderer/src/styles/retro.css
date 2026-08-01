@@ -808,6 +808,92 @@ button {
   text-decoration: underline;
 }
 
+.timeline-dialog {
+  max-width: 720px;
+}
+
+.timeline-view-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 2px solid var(--ink);
+  background-image: var(--dither-25);
+  background-size: 4px 4px;
+}
+
+.timeline-view-toggle .btn.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* ---------- timeline: line-graphic view (F-29) ---------- */
+
+.timeline-line-track {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.timeline-line-baseline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--ink);
+}
+
+.timeline-line-cluster {
+  position: absolute;
+}
+
+.timeline-line-tick {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--ink);
+}
+
+.timeline-line-card {
+  position: absolute;
+  left: 0;
+  transform: translate(-50%, 0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 108px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.timeline-line-card.dragging {
+  cursor: grabbing;
+  z-index: 2;
+}
+
+.timeline-line-card:focus-visible {
+  outline: 1px dashed var(--ink);
+  outline-offset: 2px;
+}
+
+.timeline-line-title {
+  font-size: 11px;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-line-date {
+  width: 96px;
+  font-size: 9px;
+  text-align: center;
+  padding: 1px 2px;
+}
+
 .timeline-date {
   flex: none;
   width: 120px;

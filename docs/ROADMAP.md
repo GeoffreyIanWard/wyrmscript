@@ -111,7 +111,7 @@ Deferred: a live in-session counter (the status bar's per-document count already
 
 ### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) 🔨
 
-Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built** — F-02/F-03/F-04/F-11 can proceed as views over its data rather than three incompatible metadata schemes. F-02 is the first of those views, also now built.
+Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built** — F-02/F-03/F-04/F-11 can proceed as views over its data rather than three incompatible metadata schemes. F-02 is the first of those views, also now built, and F-29 gave it a second, richer rendering the same day.
 
 **5a. Pins, tags & factions (F-10) ✅** — shipped. `DocMeta` and `Entity` both gain `tags?: string[]`; `DocMeta` gains `pins?: string[]` from `DOC_PINS`, `Entity` gains `pins?: string[]` from `CHARACTER_PINS` (`src/shared/types.ts`). Both are plain frontmatter, matching how the story bible already stores everything — no `project.json` index, so the model versions and diffs with the file it describes.
 
@@ -129,7 +129,18 @@ Deferred, as scoped at design time: the skeuomorphic treatment (pin heads, lugga
 - **The store acts on an arbitrary doc id, not just the active document.** `setTimelineOrder`/`setTimelineDate` read whichever document is targeted (falling back to `api.readDoc` when it isn't the one open in the editor), since the card a writer drags on the timeline is rarely the document currently open for writing — unlike F-10's `updateDocMeta`, which only ever touches the active doc.
 - The dialog fetches its own doc list via `api.readAllDocs` on open (same pattern as the entity editor's backlinks) rather than keeping a live store slice — the timeline is opened rarely enough that a fresh read on open is simpler than keeping another piece of global state in sync.
 
-Deferred, as scoped at design time: a real calendar/duration system (explicitly the heavier of the two dated-events options, not chosen); per-thread or per-POV timelines (one timeline per project was chosen); the skeuomorphic card visual (currently a plain row, matching F-10's chips/toggles rather than a corkboard-card look).
+Deferred, as scoped at design time: a real calendar/duration system (explicitly the heavier of the two dated-events options, not chosen); per-thread or per-POV timelines (one timeline per project was chosen). The plain-row visual was superseded almost immediately — see 5c.
+
+**5c. Timeline: line-graphic view (F-29) ✅** — shipped the same day it was requested. **Project → Timeline… → Line** (a tab next to **List**, which stays — see below) redraws the same cards as markers on a literal line rather than rows. Design settled 2026-08-01 with Geoffrey:
+
+- **Position is a literal coordinate, reusing `timelineOrder` as-is** — no new field. The list view already treated it as a sortable rank; the line view is the same number read as an x-position, so nothing added to `DocMeta`.
+- **An in-world date still never affects placement** — consistent with 5b's original decision, not reopened.
+- **A stack is a visual coincidence, not stored data** — two cards land on a stack by sharing a grid position; nothing records "these happen at once" beyond that. `lib/timeline.ts`'s `stackByPosition` groups cards for rendering only.
+- **Dragging snaps to a grid (`TIMELINE_GRID`) instead of pixel-precise placement.** The grid size is exactly 1 — larger than it first sounds, and load-bearing: `TimelineLineView`'s `PX_PER_UNIT` (140) is sized so one grid step never renders narrower than a card (108px). A finer grid was tried first and found broken in the browser preview, not just in theory — a drop landing close to but not exactly on another card rendered as an unreadable partial overlap, neither a clean gap nor a clean stack. The invariant (`PX_PER_UNIT * TIMELINE_GRID >= card width`) is written down at both ends (`lib/timeline.ts` and `TimelineLineView.tsx`) and has a regression test (`timeline-line-view.test.tsx`) asserting no two different grid positions ever render closer than a card width apart.
+- **List and Line are both kept, as a tab toggle**, rather than Line replacing List outright — the request said "I should be able to view the timeline as" a line, which reads as adding a view rather than retiring the one already shipped and tested.
+- **Click vs. drag is decided entirely from the pointer-event sequence** (movement past a small pixel threshold means drag, not click) since there's no separate drag handle — resolved via a ref read synchronously in `onPointerUp` rather than a subsequent `onClick`, because by the time a browser's own `click` event fires, the drag state has already been cleared and reading it there would silently misfire on every click that followed a drag.
+
+Deferred, as scoped at design time: a real calendar/duration system, per-thread timelines (both same as 5b, unchanged); keyboard-driven reordering (Enter still opens a card via keyboard; only mouse can reposition one, matching the list view's own drag having no keyboard equivalent either).
 
 ---
 
@@ -362,9 +373,9 @@ This is the same "break the two-colour discipline on purpose" family as Ledger, 
 - **"Other Windows-esque homages"** is the open half of the request. Candidates worth naming rather than leaving implicit: a beveled (rather than flat 2px) border on `.mac-window` and buttons — real Win95 chrome is a raised 3D bevel, which is a genuine departure from every palette so far, all of which keep the flat 1-bit border language; a taskbar-style affordance somewhere in the chrome; the teal-and-grey combination itself (`#008080` desktop, `#c0c0c0` window chrome) rather than teal alone.
 - **Bevels are the one piece that isn't "just new CSS variables."** Every palette to date reskins colour and dither fill within the existing flat-chrome shape; a genuine 3D bevel changes the shape (multiple border colours simulating light/shadow, not achievable with a single `--ink` border). Worth deciding whether this palette gets that treatment or stays flat-chrome-with-Win95-colours — the former is a much bigger, more novel piece of work than any palette shipped so far.
 
-### F-29 · Timeline: line-graphic view 💭
+### F-29 · Timeline: line-graphic view ✅ shipped — see Execution order §5c
 
-Requested 2026-08-01, the same day F-02 shipped as a plain list. Wants the timeline redrawn as a genuine visual chart — a literal line (the old-history-book convention) with scene markers laid along it like birds on a wire, rather than a stacked list of rows. Key asks:
+Requested 2026-08-01, the same day F-02 shipped as a plain list; design settled and built the same day. Wants the timeline redrawn as a genuine visual chart — a literal line (the old-history-book convention) with scene markers laid along it like birds on a wire, rather than a stacked list of rows. Key asks:
 
 - Uneven spacing is the point, not a bug — scenes that are narratively close together sit shoulder to shoulder, a long gap in the story shows as visible empty space on the line, and both are placed by dragging rather than computed automatically.
 - Simultaneous events can stack — more than one card at the same point on the line, for scenes happening at once (parallel POV threads, a flashback interleaved with a present-day scene).
