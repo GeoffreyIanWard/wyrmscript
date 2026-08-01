@@ -19,6 +19,7 @@ import type {
   EntityType,
   Plotline,
   ProjectInfo,
+  Relationship,
   StatsSettings
 } from '../../shared/types'
 import { PLOTLINE_COLOURS } from '../../shared/types'
@@ -58,6 +59,8 @@ interface WyrmState {
 
   /** F-04. A scene belongs to one by carrying a tag equal to its name. */
   plotlines: Plotline[]
+  /** F-11: character graph edges, typed and directional. */
+  relationships: Relationship[]
 
   boot(): Promise<void>
   newProject(title: string): Promise<void>
@@ -157,6 +160,11 @@ interface WyrmState {
   createPlotline(name: string): Promise<Plotline | null>
   savePlotline(plotline: Plotline): Promise<void>
   deletePlotline(plotline: Plotline): Promise<void>
+
+  loadRelationships(): Promise<void>
+  createRelationship(fromId: string, toId: string, label: string): Promise<Relationship | null>
+  saveRelationship(relationship: Relationship): Promise<void>
+  deleteRelationship(relationship: Relationship): Promise<void>
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -248,6 +256,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     panelEntityId: null,
     mainView: { kind: 'doc' },
     plotlines: [],
+    relationships: [],
     backupSettings: null,
     appearance: null,
     statsSettings: null,
@@ -832,6 +841,51 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) return
       await api.deletePlotline(project.path, plotline.id)
       set({ plotlines: get().plotlines.filter((p) => p.id !== plotline.id) })
+      commitDirty = true
+    },
+
+    /* ---------- character graph (F-11) ---------- */
+
+    async loadRelationships() {
+      const { project } = get()
+      if (!project) return
+      set({ relationships: await api.listRelationships(project.path) })
+    },
+
+    async createRelationship(fromId, toId, label) {
+      const { project } = get()
+      if (!project || !label.trim()) return null
+      const now = new Date().toISOString()
+      const relationship: Relationship = {
+        id: newId(),
+        fromId,
+        toId,
+        label: label.trim(),
+        created: now,
+        modified: now
+      }
+      await api.writeRelationship(project.path, relationship)
+      set({ relationships: [...get().relationships, relationship] })
+      commitDirty = true
+      return relationship
+    },
+
+    async saveRelationship(relationship) {
+      const { project } = get()
+      if (!project) return
+      const updated: Relationship = { ...relationship, modified: new Date().toISOString() }
+      await api.writeRelationship(project.path, updated)
+      set({
+        relationships: get().relationships.map((r) => (r.id === updated.id ? updated : r))
+      })
+      commitDirty = true
+    },
+
+    async deleteRelationship(relationship) {
+      const { project } = get()
+      if (!project) return
+      await api.deleteRelationship(project.path, relationship.id)
+      set({ relationships: get().relationships.filter((r) => r.id !== relationship.id) })
       commitDirty = true
     }
   }

@@ -15,6 +15,7 @@ import type {
   Plotline,
   ProjectData,
   ProjectInfo,
+  Relationship,
   StatsSettings,
   VariantInfo,
   WyrmApi
@@ -46,6 +47,7 @@ interface MockProject {
   variants: Map<string, (VariantInfo & { doc: DocFile })[]>
   entities: Map<string, Entity>
   plotlines: Map<string, Plotline>
+  relationships: Map<string, Relationship>
 }
 
 function snapshotOf(docs: Map<string, DocFile>): Map<string, DocFile> {
@@ -103,7 +105,8 @@ function starterProject(title: string): MockProject {
     commits: [],
     variants: new Map(),
     entities: new Map(),
-    plotlines: new Map()
+    plotlines: new Map(),
+    relationships: new Map()
   }
   commitInto(project, `Create project “${title}”`)
   return project
@@ -158,17 +161,18 @@ function demoProject(): MockProject {
   }
 
   const entities = new Map<string, Entity>()
-  const mkEntity = (type: EntityType, name: string, aliases: string[], body: string): void => {
+  const mkEntity = (type: EntityType, name: string, aliases: string[], body: string): string => {
     const entityId = id()
     entities.set(entityId, { id: entityId, type, name, aliases, body, created: now, modified: now })
+    return entityId
   }
-  mkEntity(
+  const elaraId = mkEntity(
     'character',
     'Elara Voss',
     ['Elara', 'Captain Voss', 'the Captain'],
     'Former harbor-guard captain of Harrowgate, cashiered after the Siege of the Narrows. Keeps her old commission folded in a tobacco tin she never opens. Sister to Marten (deceased). Sleeps badly; notices everything.'
   )
-  mkEntity(
+  const martenId = mkEntity(
     'character',
     'Marten',
     [],
@@ -210,7 +214,26 @@ function demoProject(): MockProject {
     modified: now
   })
 
-  const project: MockProject = { info, docs, commits: [], variants: new Map(), entities, plotlines }
+  const relationships = new Map<string, Relationship>()
+  const relationshipId = id()
+  relationships.set(relationshipId, {
+    id: relationshipId,
+    fromId: elaraId,
+    toId: martenId,
+    label: 'sister of',
+    created: now,
+    modified: now
+  })
+
+  const project: MockProject = {
+    info,
+    docs,
+    commits: [],
+    variants: new Map(),
+    entities,
+    plotlines,
+    relationships
+  }
 
   // Fabricate believable history for the demo: three drafts of scene2.
   const hours = 3600_000
@@ -427,6 +450,20 @@ export function createMockApi(): WyrmApi {
     async deletePlotline(path: string, id: string): Promise<void> {
       mustGet(path).plotlines.delete(id)
     },
+
+    async listRelationships(path: string): Promise<Relationship[]> {
+      return [...mustGet(path).relationships.values()].map((r) => ({ ...r }))
+    },
+    async writeRelationship(path: string, relationship: Relationship): Promise<void> {
+      mustGet(path).relationships.set(relationship.id, {
+        ...relationship,
+        modified: new Date().toISOString()
+      })
+    },
+    async deleteRelationship(path: string, id: string): Promise<void> {
+      mustGet(path).relationships.delete(id)
+    },
+
     async getSyncStatus(path: string): Promise<SyncStatus> {
       // login/clientIdSet are app-level and change after a stored snapshot —
       // compose them fresh so the preview never shows a stale sign-in state.
