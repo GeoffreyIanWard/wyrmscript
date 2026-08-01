@@ -44,6 +44,19 @@ export interface DocMeta {
   tags?: string[]
   /** From `DOC_PINS`. */
   pins?: string[]
+  /**
+   * Position on the F-02 timeline (scene-tagged documents only). A
+   * fractional rank — reordering one card never touches any other card's
+   * value. Unset until a writer first drags a card; until then the
+   * timeline falls back to binder order.
+   */
+  timelineOrder?: number
+  /**
+   * Free-form in-world date label ("Year 3, the first thaw"). Not parsed or
+   * validated — no calendar system is assumed — so it is shown when set but
+   * never governs sort order; `timelineOrder` alone does that.
+   */
+  timelineDate?: string
   created: string
   modified: string
 }

@@ -8,6 +8,7 @@ import { EntityEditor } from './components/EntityEditor'
 import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog } from './components/Dialogs'
 import { StatsDialog } from './components/StatsDialog'
+import { TimelineDialog } from './components/TimelineDialog'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { CompileDialog } from './components/CompileDialog'
 import { BackupDialog } from './components/BackupDialog'
@@ -124,6 +125,7 @@ function App(): JSX.Element {
   const setStatsSettings = useWyrm((s) => s.setStatsSettings)
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [statsOpen, setStatsOpen] = useState(false)
+  const [timelineOpen, setTimelineOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
   const [compileOpen, setCompileOpen] = useState(false)
@@ -229,6 +231,7 @@ function App(): JSX.Element {
         onCompile={() => setCompileOpen(true)}
         onBackup={() => setBackupOpen(true)}
         onStats={() => setStatsOpen(true)}
+        onTimeline={() => setTimelineOpen(true)}
         onSyncSettings={() => setSyncOpen(true)}
         onSearch={() => setSearchOpen(true)}
         onPalette={() => setPaletteOpen(true)}
@@ -281,6 +284,11 @@ function App(): JSX.Element {
             <StatsDialog onClose={() => setStatsOpen(false)} />
           </ErrorBoundary>
         )}
+        {timelineOpen && (
+          <ErrorBoundary label="Timeline" onDismiss={() => setTimelineOpen(false)}>
+            <TimelineDialog onClose={() => setTimelineOpen(false)} />
+          </ErrorBoundary>
+        )}
         {compileOpen && (
           <ErrorBoundary label="Compile" onDismiss={() => setCompileOpen(false)}>
             <CompileDialog onClose={() => setCompileOpen(false)} />
@@ -312,6 +320,12 @@ function App(): JSX.Element {
                   title: 'Find in Project…',
                   subtitle: 'Project',
                   run: () => setSearchOpen(true)
+                },
+                {
+                  id: 'timeline',
+                  title: 'Timeline…',
+                  subtitle: 'Project',
+                  run: () => setTimelineOpen(true)
                 },
                 {
                   id: 'checkpoint',

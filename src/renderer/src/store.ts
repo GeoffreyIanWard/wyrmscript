@@ -71,6 +71,14 @@ interface WyrmState {
    * writer toggling a pin shouldn't wait 800ms to see it land.
    */
   updateDocMeta(patch: { tags?: string[]; pins?: string[] }): Promise<void>
+  /**
+   * F-02: reposition or label a scene on the timeline. Takes a doc id rather
+   * than acting on the active document — the timeline reorders whichever
+   * card was dragged, which is rarely the document currently open for
+   * writing.
+   */
+  setTimelineOrder(docId: string, order: number): Promise<void>
+  setTimelineDate(docId: string, date: string): Promise<void>
   /** Palette, accents and page geometry (F-05, F-06); null until loaded. */
   appearance: AppearanceSettings | null
   loadAppearance(): Promise<void>
@@ -364,6 +372,33 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const doc: DocFile = { ...activeDoc, meta }
       await api.writeDoc(project.path, doc)
       set({ activeDoc: doc })
+      commitDirty = true
+    },
+
+    async setTimelineOrder(docId, order) {
+      const { project, activeId, activeDoc } = get()
+      if (!project) return
+      const doc =
+        docId === activeId && activeDoc ? activeDoc : await api.readDoc(project.path, docId)
+      const updated: DocFile = { ...doc, meta: { ...doc.meta, timelineOrder: order } }
+      await api.writeDoc(project.path, updated)
+      if (docId === activeId) set({ activeDoc: updated })
+      commitDirty = true
+    },
+
+    async setTimelineDate(docId, date) {
+      const { project, activeId, activeDoc } = get()
+      if (!project) return
+      const doc =
+        docId === activeId && activeDoc ? activeDoc : await api.readDoc(project.path, docId)
+      const meta = { ...doc.meta }
+      // Same undefined-vs-omitted care as updateDocMeta: clearing the date
+      // must delete the key, never set it to an explicit undefined.
+      if (date.trim()) meta.timelineDate = date.trim()
+      else delete meta.timelineDate
+      const updated: DocFile = { ...doc, meta }
+      await api.writeDoc(project.path, updated)
+      if (docId === activeId) set({ activeDoc: updated })
       commitDirty = true
     },
 

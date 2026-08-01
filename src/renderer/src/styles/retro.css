@@ -402,6 +402,7 @@ button {
   border-bottom: 1px solid var(--page-ink);
 }
 
+.scene-toggle,
 .pin-chip,
 .tag-chip {
   display: inline-flex;
@@ -410,6 +411,11 @@ button {
   border: 1px solid var(--page-ink);
   padding: 1px 6px;
   letter-spacing: 0.5px;
+}
+
+.scene-toggle.on {
+  background: var(--page-ink);
+  color: var(--page-bg);
 }
 
 .pin-chip {
@@ -760,6 +766,52 @@ button {
 .stat-words {
   flex: none;
   width: 56px;
+  text-align: right;
+}
+
+/* ---------- timeline (F-02) ---------- */
+
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.timeline-row.drop-before {
+  box-shadow:
+    0 -2px 0 0 var(--ink) inset,
+    0 2px 0 0 var(--ink);
+}
+
+.timeline-row.drop-after {
+  box-shadow: 0 -2px 0 0 var(--ink);
+}
+
+.timeline-title {
+  flex: 1;
+  text-align: left;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-title:hover {
+  text-decoration: underline;
+}
+
+.timeline-date {
+  flex: none;
+  width: 120px;
+  font-size: 11px;
   text-align: right;
 }
 

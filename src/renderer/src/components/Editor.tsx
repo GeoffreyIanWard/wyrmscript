@@ -3,7 +3,7 @@ import type { JSX, MouseEvent } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Highlight from '@tiptap/extension-highlight'
-import { DOC_PINS, type EntityType } from '../../../shared/types'
+import { DOC_PINS, SCENE_TAG, type EntityType } from '../../../shared/types'
 import { markdownToDoc } from '../lib/markdown'
 import { EntityLinks } from '../lib/entityLinks'
 import { ENTITY_COLLECTIONS } from '../lib/entities'
@@ -21,7 +21,11 @@ interface AddMenu {
  * Tags and pins for the active document (F-10). Tags are free-form (the
  * writer types one and presses Enter); pins toggle membership in the closed
  * `DOC_PINS` vocabulary via a small dropdown, the same visual language as
- * the editor's own "add to bible" context menu.
+ * the editor's own "add to bible" context menu. `SCENE_TAG` is still just a
+ * tag underneath (F-10's design), but a plain checkbox is a much more
+ * discoverable way to answer "is this a scene?" than typing the word
+ * "scene" into free text — so it gets its own control and is hidden from
+ * the ordinary tag-chip list rather than shown twice.
  */
 function DocMetaBar(): JSX.Element | null {
   const activeDoc = useWyrm((s) => s.activeDoc)
@@ -32,15 +36,30 @@ function DocMetaBar(): JSX.Element | null {
   if (!activeDoc) return null
   const tags = activeDoc.meta.tags ?? []
   const pins = activeDoc.meta.pins ?? []
+  const isScene = tags.includes(SCENE_TAG)
+  const otherTags = tags.filter((t) => t !== SCENE_TAG)
 
   return (
     <div className="doc-meta-bar">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={isScene}
+        className={isScene ? 'scene-toggle on' : 'scene-toggle'}
+        onClick={() =>
+          void updateDocMeta({
+            tags: isScene ? removeTag(tags, SCENE_TAG) : addTag(tags, SCENE_TAG)
+          })
+        }
+      >
+        [{isScene ? 'x' : ' '}] Scene
+      </button>
       {pins.map((pin) => (
         <span key={pin} className="pin-chip">
           {pin}
         </span>
       ))}
-      {tags.map((tag) => (
+      {otherTags.map((tag) => (
         <span key={tag} className="tag-chip">
           #{tag}
           <button

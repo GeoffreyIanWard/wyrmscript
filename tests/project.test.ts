@@ -70,6 +70,18 @@ describe('doc read/write', () => {
     expect(after.meta.tags).toEqual(['scene', 'chapter-one'])
     expect(after.meta.pins).toEqual(['Climax'])
   })
+
+  it('round-trips timelineOrder and timelineDate (F-02)', async () => {
+    const { dir, docId } = await makeProject()
+    const before = await readDoc(dir, docId)
+    await writeDoc(dir, {
+      meta: { ...before.meta, timelineOrder: 1.5, timelineDate: 'Year 3, first thaw' },
+      body: before.body
+    })
+    const after = await readDoc(dir, docId)
+    expect(after.meta.timelineOrder).toBe(1.5)
+    expect(after.meta.timelineDate).toBe('Year 3, first thaw')
+  })
 })
 
 describe('commitAll', () => {
