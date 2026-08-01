@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { orderBetween, timelineCards, type TimelineCard } from '../lib/timeline'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { useWyrm } from '../store'
+import { TimelineLineView } from './TimelineLineView'
 
 /**
  * F-02: the story's chronology, distinct from binder order. Cards are
@@ -12,6 +13,10 @@ import { useWyrm } from '../store'
  * by `timelineOrder` with binder order as the fallback for a scene that has
  * never been dragged. One timeline per project; an optional in-world date is
  * a label only, never a sort key (see `shared/types.ts`'s `timelineDate`).
+ *
+ * Two views over the same cards (F-29): the original row list, and a
+ * line-graphic view where position is a real coordinate rather than a rank —
+ * see `TimelineLineView` for that one's own header comment.
  */
 
 const DRAG_KEY = 'text/wyrm-timeline-card'
@@ -76,6 +81,7 @@ export function TimelineDialog({ onClose }: { onClose: () => void }): JSX.Elemen
   const setTimelineOrder = useWyrm((s) => s.setTimelineOrder)
   const setTimelineDate = useWyrm((s) => s.setTimelineDate)
   const [docs, setDocs] = useState<DocFile[] | null>(null)
+  const [view, setView] = useState<'list' | 'line'>('list')
 
   useEffect(() => {
     if (!project) return
@@ -114,6 +120,15 @@ export function TimelineDialog({ onClose }: { onClose: () => void }): JSX.Elemen
     void setTimelineOrder(draggedId, order)
   }
 
+  // The line view computes a landing coordinate directly (it snaps to a
+  // grid rather than choosing a before/after neighbour), so it writes
+  // timelineOrder straight through instead of going via handleDrop's
+  // list-reorder math.
+  const handleReorder = (id: string, order: number): void => {
+    patchDocMeta(id, (meta) => ({ ...meta, timelineOrder: order }))
+    void setTimelineOrder(id, order)
+  }
+
   const changeDate = (id: string, date: string): void => {
     patchDocMeta(id, (meta) => {
       const next = { ...meta }
@@ -132,11 +147,37 @@ export function TimelineDialog({ onClose }: { onClose: () => void }): JSX.Elemen
 
   return (
     <div className="dialog-overlay" onMouseDown={onClose}>
-      <div className="dialog" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="dialog timeline-dialog"
+        ref={trapRef}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
           <span className="title">Timeline</span>
         </div>
+        {cards.length > 0 && (
+          <div className="timeline-view-toggle" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'list'}
+              className={view === 'list' ? 'btn small active' : 'btn small'}
+              onClick={() => setView('list')}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'line'}
+              className={view === 'line' ? 'btn small active' : 'btn small'}
+              onClick={() => setView('line')}
+            >
+              Line
+            </button>
+          </div>
+        )}
         <div className="dialog-body">
           {docs === null && <div className="dialog-hint">Reading your manuscript…</div>}
           {docs !== null && cards.length === 0 && (
@@ -145,7 +186,7 @@ export function TimelineDialog({ onClose }: { onClose: () => void }): JSX.Elemen
               here.
             </div>
           )}
-          {cards.length > 0 && (
+          {cards.length > 0 && view === 'list' && (
             <div className="timeline-list">
               {cards.map((card, i) => (
                 <TimelineRow
@@ -157,6 +198,14 @@ export function TimelineDialog({ onClose }: { onClose: () => void }): JSX.Elemen
                 />
               ))}
             </div>
+          )}
+          {cards.length > 0 && view === 'line' && (
+            <TimelineLineView
+              cards={cards}
+              onReorder={handleReorder}
+              onOpen={openCard}
+              onDateChange={changeDate}
+            />
           )}
         </div>
         <div className="dialog-buttons">
