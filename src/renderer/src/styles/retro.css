@@ -402,6 +402,7 @@ button {
   border-bottom: 1px solid var(--page-ink);
 }
 
+.scene-toggle,
 .pin-chip,
 .tag-chip {
   display: inline-flex;
@@ -410,6 +411,11 @@ button {
   border: 1px solid var(--page-ink);
   padding: 1px 6px;
   letter-spacing: 0.5px;
+}
+
+.scene-toggle.on {
+  background: var(--page-ink);
+  color: var(--page-bg);
 }
 
 .pin-chip {

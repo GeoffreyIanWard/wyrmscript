@@ -119,7 +119,8 @@ export function TimelineDialog({ onClose }: { onClose: () => void }): JSX.Elemen
           {docs === null && <div className="dialog-hint">Reading your manuscript…</div>}
           {docs !== null && cards.length === 0 && (
             <div className="dialog-hint">
-              No scenes yet. Tag a document &ldquo;scene&rdquo; from its tags bar to add it here.
+              No scenes yet. Check &ldquo;Scene&rdquo; in a document&rsquo;s tags bar to add it
+              here.
             </div>
           )}
           {cards.length > 0 && (
