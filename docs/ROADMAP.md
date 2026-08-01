@@ -334,6 +334,16 @@ Open questions:
 - **Do line numbers count visual lines or paragraphs?** Visual is what a code editor does and what the request implies; paragraph numbering is far cheaper and arguably more useful for prose (it survives a resize). Ask before assuming.
 - Interacts with F-22's halftone ruler and margin marks — both want gutter furniture, and two independent gutter mechanisms would be a mistake.
 
+### F-28 · Windows 95 palette 📋
+
+Requested 2026-07-31. Teal desktop, other Windows-esque chrome homages.
+
+This is the same "break the two-colour discipline on purpose" family as Ledger, Arcade and Famicom, not a new mechanism — but it pulls on a different piece of the existing system than any of those three:
+
+- **The desktop background is currently themed, not just the window.** `.desktop` already reads `--paper`/`--dither-50` (`retro.css`), so a teal desktop is in scope for the palette variables already — no new hook needed, unlike the nuclear-tiger website work where the "Windows 95 teal desktop" idea first appeared as a page-specific skin outside this app entirely. Here it's native.
+- **"Other Windows-esque homages"** is the open half of the request. Candidates worth naming rather than leaving implicit: a beveled (rather than flat 2px) border on `.mac-window` and buttons — real Win95 chrome is a raised 3D bevel, which is a genuine departure from every palette so far, all of which keep the flat 1-bit border language; a taskbar-style affordance somewhere in the chrome; the teal-and-grey combination itself (`#008080` desktop, `#c0c0c0` window chrome) rather than teal alone.
+- **Bevels are the one piece that isn't "just new CSS variables."** Every palette to date reskins colour and dither fill within the existing flat-chrome shape; a genuine 3D bevel changes the shape (multiple border colours simulating light/shadow, not achievable with a single `--ink` border). Worth deciding whether this palette gets that treatment or stays flat-chrome-with-Win95-colours — the former is a much bigger, more novel piece of work than any palette shipped so far.
+
 ### CRT family: found in review 📋 — glow ✅ fixed, see I-09 for the rename
 
 Two notes from reviewing PR #16, both affecting the whole CRT palette group (`green`/`amber`/`vaporwave`/`virtualwyrm`, formerly named `nes` — see I-09):
