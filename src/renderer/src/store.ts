@@ -79,6 +79,9 @@ interface WyrmState {
    */
   setTimelineOrder(docId: string, order: number): Promise<void>
   setTimelineDate(docId: string, date: string): Promise<void>
+  /** F-03: a scene's tension, set by dragging its node on the plot graph.
+   *  Same doc-id-not-active-doc reasoning as setTimelineOrder. */
+  setTension(docId: string, tension: number): Promise<void>
   /** Palette, accents and page geometry (F-05, F-06); null until loaded. */
   appearance: AppearanceSettings | null
   loadAppearance(): Promise<void>
@@ -397,6 +400,17 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (date.trim()) meta.timelineDate = date.trim()
       else delete meta.timelineDate
       const updated: DocFile = { ...doc, meta }
+      await api.writeDoc(project.path, updated)
+      if (docId === activeId) set({ activeDoc: updated })
+      commitDirty = true
+    },
+
+    async setTension(docId, tension) {
+      const { project, activeId, activeDoc } = get()
+      if (!project) return
+      const doc =
+        docId === activeId && activeDoc ? activeDoc : await api.readDoc(project.path, docId)
+      const updated: DocFile = { ...doc, meta: { ...doc.meta, tension } }
       await api.writeDoc(project.path, updated)
       if (docId === activeId) set({ activeDoc: updated })
       commitDirty = true

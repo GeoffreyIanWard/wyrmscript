@@ -8,6 +8,9 @@ export interface TimelineCard {
   title: string
   date?: string
   order: number
+  /** F-03's tension value, carried here since the plot graph shares this
+   *  same scene-tagged, timeline-ordered card list rather than its own. */
+  tension?: number
 }
 
 /** A document's index in binder traversal order — the fallback sort key for
@@ -36,7 +39,8 @@ export function timelineCards(docs: DocFile[], binder: BinderNode[]): TimelineCa
       id: d.meta.id,
       title: d.meta.title,
       date: d.meta.timelineDate,
-      order: d.meta.timelineOrder ?? ranks.get(d.meta.id) ?? Number.MAX_SAFE_INTEGER
+      order: d.meta.timelineOrder ?? ranks.get(d.meta.id) ?? Number.MAX_SAFE_INTEGER,
+      tension: d.meta.tension
     }))
     .sort((a, b) => a.order - b.order)
 }
