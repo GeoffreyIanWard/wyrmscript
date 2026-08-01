@@ -196,6 +196,8 @@ Scenes plotted on a graph board to visualize dramatic shape — rising action, c
 
 Track main plot, B-plots, romance/love-interest arcs, character arcs — and surface unresolved threads. Design settled and built 2026-08-01: a lightweight **plotline** record (name, colour, status) that scenes join by tag, with setup/payoff beats read from F-10's existing document pins rather than a new vocabulary. See §5e for what shipped and what's deferred (colour propagating beyond the Plotlines dialog, multi-curve plot-graph overlays).
 
+Reconfirmed 2026-08-01 ("a system for tracking separate plot lines in the same novel") — same feature, no new information beyond what's captured above. Also what F-03's single-curve-only decision was explicitly deferring: multi-curve overlays on the plot graph need this entity to exist first.
+
 ### F-05 · More retro visual variants 🔨
 
 More themes, more intensely period. Remaining candidates: Apple II / Commodore 64 / ZX Spectrum palettes, IBM CGA (cyan-magenta), Macintosh Plus warm grey-green, DOS EGA 16-colour, a paper-white "LaserWriter proof" mode. Also: optional CRT curvature/bloom/flicker, and the classic Mac UI click/chime sound set from design-brief.md §2 (off by default). The theming layer already remaps ink/paper/dither/accents from one place, so new variants are mostly a palette block each.
@@ -263,6 +265,8 @@ Still open, deliberately left for the implementation pass rather than blocking d
 ### F-11 · Graph views 💭
 
 Maps rather than lists: a **character graph** where characters can be grouped and joined by relationship edges, alongside the plot graph of F-03. Requested 2026-07-30. Depends on F-10 for what the nodes are and what edges mean — F-10's factions (§ above) already give one axis of grouping for free once they exist, entities sharing a faction tag. Open: are relationships their own entity (typed, directional, with a label like "brother of"), or free edges? Directional typed edges are more work but are the only version that can answer "who is estranged from whom".
+
+Reconfirmed 2026-08-01 ("a system for observing relationships between characters") — same feature, no new information beyond what's captured above. F-10 (this depends on) is now built, so this is unblocked whenever it's picked up.
 
 ### F-12 · World map 💭
 
@@ -408,6 +412,49 @@ Design questions to settle before building, in the same settle-first spirit as F
 - **Continuous drag or snap-to-gap-size?** Pixel-precise placement is the most literal "birds on a wire" feel but is harder to keep stable across window widths and screen sizes than a small number of discrete gap sizes. Worth prototyping both before committing.
 
 Likely relates to F-03 (plot graph) visually — both want a spatial board rather than a list — but the axes mean different things (F-03's y-axis is tension; this is purely chronological placement), so treat them as separate views rather than merging early.
+
+### F-30 · Show pins/tags on hover in the editor 💭
+
+Requested 2026-08-01. Hovering an auto-linked entity mention (or, per the request's literal wording, a document) in the writing terminal should surface that thing's pins and tags without leaving the page. Open questions:
+
+- **Hovering what, exactly?** Entity mentions are already decorations drawn by `lib/entityLinks.ts` — attaching a tooltip there is a natural extension. A whole *document's* pins/tags (the scope of F-31/F-32/F-33 below) has no equivalent in-prose surface to hover, since a document is the page itself, not a token on it — that half of the request likely means the binder row, not the terminal, and should be confirmed rather than assumed.
+- **Tooltip mechanics**: a hover delay (avoid flashing on every incidental mouse pass), and where it renders relative to the cursor so it never occludes the word being read. `lib/entityLinks.ts`'s existing debounce (350ms) is for re-scanning the document, a different timer from a hover-reveal delay — don't conflate them.
+- Needs to work under the "the page is sacred" house rule: informational only, dismisses instantly, never blocks typing or steals focus.
+
+### F-31 · Show pins/tags in the side panel 💭
+
+Requested 2026-08-01. `EntityPanel.tsx` (opened by clicking a linked mention) currently shows name, aliases, body and backlinks, but not tags or pins — the full `EntityEditor.tsx` has them (F-10), the read-only side panel doesn't. Small, mechanical addition once scoped: render the same chip/toggle styling `EntityEditor` already has, read-only. No design blockers; this is an oversight from F-10 shipping the editor's fields without also threading them through the panel's read-only view.
+
+### F-32 · Sort characters with significant pins to the top by default 💭
+
+Requested 2026-08-01. The Character Book (and by extension Locations/World and Glossary) currently lists entries in whatever order they were created. Open questions:
+
+- **What makes a pin "significant"?** `CHARACTER_PINS` is `Protagonist`, `Antagonist`, `Viewpoint Character` — is the ranking a fixed priority order among these three (Protagonist first, always), or does *any* pin outrank *no* pin with ties broken alphabetically? The former needs a designed ordering over the pin vocabulary itself, not just "has a pin vs. doesn't."
+- **Interacts directly with F-33** (below) — a "default sort," a "pin sort," and an "alphabetical sort" are three states of one control, not three separate features. Design them together: F-33's sort toggle likely subsumes this request as its "pin" mode's default-selected option, rather than being a second, independent default layered underneath it.
+
+### F-33 · Sort story-bible lists alphabetically or by pin/tag 💭
+
+Requested 2026-08-01, alongside F-32 — same control, most likely. A sort toggle for the Character Book / World Book / Glossary lists in the binder. Open questions:
+
+- **What does "sort by tag" mean for entries with several tags, or none?** Alphabetical is unambiguous; grouping by tag needs a rule for multi-tag entries (which tag wins?) and a bucket for untagged ones (first, last, or interleaved alphabetically among the tagged groups?).
+- **Is this per-collection (character/world/glossary each remember their own sort) or one global setting?** The three collections have different pin vocabularies (only characters have one at all today), so "sort by pin" may not even apply to World/Glossary — worth deciding whether their sort control offers the same options or a reduced set.
+- Persisted where — app-level settings (like appearance) or per-project? A shared project opened on two machines arguably wants the same sort, favoring per-project.
+
+### F-34 · Browse the glossary/story bible by tag 💭
+
+Requested 2026-08-01: "see all 'gun' items, all 'dungeon' locations, all 'bug's" — a tag-filtered browse view across the story bible, with tags themselves presented as "chunky buttons," sorted by frequency of use first and alphabetically within ties. This is a real search/filter feature, not just a display tweak:
+
+- **Where does this live?** A new dialog (parallel to F-02's Timeline / F-03's Plot Graph), a mode within the existing Character/World/Glossary binder sections, or folded into the existing ⌘K palette / ⇧⌘F project search (`lib/search.ts`)? The request's "presented as a console" language suggests its own dedicated screen rather than a palette result list.
+- **Cross-type filtering**: "all 'gun' items" implies tags are browsed across glossary/character/world at once, not three separate per-type tag lists — consistent with tags already being one free-form mechanism shared by every entity type (F-10), but the UI needs to decide whether results are shown as one mixed list or grouped by type.
+- **Frequency-sorted tag buttons** need the same "count usages across every entity" pass `lib/search.ts` or a new `lib/tags.ts`-adjacent helper would do once, cached the way parsed search bodies already are.
+
+### F-35 · Preset "master plot" overlays on the plot graph 💭
+
+Requested 2026-08-01, building on F-03 (shipped the same day). Ship a handful of reference tension curves — classic dramatic shapes (e.g. the Freytag pyramid, "man in a hole," "boy meets girl," rags-to-riches — the Kurt Vonnegut "shapes of stories" lecture is the likely reference point, unconfirmed) — that a writer can overlay on their own plot graph to compare their manuscript's curve against a known pattern. Open questions:
+
+- **Which shapes, exactly, and sourced from where?** "Classic master plots" needs a concrete, finite list before this is buildable — worth naming the actual set (and confirming none of them are still under copyright as a specific *codified* dataset, as opposed to the general shape being public-domain narrative theory) before drawing them.
+- **Overlay mechanics**: a selectable preset curve drawn alongside the real one on the same axes — needs its own visual treatment (dashed line, distinct from the solid real curve) so the two are never mistaken for each other, and the x-axis needs to stretch/compress the preset to match however many scenes the writer actually has, since a preset is inherently a fixed shape and a manuscript has an arbitrary scene count.
+- Purely decorative/comparative — nothing about a preset should write to `DocMeta.tension`; it is a reference drawn on top, never data.
 
 ### CRT family: found in review 📋 — glow ✅ fixed, see I-09 for the rename
 
