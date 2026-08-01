@@ -111,7 +111,7 @@ Deferred: a live in-session counter (the status bar's per-document count already
 
 ### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) 🔨
 
-Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built** — F-02/F-03/F-04/F-11 can proceed as views over its data rather than three incompatible metadata schemes. F-02 is the first of those views, also now built, and F-29 gave it a second, richer rendering the same day.
+Timeline, plot graph, plotline tracking — now joined by graph views, the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built** — F-02/F-03/F-04/F-11 can proceed as views over its data rather than three incompatible metadata schemes. F-02 is the first of those views, also now built; F-29 gave it a second, richer rendering the same day; F-03 is the second view over the same coordinate, plotting tension instead of chronology.
 
 **5a. Pins, tags & factions (F-10) ✅** — shipped. `DocMeta` and `Entity` both gain `tags?: string[]`; `DocMeta` gains `pins?: string[]` from `DOC_PINS`, `Entity` gains `pins?: string[]` from `CHARACTER_PINS` (`src/shared/types.ts`). Both are plain frontmatter, matching how the story bible already stores everything — no `project.json` index, so the model versions and diffs with the file it describes.
 
@@ -142,6 +142,15 @@ Deferred, as scoped at design time: a real calendar/duration system (explicitly 
 
 Deferred, as scoped at design time: a real calendar/duration system, per-thread timelines (both same as 5b, unchanged); keyboard-driven reordering (Enter still opens a card via keyboard; only mouse can reposition one, matching the list view's own drag having no keyboard equivalent either).
 
+**5d. Plot graph (F-03) ✅** — shipped. **Project → Plot Graph…** plots the same scene-tagged, timeline-ordered cards as 5b/5c, with tension on the y-axis instead of chronology — a curve reading the dramatic shape of the manuscript at a glance. Design settled 2026-08-01:
+
+- **Tension is manual only, set by dragging a node vertically** — 0–10, no scoring model, nothing derived. `DocMeta.tension` is a new optional field; unset scenes render at the midpoint (5) so they show up on the curve without implying "no tension yet" at either extreme, but nothing is written to disk until a writer actually drags a node.
+- **The x-axis reuses `timelineOrder` as-is**, the same coordinate F-02/F-29 already read — the plot graph is a third view over the same one axis rather than a second "narrative order" concept. `lib/timeline.ts`'s `timelineCards` (already shared by both timeline views) is reused unchanged; `TimelineCard` just grew an optional `tension` field to carry it through.
+- **One curve, not one per plotline** — the original sketch asked about overlaying curves per plotline, but that needs F-04's plotline model to exist first, and it doesn't yet. Building for multiple curves now would mean designing two undesigned features at once; single-curve ships today and multi-curve is a natural extension once F-04 gives it something real to key off.
+- **Drag mechanics mirror F-29's line view deliberately**: click vs. drag decided from the pointer-event sequence (a movement threshold, not a separate handle), resolved via a ref read in `onPointerUp` for the same race-avoidance reason documented in 5c. The one difference is the value dragged live-previews unclamped and unrounded (so the curve moves smoothly under the pointer) and only gets `clampTension`'s round-to-whole-number-in-range treatment on release — there's no grid-overlap hazard here since nodes don't collide horizontally the way timeline cards can.
+
+Deferred, as scoped at design time: keyboard-driven tension adjustment (Enter opens a card same as the other two views; only mouse sets tension); a real "what does tension mean" rubric — it's explicitly whatever the writer says it is.
+
 ---
 
 ## Backlog
@@ -168,9 +177,9 @@ Arrange scenes on a chronological timeline of story events — distinct from bin
 - **Cards are the same objects as binder scenes** — any document tagged `scene` (F-10) is a card. No standalone event-card entity; backstory that will never be a scene still needs a document, even a bare one.
 - **One timeline per project.**
 
-### F-03 · Plot graph 💭
+### F-03 · Plot graph ✅ shipped — see Execution order §5d
 
-Scenes plotted on a graph board to visualize dramatic shape — rising action, climaxes, falling action, resolution. Sketch: x-axis = narrative order (or timeline), y-axis = tension/intensity set per scene (drag a node to set it), producing a curve the writer can read at a glance. Open questions: is tension a manual 0–10 value per scene, or derived from something? Multiple curves overlaid per plotline (ties into F-04)?
+Scenes plotted on a graph board to visualize dramatic shape — rising action, climaxes, falling action, resolution. Design settled and built 2026-08-01: x-axis is the F-02/F-29 timeline order (not a separate narrative-order field), y-axis is a manual 0–10 tension value set by dragging a node, one curve only for now (multiple curves per plotline needs F-04's model to exist first). See §5d for what shipped.
 
 ### F-04 · Plotline tracking 💭
 

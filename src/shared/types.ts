@@ -57,6 +57,12 @@ export interface DocMeta {
    * never governs sort order; `timelineOrder` alone does that.
    */
   timelineDate?: string
+  /**
+   * F-03: dramatic tension/intensity, 0–10, scene-tagged documents only.
+   * Manual — set by dragging a node on the plot graph, never derived from
+   * anything. Unset until a writer first drags a scene's node.
+   */
+  tension?: number
   created: string
   modified: string
 }
