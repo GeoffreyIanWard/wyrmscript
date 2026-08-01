@@ -362,6 +362,22 @@ This is the same "break the two-colour discipline on purpose" family as Ledger, 
 - **"Other Windows-esque homages"** is the open half of the request. Candidates worth naming rather than leaving implicit: a beveled (rather than flat 2px) border on `.mac-window` and buttons — real Win95 chrome is a raised 3D bevel, which is a genuine departure from every palette so far, all of which keep the flat 1-bit border language; a taskbar-style affordance somewhere in the chrome; the teal-and-grey combination itself (`#008080` desktop, `#c0c0c0` window chrome) rather than teal alone.
 - **Bevels are the one piece that isn't "just new CSS variables."** Every palette to date reskins colour and dither fill within the existing flat-chrome shape; a genuine 3D bevel changes the shape (multiple border colours simulating light/shadow, not achievable with a single `--ink` border). Worth deciding whether this palette gets that treatment or stays flat-chrome-with-Win95-colours — the former is a much bigger, more novel piece of work than any palette shipped so far.
 
+### F-29 · Timeline: line-graphic view 💭
+
+Requested 2026-08-01, the same day F-02 shipped as a plain list. Wants the timeline redrawn as a genuine visual chart — a literal line (the old-history-book convention) with scene markers laid along it like birds on a wire, rather than a stacked list of rows. Key asks:
+
+- Uneven spacing is the point, not a bug — scenes that are narratively close together sit shoulder to shoulder, a long gap in the story shows as visible empty space on the line, and both are placed by dragging rather than computed automatically.
+- Simultaneous events can stack — more than one card at the same point on the line, for scenes happening at once (parallel POV threads, a flashback interleaved with a present-day scene).
+
+Design questions to settle before building, in the same settle-first spirit as F-02's own design pass:
+
+- **What does horizontal position mean?** F-02's `timelineOrder` is a strict total order (a bare rank) — ranks 1 and 2 look identical to ranks 1 and 100, so it has no notion of "distance." This request wants position on the line to also encode gap/proximity, which likely means either `timelineOrder` becomes a literal coordinate rather than a rank, or a second field is added purely for visual spacing, independent of sort order.
+- **Does the in-world date (`timelineDate`) drive spacing, or is spacing a purely hand-placed visual choice?** F-02 deliberately made `timelineDate` a label that never governs layout — this request leans the opposite way (position implies meaning), so decide explicitly whether that's an opt-in mode layered on top rather than a reversal of the original decision.
+- **What does a stack mean structurally?** A shared x-position with several cards is easy to draw; whether that's just a visual coincidence (no stored relationship) or an actual "these happen simultaneously" fact worth remembering — and potentially feeding a future plotline view (F-04) — is a modelling decision, not only a rendering one.
+- **Continuous drag or snap-to-gap-size?** Pixel-precise placement is the most literal "birds on a wire" feel but is harder to keep stable across window widths and screen sizes than a small number of discrete gap sizes. Worth prototyping both before committing.
+
+Likely relates to F-03 (plot graph) visually — both want a spatial board rather than a list — but the axes mean different things (F-03's y-axis is tension; this is purely chronological placement), so treat them as separate views rather than merging early.
+
 ### CRT family: found in review 📋 — glow ✅ fixed, see I-09 for the rename
 
 Two notes from reviewing PR #16, both affecting the whole CRT palette group (`green`/`amber`/`vaporwave`/`virtualwyrm`, formerly named `nes` — see I-09):
