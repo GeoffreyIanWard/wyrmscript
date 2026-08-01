@@ -26,6 +26,8 @@ interface EntityFrontmatter {
   type: EntityType
   name: string
   aliases: string[]
+  tags?: string[]
+  pins?: string[]
   created: string
   modified: string
 }
@@ -39,6 +41,8 @@ function parseEntityFile(raw: string): Entity {
     name: data.name,
     aliases: data.aliases ?? [],
     body: parsed.content.replace(/^\n/, ''),
+    tags: data.tags,
+    pins: data.pins,
     created: data.created,
     modified: data.modified
   }
@@ -54,6 +58,10 @@ export async function writeEntity(projectPath: string, entity: Entity): Promise<
     created: entity.created,
     modified: new Date().toISOString()
   }
+  // Only written when non-empty, so entities untouched by F-10 keep clean
+  // frontmatter rather than gaining `tags: []` / `pins: []` on every save.
+  if (entity.tags?.length) meta.tags = entity.tags
+  if (entity.pins?.length) meta.pins = entity.pins
   const file = matter.stringify(entity.body.endsWith('\n') ? entity.body : entity.body + '\n', meta)
   await fsp.writeFile(entityPath(projectPath, entity.type, entity.id), file, 'utf8')
 }

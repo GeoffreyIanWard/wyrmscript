@@ -3,10 +3,11 @@ import type { JSX, MouseEvent } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Highlight from '@tiptap/extension-highlight'
-import type { EntityType } from '../../../shared/types'
+import { DOC_PINS, type EntityType } from '../../../shared/types'
 import { markdownToDoc } from '../lib/markdown'
 import { EntityLinks } from '../lib/entityLinks'
 import { ENTITY_COLLECTIONS } from '../lib/entities'
+import { addTag, removeTag, togglePin } from '../lib/tags'
 import { useWyrm } from '../store'
 import { NewEntityDialog } from './EntityPanel'
 
@@ -14,6 +15,85 @@ interface AddMenu {
   x: number
   y: number
   selection: string
+}
+
+/**
+ * Tags and pins for the active document (F-10). Tags are free-form (the
+ * writer types one and presses Enter); pins toggle membership in the closed
+ * `DOC_PINS` vocabulary via a small dropdown, the same visual language as
+ * the editor's own "add to bible" context menu.
+ */
+function DocMetaBar(): JSX.Element | null {
+  const activeDoc = useWyrm((s) => s.activeDoc)
+  const updateDocMeta = useWyrm((s) => s.updateDocMeta)
+  const [tagInput, setTagInput] = useState('')
+  const [pinMenuOpen, setPinMenuOpen] = useState(false)
+
+  if (!activeDoc) return null
+  const tags = activeDoc.meta.tags ?? []
+  const pins = activeDoc.meta.pins ?? []
+
+  return (
+    <div className="doc-meta-bar">
+      {pins.map((pin) => (
+        <span key={pin} className="pin-chip">
+          {pin}
+        </span>
+      ))}
+      {tags.map((tag) => (
+        <span key={tag} className="tag-chip">
+          #{tag}
+          <button
+            type="button"
+            aria-label={`Remove tag ${tag}`}
+            onClick={() => void updateDocMeta({ tags: removeTag(tags, tag) })}
+          >
+            x
+          </button>
+        </span>
+      ))}
+      <input
+        className="tag-input"
+        placeholder="+ tag"
+        value={tagInput}
+        onChange={(e) => setTagInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter') return
+          e.preventDefault()
+          if (!tagInput.trim()) return
+          void updateDocMeta({ tags: addTag(tags, tagInput) })
+          setTagInput('')
+        }}
+      />
+      <span className="spacer" />
+      <div className="pin-menu-anchor">
+        <button type="button" className="btn small" onClick={() => setPinMenuOpen((v) => !v)}>
+          + Pin
+        </button>
+        {pinMenuOpen && (
+          <>
+            <div className="menu-overlay" onMouseDown={() => setPinMenuOpen(false)} />
+            <div className="menu-drop pin-menu" role="menu">
+              {DOC_PINS.map((pin) => (
+                <button
+                  key={pin}
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={pins.includes(pin)}
+                  className="menu-item"
+                  onClick={() => void updateDocMeta({ pins: togglePin(pins, pin) })}
+                >
+                  <span>
+                    [{pins.includes(pin) ? 'x' : ' '}] {pin}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -96,9 +176,12 @@ export function Editor(): JSX.Element {
 
   return (
     <div className="terminal">
-      <div className="terminal-top">
-        <span>{activeDoc?.meta.title ?? ''}</span>
-        {showCounter && <span>{wordCount.toLocaleString()} words</span>}
+      <div className="terminal-chrome">
+        <div className="terminal-top">
+          <span>{activeDoc?.meta.title ?? ''}</span>
+          {showCounter && <span>{wordCount.toLocaleString()} words</span>}
+        </div>
+        <DocMetaBar />
       </div>
       <div className="terminal-scroll" onContextMenu={onContextMenu}>
         <EditorContent editor={editor} className="editor-host" />
