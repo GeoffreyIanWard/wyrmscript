@@ -57,6 +57,14 @@ interface WyrmState {
   /** Entity shown in the side panel beside the writing terminal. */
   panelEntityId: string | null
   mainView: MainView
+  /**
+   * F-14: where Esc goes back to. Previous `mainView`s, oldest first, pushed
+   * on each `showEntity` hop and popped by `goBack`. Deliberately scoped to
+   * doc↔entity detours only — `selectDoc` and `showDoc` clear it, so
+   * switching scenes in the binder is a fresh start rather than history, and
+   * Esc can never yank a writer into a different scene mid-draft.
+   */
+  viewHistory: MainView[]
 
   /** F-04. A scene belongs to one by carrying a tag equal to its name. */
   plotlines: Plotline[]
@@ -158,6 +166,8 @@ interface WyrmState {
   openEntityPanel(id: string | null): void
   showEntity(id: string): void
   showDoc(): void
+  /** F-14: pop one step of `viewHistory`. True if it actually went anywhere. */
+  goBack(): boolean
 
   loadPlotlines(): Promise<void>
   createPlotline(name: string): Promise<Plotline | null>
@@ -175,6 +185,9 @@ interface WyrmState {
   setMapPin(entityId: string, x: number, y: number): Promise<void>
   removeMapPin(pin: MapPin): Promise<void>
 }
+
+/** F-14: how many doc↔entity hops Esc can unwind. */
+const VIEW_HISTORY_LIMIT = 20
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let commitTimer: ReturnType<typeof setInterval> | null = null
@@ -229,6 +242,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
       activeId: null,
       activeDoc: null,
       saveState: 'saved',
+      // A different project is a different history — Esc must never walk back
+      // into an entry belonging to the project just closed (F-14).
+      mainView: { kind: 'doc' },
+      viewHistory: [],
       syncStatus: null,
       syncConflicts: null,
       syncNeedsAttention: false
@@ -264,6 +281,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     entityIndex: buildEntityIndex([]),
     panelEntityId: null,
     mainView: { kind: 'doc' },
+    viewHistory: [],
     plotlines: [],
     relationships: [],
     mapPins: [],
@@ -309,7 +327,9 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // the main pane — and this has to happen *before* the same-document
       // guard below, because the commonest way to hit it is clicking back to
       // the document you were already on from a story-bible entry (I-05).
-      set({ mainView: { kind: 'doc' } })
+      // Choosing a scene also resets Esc's history (F-14): binder navigation
+      // is deliberately not part of the back-stack.
+      set({ mainView: { kind: 'doc' }, viewHistory: [] })
       if (id === activeId) return
       await get().flushSave()
       const doc = await api.readDoc(project.path, id)
@@ -791,6 +811,13 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (panelEntityId === entity.id) set({ panelEntityId: null })
       if (mainView.kind === 'entity' && mainView.id === entity.id)
         set({ mainView: { kind: 'doc' } })
+      // Prune the deleted entry out of Esc's history too (F-14) — otherwise
+      // going back lands on an entry that no longer exists, and the editor
+      // renders its "this entry no longer exists" state for something the
+      // writer never asked to see again.
+      set({
+        viewHistory: get().viewHistory.filter((v) => v.kind !== 'entity' || v.id !== entity.id)
+      })
     },
 
     openEntityPanel(id) {
@@ -800,15 +827,33 @@ export const useWyrm = create<WyrmState>((set, get) => {
     showEntity(id) {
       // Opening the full entry makes the reference panel redundant — showing the
       // same entry twice side by side just eats the writing pane.
-      const { panelEntityId } = get()
+      const { panelEntityId, mainView, viewHistory } = get()
+      // Re-opening the entry already on screen is not a hop, so it must not
+      // stack a duplicate that Esc would then have to step through twice.
+      if (mainView.kind === 'entity' && mainView.id === id) return
       set({
         mainView: { kind: 'entity', id },
+        // Capped: a writer clicking around the bible for an hour should not
+        // grow this without bound. Losing the oldest steps is fine — nobody
+        // presses Esc thirty times expecting an exact trail.
+        viewHistory: [...viewHistory, mainView].slice(-VIEW_HISTORY_LIMIT),
         panelEntityId: panelEntityId === id ? null : panelEntityId
       })
     },
 
     showDoc() {
-      set({ mainView: { kind: 'doc' } })
+      // "Back to Manuscript" is itself an arrival, not a hop: clearing here is
+      // what stops Esc from bouncing straight back into the entry the writer
+      // just deliberately left.
+      set({ mainView: { kind: 'doc' }, viewHistory: [] })
+    },
+
+    goBack() {
+      const { viewHistory } = get()
+      if (viewHistory.length === 0) return false
+      const previous = viewHistory[viewHistory.length - 1]
+      set({ mainView: previous, viewHistory: viewHistory.slice(0, -1) })
+      return true
     },
 
     /* ---------- plotlines (F-04) ---------- */
