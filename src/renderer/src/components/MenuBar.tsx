@@ -21,6 +21,7 @@ type MenuBarProps = {
   onPlotGraph: () => void
   onPlotlines: () => void
   onCharacterGraph: () => void
+  onWorldMap: () => void
   onSyncSettings: () => void
   onSearch: () => void
   onPalette: () => void
@@ -41,6 +42,7 @@ export function MenuBar({
   onPlotGraph,
   onPlotlines,
   onCharacterGraph,
+  onWorldMap,
   onSyncSettings,
   onSearch,
   onPalette,
@@ -241,6 +243,7 @@ export function MenuBar({
           disabled: !hasProject,
           action: onCharacterGraph
         },
+        { kind: 'item', label: 'World Map…', disabled: !hasProject, action: onWorldMap },
         { kind: 'sep' },
         { kind: 'item', label: 'Backup…', disabled: !hasProject, action: onBackup },
         {
