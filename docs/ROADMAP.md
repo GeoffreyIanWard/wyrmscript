@@ -109,9 +109,9 @@ Decisions worth keeping straight:
 
 Deferred: a live in-session counter (the status bar's per-document count already covers "am I writing"), and best-day/total-words-this-month style figures.
 
-### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) 🔨
+### 5. Story-structure cluster (F-10 first, then F-02, F-03, F-04, F-11, F-12, F-13) ✅
 
-Timeline, plot graph, plotline tracking and graph views — now joined by the world map and nested locations. **F-10 (pins & tags) gated everything else in this cluster and is now built**, and with it, F-02, F-03, F-04 and F-11 — the primary sequence the brief laid out — are all shipped. F-02 is the first view over F-10's data, also now built; F-29 gave it a second, richer rendering the same day; F-03 is the second view over the same coordinate, plotting tension instead of chronology; F-04 adds a fourth thing scenes can carry (a plotline membership, by tag) and unblocks F-03's deferred multi-curve overlay whenever that's picked up; F-11 closes the primary sequence with a fifth view — a character graph — reusing F-04's plotline-record pattern for typed relationship edges and F-10's tags for faction clustering. F-13 (nested locations) was picked up next, deliberately, as the prerequisite F-12 (world map) needs — a `parentId` field lets World Book entries nest. Only F-12 itself remains undesigned in this cluster now, and its two dependencies are both clear.
+Timeline, plot graph, plotline tracking, graph views, the world map and nested locations — **every item in this cluster is now shipped.** F-10 (pins & tags) gated everything else and was built first; F-02/F-29 (timeline), F-03 (plot graph), F-04 (plotline tracking) and F-11 (character graph) followed as the primary sequence the brief laid out, each a view over F-10's tag/pin data or a lightweight record following the same storage pattern (`Plotline`, `Relationship`, and now `MapPin`). F-13 (nested locations) was picked up deliberately as the prerequisite F-12 (world map) needed — a `parentId` field lets World Book entries nest — and F-12 closed the cluster the same day, placing locations on a map with the same one-record-per-placement pattern that answered its own long-standing storage question along the way.
 
 **5a. Pins, tags & factions (F-10) ✅** — shipped. `DocMeta` and `Entity` both gain `tags?: string[]`; `DocMeta` gains `pins?: string[]` from `DOC_PINS`, `Entity` gains `pins?: string[]` from `CHARACTER_PINS` (`src/shared/types.ts`). Both are plain frontmatter, matching how the story bible already stores everything — no `project.json` index, so the model versions and diffs with the file it describes.
 
@@ -180,6 +180,14 @@ Deferred, as scoped at design time: manual node dragging/positioning; relationsh
 - **Nesting surfaces as a read-only "located in" breadcrumb**, in both the full editor (live preview of the dropdown's current choice, before Save Entry commits it) and the side reference panel — not as a change to auto-linking. Mentioning "Harrowgate" in prose still links only Harrowgate; the breadcrumb is discoverable by opening the entry, not injected into the manuscript's link behaviour.
 
 Deferred, as scoped at design time: a visual nested tree in the World Book binder section (drag-to-reparent, expand/collapse); auto-linking or surfacing ancestors when a descendant is mentioned in prose (the roadmap's original note raised this as a possibility, explicitly not chosen). F-12 (world map) is now unblocked.
+
+**5h. World map (F-12) ✅** — shipped, both of its prerequisites (F-10, F-13) now built. **Project → World Map…** places World Book locations on a dithered map canvas, draggable, alongside Unplaced/Placed lists for the same actions without needing to find a pin by eye. Design settled earlier the same day:
+
+- **World Book entities only** — matches the original request ("World Book locations") exactly; characters and glossary entries were considered and explicitly left out of scope, same narrow-scope discipline as F-03/F-04/F-11.
+- **A `MapPin` is its own record** (`entityId`, `x`, `y`), the same shape of decision as every other F-nn this session — not a field on the `world` entity, not one big map file. This directly answers the roadmap's long-standing open question ("a map is spatial data that does not diff or merge as prose does, so it needs its own file per map and a deliberate answer for what a sync conflict on one means") by not treating the map as one file at all: each pin is an independent frontmatter record, so a sync conflict on one pin's position is an ordinary per-file conflict the existing sync engine already resolves, not a new kind of problem. A `world` entity with no `MapPin` simply isn't on the map yet — no placeholder, no null coordinate.
+- **Placeable pins on a plain dithered background only, v1** — no legends, borders, or topography drawing tools yet, matching the "mechanism first" split used for F-04/F-11's own dialogs (a working form before a fancier direct-manipulation surface). Clicking "+ Place on Map" creates a pin at a staggered default position; dragging (the same pointer-event click-vs-drag pattern as F-29's line view and F-03's plot graph, down to the same `onPointerUp`-not-`onClick` race-avoidance reasoning) repositions it; a "Remove" button on the paired list takes a location off the map without touching the entity itself.
+
+Deferred, as scoped at design time: legends, borders, landmarks, topography drawing (the rest of the original "chunky old-school map tools" request); nesting-aware map behaviour (zooming into a placed city to see its nested locations, per F-13's own deferred visual tree — this map is flat, one canvas, no relationship yet to `parentId`); placing non-`world` entities.
 
 ---
 
@@ -287,9 +295,9 @@ Maps rather than lists: a **character graph** where characters can be grouped an
 
 Reconfirmed 2026-08-01 ("a system for observing relationships between characters") — same feature, no new information beyond what's captured above. F-10 (this depends on) is now built, so this is unblocked whenever it's picked up.
 
-### F-12 · World map 💭
+### F-12 · World map ✅ shipped — see Execution order §5h
 
-Lay out World Book locations on a gridded map, with chunky old-school map tools: legends, borders, landmarks, topography. Requested 2026-07-30. Fantasy-cartography feel in 1-bit — hatching and dither patterns instead of colour fills, which the dither variables already provide. Depended on F-10 (locations need to be placeable things, now built) and F-13 (now also built — see below) for the hierarchy; both prerequisites are clear. Remaining open questions, settled in principle but not yet built: World Book entities only (not characters/glossary); drag-to-place, stored as x/y on a per-map record; placeable pins on a plain dithered background for v1, decoration (legends, borders, topography) deferred. Biggest open question still standing is storage: a map is spatial data that does not diff or merge as prose does, so it needs its own file per map and a deliberate answer for what a sync conflict on one means.
+Lay out World Book locations on a gridded map, with chunky old-school map tools: legends, borders, landmarks, topography. Requested 2026-07-30, design settled and built 2026-08-01. Shipped: World Book entities only, placed and dragged as independent `MapPin` records on a plain dithered background. See §5h for what shipped (including how the standing storage/sync-conflict question got answered) and what's deferred — map decoration (legends, borders, topography) is the biggest piece still open.
 
 ### F-13 · Nested locations ✅ shipped — see Execution order §5g
 

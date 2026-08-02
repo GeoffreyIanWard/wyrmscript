@@ -12,6 +12,7 @@ import { TimelineDialog } from './components/TimelineDialog'
 import { PlotGraphDialog } from './components/PlotGraphDialog'
 import { PlotlinesDialog } from './components/PlotlinesDialog'
 import { CharacterGraphDialog } from './components/CharacterGraphDialog'
+import { WorldMapDialog } from './components/WorldMapDialog'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { CompileDialog } from './components/CompileDialog'
 import { BackupDialog } from './components/BackupDialog'
@@ -132,6 +133,7 @@ function App(): JSX.Element {
   const [plotGraphOpen, setPlotGraphOpen] = useState(false)
   const [plotlinesOpen, setPlotlinesOpen] = useState(false)
   const [characterGraphOpen, setCharacterGraphOpen] = useState(false)
+  const [worldMapOpen, setWorldMapOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
   const [compileOpen, setCompileOpen] = useState(false)
@@ -241,6 +243,7 @@ function App(): JSX.Element {
         onPlotGraph={() => setPlotGraphOpen(true)}
         onPlotlines={() => setPlotlinesOpen(true)}
         onCharacterGraph={() => setCharacterGraphOpen(true)}
+        onWorldMap={() => setWorldMapOpen(true)}
         onSyncSettings={() => setSyncOpen(true)}
         onSearch={() => setSearchOpen(true)}
         onPalette={() => setPaletteOpen(true)}
@@ -313,6 +316,11 @@ function App(): JSX.Element {
             <CharacterGraphDialog onClose={() => setCharacterGraphOpen(false)} />
           </ErrorBoundary>
         )}
+        {worldMapOpen && (
+          <ErrorBoundary label="World map" onDismiss={() => setWorldMapOpen(false)}>
+            <WorldMapDialog onClose={() => setWorldMapOpen(false)} />
+          </ErrorBoundary>
+        )}
         {compileOpen && (
           <ErrorBoundary label="Compile" onDismiss={() => setCompileOpen(false)}>
             <CompileDialog onClose={() => setCompileOpen(false)} />
@@ -368,6 +376,12 @@ function App(): JSX.Element {
                   title: 'Character Graph…',
                   subtitle: 'Project',
                   run: () => setCharacterGraphOpen(true)
+                },
+                {
+                  id: 'world-map',
+                  title: 'World Map…',
+                  subtitle: 'Project',
+                  run: () => setWorldMapOpen(true)
                 },
                 {
                   id: 'checkpoint',

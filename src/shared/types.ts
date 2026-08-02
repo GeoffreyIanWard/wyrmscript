@@ -171,6 +171,26 @@ export interface Relationship {
   modified: string
 }
 
+/**
+ * F-12: a World Book location's position on the map. One `MapPin` per
+ * placed location, not one big map file — the roadmap's standing open
+ * question ("a map is spatial data that does not diff or merge as prose
+ * does") is answered by not treating it as one file at all: each pin is its
+ * own record, the same shape of decision as `Plotline`/`Relationship`, so a
+ * sync conflict on one pin's position is an ordinary per-file frontmatter
+ * conflict the existing sync engine already resolves, not a new kind of
+ * problem. A `world` entity with no `MapPin` simply isn't on the map yet.
+ */
+export interface MapPin {
+  id: string
+  entityId: string
+  /** Pixel coordinates within the map canvas. */
+  x: number
+  y: number
+  created: string
+  modified: string
+}
+
 export interface CommitInfo {
   oid: string
   message: string
@@ -470,6 +490,11 @@ export interface WyrmApi {
   listRelationships(path: string): Promise<Relationship[]>
   writeRelationship(path: string, relationship: Relationship): Promise<void>
   deleteRelationship(path: string, id: string): Promise<void>
+
+  /** F-12: world map pin placements. */
+  listMapPins(path: string): Promise<MapPin[]>
+  writeMapPin(path: string, pin: MapPin): Promise<void>
+  deleteMapPin(path: string, id: string): Promise<void>
 
   /** Show a save dialog and write compiled output. Returns the path, or null if cancelled. */
   exportFile(defaultName: string, data: string | Uint8Array): Promise<string | null>

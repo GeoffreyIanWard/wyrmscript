@@ -8,6 +8,7 @@ import type {
   DocFile,
   Entity,
   EntityType,
+  MapPin,
   Plotline,
   ProjectData,
   Relationship,
@@ -19,6 +20,7 @@ import { commitAll, createVariant, deleteVariant, listVariants, logCommits } fro
 import { deleteEntity, listEntities, readAllDocs, writeEntity } from './entities'
 import { deletePlotline, listPlotlines, writePlotline } from './plotlines'
 import { deleteRelationship, listRelationships, writeRelationship } from './relationships'
+import { deleteMapPin, listMapPins, writeMapPin } from './worldMap'
 import {
   createProject,
   docRepoPath,
@@ -155,6 +157,10 @@ export function registerIpc(): void {
   ipcMain.handle('relationship:delete', (_e, path: string, id: string) =>
     deleteRelationship(path, id)
   )
+
+  ipcMain.handle('mapPin:list', (_e, path: string) => listMapPins(path))
+  ipcMain.handle('mapPin:write', (_e, path: string, pin: MapPin) => writeMapPin(path, pin))
+  ipcMain.handle('mapPin:delete', (_e, path: string, id: string) => deleteMapPin(path, id))
 
   /* ---------- appearance & page geometry (F-05, F-06) ---------- */
 
