@@ -1699,8 +1699,13 @@ button {
 
 .entity-main-bar .btn,
 .entity-main-bar .entity-kind,
-.entity-main-bar .entity-dirty {
+.entity-main-bar .entity-dirty,
+.entity-main-bar .row-title {
   background: var(--paper);
+}
+
+.entity-main-bar .row-title {
+  padding: 2px 6px;
 }
 
 .entity-kind,
@@ -1720,6 +1725,50 @@ button {
   overflow-y: auto;
   padding: 16px 20px 40px;
   max-width: 720px;
+}
+
+/* F-08: a folder's rows want the room a prose column doesn't need. */
+.folder-view-body {
+  max-width: none;
+  padding: 0 0 40px;
+}
+
+.folder-row {
+  display: grid;
+  grid-template-columns: 1fr 90px 90px 130px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 20px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.folder-row-head {
+  font-size: 9px;
+  letter-spacing: 1px;
+  background: var(--paper);
+  border-bottom: 2px solid var(--ink);
+  position: sticky;
+  top: 0;
+}
+
+.folder-row:not(.folder-row-head) {
+  cursor: pointer;
+}
+
+.folder-row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-row-title .glyph {
+  flex: none;
+  display: flex;
 }
 
 .entry-field {
