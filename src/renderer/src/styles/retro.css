@@ -473,6 +473,10 @@ button {
   border: 1px solid var(--ink);
   padding: 3px 8px;
   font-size: 11px;
+  /* Explicit because F-31 reuses this class on a <span> in the read-only side
+     panel — a button is inline-block already, an inline span would drop the
+     vertical padding and the chip would sit lopsided against its neighbours. */
+  display: inline-block;
 }
 
 .pin-toggle.on {
