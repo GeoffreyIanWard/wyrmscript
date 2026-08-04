@@ -172,6 +172,19 @@ function App(): JSX.Element {
         focusMenusRef.current?.()
         return
       }
+      // Esc as "back" (F-14): unwind one story-bible detour. Dialogs must keep
+      // winning — `useFocusTrap` stops propagation for Esc, so a dialog with
+      // focus inside never reaches this handler, but focus can go loose (a
+      // click on the overlay's own backdrop), so the open-dialog check is a
+      // real guard rather than a belt-and-braces one. Every dialog in the app
+      // renders `.dialog-overlay`, which makes this one query cover all of
+      // them — including any added later — instead of a list of booleans that
+      // would silently fall out of date.
+      if (e.key === 'Escape') {
+        if (document.querySelector('.dialog-overlay')) return
+        if (useWyrm.getState().goBack()) e.preventDefault()
+        return
+      }
       if (!(e.metaKey || e.ctrlKey)) return
       const state = useWyrm.getState()
       if (e.key === 's') {
