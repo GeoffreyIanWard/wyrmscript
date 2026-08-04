@@ -65,6 +65,36 @@ export function EntityPanel(): JSX.Element | null {
             <div className="field-value">{entity.aliases.join(' · ')}</div>
           </div>
         )}
+        {/* F-31: the same chips the full editor shows, read-only. Rendered as
+            spans rather than the editor's buttons — nothing here is editable,
+            and a control that looks pressable but does nothing is worse than
+            plain text. Only what is actually set is listed: an unset pin is
+            not news, and greying out the other two would be noise in a panel
+            whose whole job is a quick glance. */}
+        {(entity.tags?.length ?? 0) > 0 && (
+          <div className="panel-field">
+            <div className="field-name">TAGS</div>
+            <div className="entity-tags">
+              {entity.tags?.map((tag) => (
+                <span key={tag} className="tag-chip on-paper">
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {(entity.pins?.length ?? 0) > 0 && (
+          <div className="panel-field">
+            <div className="field-name">PINS</div>
+            <div className="entity-tags">
+              {entity.pins?.map((pin) => (
+                <span key={pin} className="pin-toggle on">
+                  {pin}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="panel-field">
           <div className="field-name">
             {entity.type === 'glossary'
