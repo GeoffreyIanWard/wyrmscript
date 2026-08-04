@@ -362,13 +362,13 @@ A fully medieval palette, a period display face for chrome (still legible), and 
 
 Geoffrey raised charging a few dollars for supporters to unlock the Manuscript-tier variants (F-15 through F-18) as a way to fund development. Worth taking seriously, but it's a different kind of work than anything shipped so far, and deserves its own conversation before any code: the app is local-first, offline-capable and account-less by design (F-01, brief §7's local-only requirement) — a purchase/unlock flow needs an answer for what "unlocked" even means with no account and no server. Candidate mechanisms, none evaluated yet: a one-time license file dropped into the settings directory; a separate paid build with the extra palettes compiled in versus a free build without them; something else entirely. Not started.
 
-### F-20 · Collegiate: college-ruled editor pane 📋
+### F-20 · Collegiate: college-ruled editor pane ✅ shipped
 
-Requested 2026-07-31. The palette itself (PR #16) is done; this is an editor-pane treatment on top of it — thin, lightly-visible yellow ruling on `.page` itself, dashed or dotted preferred over a solid line, referencing both a football field's yard lines and a school notebook's ruling at once. Not achievable with the existing chrome-dither mechanism (those tile at a few pixels, sized for backgrounds and disabled-text clipping, not for line-spaced page ruling) — wants its own `[data-palette='collegiate'] .page` background, most likely a small tileable SVG background-image (the same technique as the dithers) sized and spaced to land near the prose line height rather than reusing `--dither-*`.
+Requested 2026-07-31, built 2026-08-04. `[data-palette='collegiate'] .page` gets its own SVG background-image — a dashed gold rule per 18×29px tile, tiling into a continuous dashed line both across and down the page, distinct from the chrome dither mechanism (2px tiles, sized for backgrounds and disabled-text clipping, not page-scale line spacing). 29px lands near the default prose line height (17px × 1.7 line-height) but is a fixed approximation, not a live measurement — F-06's steppers change the real line height and this tile does not track that; it only needs to read as "near" the text, not lock to it pixel-for-pixel.
 
-### F-21 · Blueprint: grid on the editor pane 📋
+### F-21 · Blueprint: grid on the editor pane ✅ shipped
 
-Requested 2026-07-31. A lightly-visible grey grid on `.page`, sparse — explicitly _not_ the tight chrome crosshatch already used for the desktop/scrollbar dither, which would be distracting at page scale. Wants its own wider-spaced background treatment on the writing surface, same technique family as F-20, tuned not to compete with the prose.
+Requested 2026-07-31, built 2026-08-04 alongside F-20 — same technique family, same effort tier. `[data-palette='blueprint'] .page` gets a sparse 48px grid (an L of top+left rule per tile, the same tiling trick as the palette's own dense chrome dither, just scaled up and toned down), explicitly wider and fainter than the crosshatch so it reads as drafting-table grid paper rather than competing with the prose.
 
 ### F-22 · Halftone: margins, ruler and newspaper-editing marks 📋
 

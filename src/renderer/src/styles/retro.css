@@ -1976,6 +1976,16 @@ button {
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23eaf6ff'/%3E%3C/svg%3E");
 }
 
+/* F-21: a sparse grid on the writing surface itself, not the tight chrome
+   crosshatch above (`--dither-*`) — that tiles at 2px, sized for backgrounds
+   and disabled-text clipping, and would be distracting stretched across a
+   page of prose. Wide 48px tiles, low opacity, an L of top+left rule per
+   tile so tiling recreates a full grid — the same technique as the chrome
+   dither, just scaled up and toned down for reading rather than texture. */
+[data-palette='blueprint'] .page {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cpath d='M0 0h48M0 0v48' stroke='%23eaf6ff' stroke-width='1' stroke-opacity='0.18'/%3E%3C/svg%3E");
+}
+
 /* Setup-screen blue: the checkerboard dither is unchanged from the default —
    real BIOS screens are flat colour with no texture, so the reference here is
    entirely the navy ground and the cyan selected-row bar below. */
@@ -2011,6 +2021,20 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23f2c14e'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23f2c14e'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23f2c14e'/%3E%3C/svg%3E");
+}
+
+/* F-20: yard-line/notebook ruling on the writing surface — dashed, gold,
+   faint, referencing a football field and a school notebook at once. Not
+   achievable with the chrome dither mechanism (2px tiles, sized for
+   backgrounds and disabled-text clipping, not page-scale line spacing), so
+   this is its own tile: 29px tall to land near the default prose line height
+   (17px * 1.7 line-height), a dashed horizontal rule per tile so it repeats
+   into a continuous dashed line both across and down the page. It is an
+   approximation, not a live measurement — F-06's steppers change the real
+   line height, and this background tile does not track that; it only needs
+   to read as "near" the text, not lock to it pixel-for-pixel. */
+[data-palette='collegiate'] .page {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='29'%3E%3Cpath d='M0 28h18' stroke='%23f2c14e' stroke-width='1' stroke-dasharray='3,3' stroke-opacity='0.35'/%3E%3C/svg%3E");
 }
 
 /* Phosphor CRTs: palette plus glow, with scanlines added further down. */
