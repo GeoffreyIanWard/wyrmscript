@@ -34,9 +34,12 @@ import {
 import {
   readAppearance,
   readBackupSettings,
+  readRecentProjects,
   readSettings,
   readStatsSettings,
   readSyncProject,
+  removeRecentProject,
+  touchRecentProject,
   writeAppearance,
   writeBackupSettings,
   writeSettings,
@@ -65,8 +68,9 @@ function focusedWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
 }
 
-async function rememberProject(path: string): Promise<void> {
+async function rememberProject(path: string, title: string): Promise<void> {
   await writeSettings({ lastProjectPath: path })
+  await touchRecentProject(path, title)
 }
 
 export function registerIpc(): void {
@@ -84,7 +88,7 @@ export function registerIpc(): void {
     if (result.canceled || !result.filePath) return null
     const path = result.filePath.endsWith('.wyrm') ? result.filePath : `${result.filePath}.wyrm`
     const info = await createProject(path, title || basename(path, '.wyrm'))
-    await rememberProject(path)
+    await rememberProject(path, info.data.title)
     return info
   })
 
@@ -103,14 +107,20 @@ export function registerIpc(): void {
       return null
     }
     const info = await openProject(path)
-    await rememberProject(path)
+    await rememberProject(path, info.data.title)
     return info
   })
 
   ipcMain.handle('project:openPath', async (_e, path: string) => {
-    if (!existsSync(join(path, 'project.json'))) return null
+    if (!existsSync(join(path, 'project.json'))) {
+      // F-24: the boot-time auto-reopen and a recents-row click both funnel
+      // through here — a moved or deleted project should quietly drop off
+      // the recents list rather than sit there as a dead row forever.
+      await removeRecentProject(path)
+      return null
+    }
     const info = await openProject(path)
-    await rememberProject(path)
+    await rememberProject(path, info.data.title)
     return info
   })
 
@@ -119,6 +129,11 @@ export function registerIpc(): void {
   ipcMain.handle('doc:write', (_e, path: string, doc: DocFile) => writeDoc(path, doc))
   ipcMain.handle('git:commit', (_e, path: string, message: string) => commitAll(path, message))
   ipcMain.handle('settings:lastProject', async () => (await readSettings()).lastProjectPath ?? null)
+  ipcMain.handle('settings:recentProjects', () => readRecentProjects())
+  // F-24: "close" means the renderer forgets the project and the next launch
+  // lands on Welcome — the entry stays in recentProjects (that list is what
+  // Welcome offers to reopen), only auto-reopen-on-boot turns off.
+  ipcMain.handle('project:close', () => writeSettings({ lastProjectPath: undefined }))
 
   ipcMain.handle('git:log', (_e, path: string, docId?: string) =>
     logCommits(path, docId ? docRepoPath(docId) : undefined)
@@ -249,7 +264,7 @@ export function registerIpc(): void {
       ? destination.filePath
       : `${destination.filePath}.wyrm`
     const data = await restoreBackup(source, path)
-    await rememberProject(path)
+    await rememberProject(path, data.title)
     return { path, data }
   })
 

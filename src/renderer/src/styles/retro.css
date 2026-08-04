@@ -1222,6 +1222,27 @@ button {
   padding: 3px 0;
 }
 
+/* F-24: Welcome's recents list. */
+.welcome-recent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.welcome-recent-row:not(:last-child) {
+  border-bottom: 1px solid var(--ink);
+}
+
+.welcome-recent-date {
+  font-size: 9px;
+  letter-spacing: 1px;
+  flex: none;
+}
+
 .timeline-date {
   flex: none;
   width: 120px;
