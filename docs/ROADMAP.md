@@ -454,9 +454,13 @@ Requested 2026-08-01. Hovering an auto-linked entity mention (or, per the reques
 - **Tooltip mechanics**: a hover delay (avoid flashing on every incidental mouse pass), and where it renders relative to the cursor so it never occludes the word being read. `lib/entityLinks.ts`'s existing debounce (350ms) is for re-scanning the document, a different timer from a hover-reveal delay — don't conflate them.
 - Needs to work under the "the page is sacred" house rule: informational only, dismisses instantly, never blocks typing or steals focus.
 
-### F-31 · Show pins/tags in the side panel 💭
+### F-31 · Show pins/tags in the side panel ✅ shipped
 
-Requested 2026-08-01. `EntityPanel.tsx` (opened by clicking a linked mention) currently shows name, aliases, body and backlinks, but not tags or pins — the full `EntityEditor.tsx` has them (F-10), the read-only side panel doesn't. Small, mechanical addition once scoped: render the same chip/toggle styling `EntityEditor` already has, read-only. No design blockers; this is an oversight from F-10 shipping the editor's fields without also threading them through the panel's read-only view.
+Requested 2026-08-01, built 2026-08-04. `EntityPanel.tsx` (opened by clicking a linked mention) showed name, aliases, body and backlinks but not tags or pins — the full `EntityEditor.tsx` has had them since F-10, so the same entry read differently depending on which surface you opened. Fixed by rendering the same chips the editor already uses, between ALIASES and the body field to match the editor's own field order.
+
+- **Read-only, and visibly so.** The chips reuse `.tag-chip.on-paper` and `.pin-toggle.on` for an identical look, but render as `<span>`s rather than the editor's `<button>`s — nothing in this panel is editable, and a control that looks pressable but does nothing is worse than plain text. Tests assert the tag chips carry no remove control and the pins expose no button role.
+- **Only what is set is listed.** Unlike the editor, which shows the whole `CHARACTER_PINS` vocabulary so a writer can toggle within it, the panel lists just the pins an entry actually carries — greying out the other two would be noise in a surface whose job is a quick glance. Each section is omitted entirely when empty, matching how ALIASES and LOCATED IN already behave.
+- `.pin-toggle` gained an explicit `display: inline-block`. It had only ever been used on buttons, which are inline-block already; on an inline `<span>` the vertical padding would collapse and the chip would sit lopsided against its neighbours.
 
 ### F-32 · Sort characters with significant pins to the top by default 💭
 
