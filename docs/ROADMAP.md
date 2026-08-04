@@ -200,6 +200,12 @@ Small by volume, disproportionate by feel: Esc now pops one story-bible detour i
 
 **Found while building, not caused by it (I-10, since fixed):** `useFocusTrap` bound its Escape listener to the dialog root, so if focus was loose on `<body>` while a dialog was open, Esc did nothing at all and the dialog could only be dismissed with the mouse. F-14's overlay guard made that a no-op rather than a wrong action, but the gap was real and predated this work. The trap now also listens on `document` for the topmost dialog, which closes both halves of the story: dialog first, view-history pop only when nothing is open on top.
 
+### 7. Folder view (F-08) ✅
+
+Clicking a folder's row body now opens a plain listing of its immediate contents — title, words, status, modified — rather than only toggling expand/collapse. See the F-08 backlog entry for the shipped decisions: the twist/row-body split, `MainView`'s new `folder` case and its F-14 arrival semantics, the shared `loadAllDocs` loader, and the trash fallback.
+
+**Also shipped, doc-only until now:** F-09 (focus mode) had already landed — zoom box, ⌥⌘F, the View menu item — but its roadmap entry was never flipped from 📋. Corrected in the same pass as F-08 rather than opening a doc-only PR for one status glyph.
+
 ---
 
 ## Backlog
@@ -267,18 +273,19 @@ Every menu and panel reachable and operable without the mouse — the WordStar h
 
 Related: the ⌘K command palette (Phase 6) covers fast _navigation_ but is not a substitute for operating the existing menus; the optional WordStar Ctrl-key diamond (design-brief.md §3) is a separate opt-in keymap that should be designed alongside this so the two don't fight over bindings.
 
-### F-08 · Folder view (document browser) 📋
+### F-08 · Folder view (document browser) ✅ shipped
 
-Clicking a folder in the binder currently only expands or collapses it. It should also open a **file-explorer view of that folder's documents** in the main pane — one row per document with word count, created and last-modified timestamps, and status/label (both already exist in `DocMeta`). Requested 2026-07-30.
+Requested 2026-07-30, built 2026-08-04. Clicking a folder's row body now opens a plain listing of its immediate contents in the main pane — a folder's shape at a glance, not a corkboard (that stays a separate Phase 6 item with index cards).
 
-- **Keep it plain.** A sortable list of rows, chrome font, 1-bit — not a table with borders everywhere, and not the corkboard (that is a separate Phase 6 item with index cards). The point is to see a folder's shape at a glance, so the columns should earn their place: title, words, modified. Created and status are useful but secondary.
-- Clicking a row opens that document; the folder view is a _destination_, so `MainView` gains a `{ kind: 'folder'; id }` case alongside `doc` and `entity` (see I-05 — that union is what decides the main pane).
-- Word counts for non-open documents need every body read, which `readAllDocs` already does; the compile dialog does the same thing and could share the loader.
-- Open question: does clicking a folder replace expand/collapse, or does the twist stay the expander and the row body become the navigation target? The second is less surprising and matches the Finder lineage.
+- **The open question settled the way the roadmap already leaned**: the twist stays the collapse/expand control; the rest of the row is the navigation target, matching the Finder split rather than one click doing two different things. `Binder.tsx`'s twisty span now stops propagation and calls the same `toggle` it always did; the row's own `onClick` calls the new `showFolder(id)` instead. Keyboard Enter follows the same split — it already opens a document, so it now opens a folder too, since ArrowRight already covers "expand a collapsed folder to browse into it."
+- `MainView` gained a `{ kind: 'folder'; id }` case alongside `doc` and `entity` (I-05's union). `showFolder` is a binder-navigation arrival, not a hop — like `selectDoc`/`showDoc`, it clears F-14's `viewHistory` rather than joining it.
+- **Word counts reuse `loadAllDocs`**, the same loader the compile dialog and project search already use, rather than a second reader.
+- Columns are title, words, status, modified — status made the primary row rather than the "secondary" the roadmap first proposed, since it is a single word available for free and the roadmap's own reasoning ("earn their place") argues for it over created, which now rides as a tooltip on the title instead of a fifth column.
+- **Trashing the open folder (or an ancestor of it) falls back to the manuscript.** The same subtree-removal `moveToTrash` already used for the open *document* case; extended with the equivalent check for `mainView.kind === 'folder'`, since a folder view left open on a folder that no longer exists in the binder would otherwise just keep listing it.
 
-### F-09 · Focus mode 📋
+### F-09 · Focus mode ✅ shipped
 
-An icon on an open document expands the editor pane to the whole screen; the same icon returns to the standard view. Requested 2026-07-30. Small and self-contained — binder, side panel, and status bar hide, the page keeps its measure and centres. Wants a period-correct glyph rather than a modern expand arrow: the System-era idiom is a **zoom box** (the little nested-squares control already drawn in the main window's title bar), so reuse that vocabulary. Note there is already a disabled `Composition Mode` (⌥⌘F) item in the View menu — this is that item, and it should adopt the shortcut rather than inventing a second one.
+Requested and built 2026-07-30 (roadmap entry left stale until now). Binder, side panel and status bar hide behind the **zoom box** — the period-correct nested-squares glyph in the main window's title bar, reusing System-era vocabulary rather than a modern expand icon — and the same click returns to the standard view. ⌥⌘F is the shortcut, replacing the previously-disabled `Composition Mode` menu item rather than adding a second one.
 
 ### F-10 · Pins, tags & factions ✅ shipped — see Execution order §5a
 

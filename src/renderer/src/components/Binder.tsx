@@ -67,11 +67,14 @@ function BinderRow({
   cursorId: string | null
 }): JSX.Element {
   const activeId = useWyrm((s) => s.activeId)
+  const mainView = useWyrm((s) => s.mainView)
   const selectDoc = useWyrm((s) => s.selectDoc)
   const startRename = useWyrm((s) => s.startRename)
   const moveBinderNode = useWyrm((s) => s.moveBinderNode)
+  const showFolder = useWyrm((s) => s.showFolder)
 
   const isFolder = node.type === 'folder'
+  const isOpenFolder = isFolder && mainView.kind === 'folder' && mainView.id === node.id
   const hint = dropHint?.id === node.id ? dropHint.position : null
 
   const positionFor = (e: DragEvent<HTMLDivElement>): DropPosition => {
@@ -87,7 +90,7 @@ function BinderRow({
       data-node-type={node.type}
       className={[
         'binder-row',
-        node.id === activeId ? 'selected' : '',
+        node.id === activeId || isOpenFolder ? 'selected' : '',
         node.id === cursorId ? 'cursor' : '',
         hint ? `drop-${hint}` : ''
       ]
@@ -97,7 +100,13 @@ function BinderRow({
       draggable={!inTrash}
       onClick={() => {
         if (node.type === 'doc' && !inTrash) void selectDoc(node.id)
-        if (isFolder) onToggle(node.id)
+        // F-08: the twist is the collapse/expand control now; clicking the
+        // rest of a folder row opens its contents (Finder's own split, and
+        // less surprising than a click doing two different things at once).
+        // Trash keeps the old combined behaviour — there is no folder view
+        // for a trashed folder's contents.
+        if (isFolder && inTrash) onToggle(node.id)
+        else if (isFolder) showFolder(node.id)
       }}
       onDoubleClick={(e) => {
         e.stopPropagation()
@@ -122,7 +131,14 @@ function BinderRow({
       }}
     >
       {isFolder && (
-        <span className={`twist${collapsed ? '' : ' open'}`} aria-hidden>
+        <span
+          className={`twist${collapsed ? '' : ' open'}`}
+          aria-hidden
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggle(node.id)
+          }}
+        >
           ▸
         </span>
       )}
@@ -207,6 +223,7 @@ export function Binder(): JSX.Element {
   const restoreFromTrash = useWyrm((s) => s.restoreFromTrash)
   const activeId = useWyrm((s) => s.activeId)
   const selectDoc = useWyrm((s) => s.selectDoc)
+  const showFolder = useWyrm((s) => s.showFolder)
   const renamingId = useWyrm((s) => s.renamingId)
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
@@ -311,8 +328,10 @@ export function Binder(): JSX.Element {
       case 'Enter':
         if (!node) return
         e.preventDefault()
+        // Enter opens, same as clicking a row's body (F-08) — ArrowRight
+        // already covers "expand a collapsed folder to browse its children".
         if (node.type === 'doc') void selectDoc(node.id)
-        else toggle(node.id)
+        else showFolder(node.id)
         break
       case 'F2':
         if (!node) return

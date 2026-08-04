@@ -5,6 +5,7 @@ import { Binder } from './components/Binder'
 import { Editor } from './components/Editor'
 import { EntityPanel } from './components/EntityPanel'
 import { EntityEditor } from './components/EntityEditor'
+import { FolderView } from './components/FolderView'
 import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog } from './components/Dialogs'
 import { StatsDialog } from './components/StatsDialog'
@@ -109,14 +110,12 @@ function StatusBar(): JSX.Element {
   )
 }
 
-/** The writing terminal, or a story-bible entry in its place. */
+/** The writing terminal, or a bible entry or folder listing in its place. */
 function MainPane(): JSX.Element {
   const mainView = useWyrm((s) => s.mainView)
-  return mainView.kind === 'entity' ? (
-    <EntityEditor key={mainView.id} entityId={mainView.id} />
-  ) : (
-    <Editor />
-  )
+  if (mainView.kind === 'entity') return <EntityEditor key={mainView.id} entityId={mainView.id} />
+  if (mainView.kind === 'folder') return <FolderView key={mainView.id} folderId={mainView.id} />
+  return <Editor />
 }
 
 function App(): JSX.Element {
