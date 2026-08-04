@@ -79,6 +79,15 @@ export interface ProjectInfo {
   data: ProjectData
 }
 
+/** F-24: the home screen's recents list. Title is captured at open time
+ *  rather than read live, so a closed project's entry still shows a name
+ *  without reopening it just to display a row. */
+export interface RecentProject {
+  path: string
+  title: string
+  openedAt: string
+}
+
 export interface DocFile {
   meta: DocMeta
   body: string
@@ -463,6 +472,10 @@ export interface WyrmApi {
   /** Stage everything and commit if anything changed. Returns true if a commit was made. */
   commit(path: string, message: string): Promise<boolean>
   getLastProjectPath(): Promise<string | null>
+  /** F-24: most-recent first, for the home screen's recents list. */
+  getRecentProjects(): Promise<RecentProject[]>
+  /** F-24: clears the auto-reopen pointer. The project stays in recentProjects. */
+  closeProject(): Promise<void>
 
   /** Commit history, newest first; docId scopes it to one document's file. */
   log(path: string, docId?: string): Promise<CommitInfo[]>

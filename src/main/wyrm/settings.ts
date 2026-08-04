@@ -2,9 +2,12 @@ import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 
-import type { AppearanceSettings, StatsSettings } from '../../shared/types'
+import type { AppearanceSettings, RecentProject, StatsSettings } from '../../shared/types'
 import { DEFAULT_APPEARANCE, DEFAULT_STATS } from '../../shared/types'
 import type { BackupSettings } from '../../shared/types'
+
+/** F-24: how many recently-opened projects the home screen offers. */
+const RECENT_PROJECTS_LIMIT = 8
 
 /** Per-project sync bookkeeping. The remote URL itself lives in .git/config. */
 export interface SyncProjectSettings {
@@ -29,6 +32,10 @@ interface AppSettings {
    *  belongs to the writer, not to one manuscript. The counts themselves are
    *  not stored here — they are derived from each project's git history. */
   stats?: Partial<StatsSettings>
+  /** F-24: most-recent first, capped at RECENT_PROJECTS_LIMIT. Outlives
+   *  `lastProjectPath` being cleared on close — closing a project removes it
+   *  from auto-reopen, not from the list a writer picks it back up from. */
+  recentProjects?: RecentProject[]
 }
 
 const NO_BACKUP: BackupSettings = { path: null, auto: false, lastBackupAt: null }
@@ -116,4 +123,30 @@ export async function writeBackupSettings(
   const next: BackupSettings = { ...NO_BACKUP, ...settings.backups?.[projectPath], ...patch }
   await writeSettings({ backups: { ...settings.backups, [projectPath]: next } })
   return next
+}
+
+export async function readRecentProjects(): Promise<RecentProject[]> {
+  const settings = await readSettings()
+  return settings.recentProjects ?? []
+}
+
+/** F-24: called on every successful open/create — moves `path` to the front,
+ *  refreshing its title in case the project was renamed since. */
+export async function touchRecentProject(path: string, title: string): Promise<void> {
+  const settings = await readSettings()
+  const rest = (settings.recentProjects ?? []).filter((p) => p.path !== path)
+  const next: RecentProject[] = [
+    { path, title, openedAt: new Date().toISOString() },
+    ...rest
+  ].slice(0, RECENT_PROJECTS_LIMIT)
+  await writeSettings({ recentProjects: next })
+}
+
+/** F-24: a project deleted or moved from disk drops off the list the next
+ *  time it fails to open, rather than sitting there as a dead row forever. */
+export async function removeRecentProject(path: string): Promise<void> {
+  const settings = await readSettings()
+  await writeSettings({
+    recentProjects: (settings.recentProjects ?? []).filter((p) => p.path !== path)
+  })
 }

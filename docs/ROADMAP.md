@@ -206,6 +206,15 @@ Clicking a folder's row body now opens a plain listing of its immediate contents
 
 **Also shipped, doc-only until now:** F-09 (focus mode) had already landed — zoom box, ⌥⌘F, the View menu item — but its roadmap entry was never flipped from 📋. Corrected in the same pass as F-08 rather than opening a doc-only PR for one status glyph.
 
+### 8. Close project + a real home screen (F-24) ✅
+
+The title-bar close-box (`App.tsx`) was decorative — a `<span>`, no handler — until now; it's a real `<button>` and closes the project, landing on `Welcome.tsx`, which gained a recents list.
+
+- **The one real design fork — settled by asking, not assuming:** does closing a project also turn off `boot()`'s silent auto-reopen for the *next launch*, or only affect the current session? Chose the former: an explicit close clears `lastProjectPath` (`project:close` IPC handler), so the next launch lands on Welcome with recents to pick from — but quitting the app without closing first (⌘Q, or just closing the window) still auto-reopens exactly as before. Only the deliberate close action changes anything, which keeps the existing convenience intact for the common case (Geoffrey's own daily-use project) while making "close" mean close.
+- **Recents are a separate, longer-lived list from `lastProjectPath`.** Deliberately: closing a project must not make it vanish from the very list meant to let you pick it back up. `main/wyrm/settings.ts` gained `recentProjects` (most-recent-first, capped at 8, title refreshed on every open in case the project was renamed) alongside the existing `lastProjectPath`, updated through the same `rememberProject` funnel every open/create path already called.
+- **A moved or deleted project quietly drops off the list** the next time it fails to open (`project:openPath`'s existing "not a project" check now also prunes it), rather than sitting there as a dead row forever — same "handle absent gracefully" pattern as a deleted story-bible entry or a trashed binder node.
+- Verified live: closed the demo project → Welcome showed a RECENT row for it → clicked the row → reopened to exactly where it was.
+
 ---
 
 ## Backlog
@@ -376,12 +385,9 @@ Worth splitting into a cheap pass (margin bars + paragraph marks, CSS-only) and 
 
 Requested 2026-07-31. Sounds like a CSS tweak and isn't one: browsers don't reliably support a block-shaped text caret through standard CSS (the experimental `caret-shape` property has no meaningful stable support), so an authentic block cursor needs `caret-color: transparent` plus a positioned decoration element tracking the real cursor — a small TipTap/ProseMirror plugin, not a palette-block change. Comparable in kind to the Manuscript-tier work above even though the ask reads small.
 
-### F-24 · Close project + a real home screen with recents 📋
+### F-24 · Close project + a real home screen with recents ✅ shipped — see Execution order §8
 
-Requested 2026-07-31. Two things bundled together:
-
-- **Close the open project.** The main window's title-bar close-box (`App.tsx`, the `<span className="close-box" />` next to the project title) is currently decorative — no `onClick`, not even a `<button>`. It should close the project (return to the state below) the way every other System-era close-box closes its window.
-- **A real home screen.** `Welcome.tsx` already exists and covers new/open/restore, but today it's only reachable by accident: `boot()` in `store.ts` silently reopens `getLastProjectPath()` on every launch, so a returning writer never sees it. Once the close-box works, closing a project should land here — and it should also gain a **recent projects list** to pick from, not just Create/Open/Restore buttons.
+Requested 2026-07-31, built 2026-08-04.
 
 Open questions worth settling before building:
 
@@ -499,6 +505,13 @@ Requested 2026-08-01, building on F-03 (shipped the same day). Ship a handful of
 - **Which shapes, exactly, and sourced from where?** "Classic master plots" needs a concrete, finite list before this is buildable — worth naming the actual set (and confirming none of them are still under copyright as a specific *codified* dataset, as opposed to the general shape being public-domain narrative theory) before drawing them.
 - **Overlay mechanics**: a selectable preset curve drawn alongside the real one on the same axes — needs its own visual treatment (dashed line, distinct from the solid real curve) so the two are never mistaken for each other, and the x-axis needs to stretch/compress the preset to match however many scenes the writer actually has, since a preset is inherently a fixed shape and a manuscript has an arbitrary scene count.
 - Purely decorative/comparative — nothing about a preset should write to `DocMeta.tension`; it is a reference drawn on top, never data.
+
+### F-36 · Esc exits Focus Mode 💭
+
+Requested 2026-08-04. Pressing Esc while Focus Mode (F-09) is active should exit it, the same way it already closes a dialog or steps back through F-14's view history — right now Esc does nothing while focused, and the only way out is the zoom box or ⌥⌘F again.
+
+- **Ordering against F-14.** `App`'s Esc handler already has a priority chain: an open dialog wins first, then `goBack()`. Exiting Focus Mode needs a slot in that chain — most likely last, after a dialog and after unwinding view history, so a writer deep in a story-bible detour inside Focus Mode steps back through their trail before the mode itself closes; the alternative (Focus Mode closes first) means Esc changes what's on screen twice in two different senses for one keypress and deserves a moment's thought either way.
+- Small and self-contained otherwise — `focusMode` is already local `App` state with a setter; this is one more branch in the existing Esc `onKey` handler, not a new mechanism.
 
 ### CRT family: found in review 📋 — glow ✅ fixed, see I-09 for the rename
 
