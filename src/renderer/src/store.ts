@@ -20,6 +20,7 @@ import type {
   MapPin,
   Plotline,
   ProjectInfo,
+  RecentProject,
   Relationship,
   StatsSettings
 } from '../../shared/types'
@@ -51,6 +52,11 @@ interface WyrmState {
   wordCount: number
   lastCommitAt: number | null
   renamingId: string | null
+  /** F-24: the Welcome/home screen's recents list; loaded whenever no project is open. */
+  recentProjects: RecentProject[]
+  loadRecentProjects(): Promise<void>
+  /** F-24: flush, forget the project, and turn off auto-reopen for next launch. */
+  closeProject(): Promise<void>
 
   /** Story bible (brief §5). */
   entities: Entity[]
@@ -77,6 +83,8 @@ interface WyrmState {
   boot(): Promise<void>
   newProject(title: string): Promise<void>
   openProject(): Promise<void>
+  /** F-24: open a project from the Welcome screen's recents list. */
+  openRecentProject(path: string): Promise<void>
   selectDoc(id: string): Promise<void>
   setEditor(editor: Editor | null): void
   editorChanged(): void
@@ -280,6 +288,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     wordCount: 0,
     lastCommitAt: null,
     renamingId: null,
+    recentProjects: [],
     entities: [],
     entityIndex: buildEntityIndex([]),
     panelEntityId: null,
@@ -311,6 +320,44 @@ export const useWyrm = create<WyrmState>((set, get) => {
         }
       }
       set({ booted: true })
+      await get().loadRecentProjects()
+    },
+
+    async loadRecentProjects() {
+      set({ recentProjects: await api.getRecentProjects() })
+    },
+
+    async closeProject() {
+      await get().flushSave()
+      await api.closeProject()
+      if (commitTimer) {
+        clearInterval(commitTimer)
+        commitTimer = null
+      }
+      commitDirty = false
+      set({
+        project: null,
+        activeId: null,
+        activeDoc: null,
+        editor: null,
+        saveState: 'saved',
+        wordCount: 0,
+        lastCommitAt: null,
+        renamingId: null,
+        entities: [],
+        entityIndex: buildEntityIndex([]),
+        panelEntityId: null,
+        mainView: { kind: 'doc' },
+        viewHistory: [],
+        plotlines: [],
+        relationships: [],
+        mapPins: [],
+        backupSettings: null,
+        syncStatus: null,
+        syncConflicts: null,
+        syncNeedsAttention: false
+      })
+      await get().loadRecentProjects()
     },
 
     async newProject(title) {
@@ -321,6 +368,17 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async openProject() {
       const info = await api.openProject()
       if (info) await loadProject(info)
+    },
+
+    async openRecentProject(path) {
+      const info = await api.openProjectPath(path)
+      if (info) {
+        await loadProject(info)
+      } else {
+        // Moved or deleted since it was last opened — the main process has
+        // already dropped it from recentProjects; catch the renderer up.
+        await get().loadRecentProjects()
+      }
     },
 
     async selectDoc(id) {

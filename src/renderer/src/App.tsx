@@ -269,7 +269,12 @@ function App(): JSX.Element {
         {project ? (
           <div className="mac-window main-window">
             <div className="title-bar">
-              <span className="close-box" />
+              <button
+                type="button"
+                aria-label="Close Project"
+                className="close-box"
+                onClick={() => void useWyrm.getState().closeProject()}
+              />
               <span className="title">{project.data.title}</span>
               {/* The zoom box is the period-correct glyph for "fill the
                   screen" — reusing it beats inventing a modern expand icon. */}

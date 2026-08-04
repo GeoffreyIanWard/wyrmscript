@@ -1,13 +1,27 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import { useWyrm } from '../store'
 import { WyrmIcon } from './icons'
 
+function recentDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 export function Welcome(): JSX.Element {
   const newProject = useWyrm((s) => s.newProject)
   const openProject = useWyrm((s) => s.openProject)
+  const openRecentProject = useWyrm((s) => s.openRecentProject)
   const restoreFromBackup = useWyrm((s) => s.restoreFromBackup)
+  const recentProjects = useWyrm((s) => s.recentProjects)
+  const loadRecentProjects = useWyrm((s) => s.loadRecentProjects)
   const [title, setTitle] = useState('')
+
+  // F-24: Welcome only ever renders with no project open, which is exactly
+  // when the recents list can have gone stale (closing a project, or a
+  // recent one having been pruned for no longer existing on disk).
+  useEffect(() => {
+    void loadRecentProjects()
+  }, [loadRecentProjects])
 
   return (
     <div className="dialog-overlay">
@@ -23,6 +37,28 @@ export function Welcome(): JSX.Element {
             <div>WYRMSTAR</div>
             <div>Nothing is ever truly lost.</div>
           </div>
+          {recentProjects.length > 0 && (
+            <fieldset className="fieldset">
+              <legend>RECENT</legend>
+              {recentProjects.map((p) => (
+                <div
+                  key={p.path}
+                  className="welcome-recent-row"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => void openRecentProject(p.path)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return
+                    e.preventDefault()
+                    void openRecentProject(p.path)
+                  }}
+                >
+                  <span className="row-title">{p.title}</span>
+                  <span className="welcome-recent-date">{recentDate(p.openedAt)}</span>
+                </div>
+              ))}
+            </fieldset>
+          )}
           <fieldset className="fieldset">
             <legend>NEW PROJECT</legend>
             <div className="control-row">
