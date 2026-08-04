@@ -16,6 +16,7 @@ import type {
   Plotline,
   ProjectData,
   ProjectInfo,
+  RecentProject,
   Relationship,
   StatsSettings,
   VariantInfo,
@@ -313,6 +314,19 @@ export function createMockApi(): WyrmApi {
   let mockClientIdSet = false
   let mockLogin: string | null = null
   let mockPolls = 0
+  // F-24: mirrors the main process's settings.json bookkeeping in memory —
+  // auto-reopen pointer plus a most-recent-first recents list, seeded with
+  // the demo project so the preview's Welcome screen has something to show.
+  let lastProjectPath: string | null = demo.info.path
+  let recentProjects: RecentProject[] = [
+    { path: demo.info.path, title: demo.info.data.title, openedAt: new Date().toISOString() }
+  ]
+  const touchRecent = (path: string, title: string): void => {
+    recentProjects = [
+      { path, title, openedAt: new Date().toISOString() },
+      ...recentProjects.filter((p) => p.path !== path)
+    ]
+  }
   const demoSync = (): SyncStatus => ({
     mode: 'unset',
     remoteUrl: null,
@@ -342,13 +356,24 @@ export function createMockApi(): WyrmApi {
     async createProject(title: string): Promise<ProjectInfo> {
       const project = starterProject(title || 'Untitled Novel')
       projects.set(project.info.path, project)
+      lastProjectPath = project.info.path
+      touchRecent(project.info.path, project.info.data.title)
       return project.info
     },
     async openProject(): Promise<ProjectInfo> {
+      lastProjectPath = demo.info.path
+      touchRecent(demo.info.path, demo.info.data.title)
       return demo.info
     },
     async openProjectPath(path: string): Promise<ProjectInfo | null> {
-      return projects.get(path)?.info ?? null
+      const info = projects.get(path)?.info ?? null
+      if (info) {
+        lastProjectPath = path
+        touchRecent(path, info.data.title)
+      } else {
+        recentProjects = recentProjects.filter((p) => p.path !== path)
+      }
+      return info
     },
     async saveProject(path: string, data: ProjectData): Promise<void> {
       const project = projects.get(path)
@@ -366,7 +391,13 @@ export function createMockApi(): WyrmApi {
       return commitInto(mustGet(path), message)
     },
     async getLastProjectPath(): Promise<string | null> {
-      return demo.info.path
+      return lastProjectPath
+    },
+    async getRecentProjects(): Promise<RecentProject[]> {
+      return recentProjects
+    },
+    async closeProject(): Promise<void> {
+      lastProjectPath = null
     },
 
     async log(path: string, docId?: string): Promise<CommitInfo[]> {
