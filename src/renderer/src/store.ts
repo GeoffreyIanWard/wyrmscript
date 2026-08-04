@@ -33,8 +33,9 @@ import { findNode, firstDoc, moveNode, removeNode, type DropPosition } from './l
 
 export type SaveState = 'saved' | 'dirty' | 'saving'
 
-/** What the main pane is showing: a manuscript document or a bible entry. */
-export type MainView = { kind: 'doc' } | { kind: 'entity'; id: string }
+/** What the main pane is showing: a manuscript document, a bible entry, or a folder's contents (F-08). */
+export type MainView =
+  { kind: 'doc' } | { kind: 'entity'; id: string } | { kind: 'folder'; id: string }
 
 function newId(): string {
   return Math.random().toString(36).slice(2, 10)
@@ -166,6 +167,8 @@ interface WyrmState {
   openEntityPanel(id: string | null): void
   showEntity(id: string): void
   showDoc(): void
+  /** F-08: open a folder-view listing in place of the writing terminal. */
+  showFolder(id: string): void
   /** F-14: pop one step of `viewHistory`. True if it actually went anywhere. */
   goBack(): boolean
 
@@ -732,7 +735,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async moveToTrash(id) {
-      const { project, activeId } = get()
+      const { project, activeId, mainView } = get()
       if (!project) return
       const node = removeNode(project.data.binder, id)
       if (!node) return
@@ -743,6 +746,15 @@ export const useWyrm = create<WyrmState>((set, get) => {
         const next = firstDoc(project.data.binder)
         if (next) await get().selectDoc(next.id)
         else set({ activeId: null, activeDoc: null, wordCount: 0 })
+      }
+      // F-08: a folder view open on the trashed folder itself (or one of its
+      // ancestors, since trashing takes the whole subtree with it) would
+      // otherwise keep listing a folder that no longer exists in the binder.
+      if (
+        mainView.kind === 'folder' &&
+        (mainView.id === id || Boolean(findNode([node], mainView.id)))
+      ) {
+        set({ mainView: { kind: 'doc' } })
       }
     },
 
@@ -846,6 +858,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // what stops Esc from bouncing straight back into the entry the writer
       // just deliberately left.
       set({ mainView: { kind: 'doc' }, viewHistory: [] })
+    },
+
+    showFolder(id) {
+      // Binder navigation, same as selectDoc/showDoc — an arrival, not a hop
+      // Esc should unwind (F-14's scope is doc<->entity detours only).
+      set({ mainView: { kind: 'folder', id }, viewHistory: [] })
     },
 
     goBack() {
