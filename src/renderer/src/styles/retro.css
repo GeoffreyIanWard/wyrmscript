@@ -111,7 +111,22 @@ button {
   font-size: 13px;
   -webkit-app-region: drag;
   position: relative;
-  z-index: 100;
+  /* Above every `.dialog-overlay` (300), below `.context-menu` (400). Any
+   * dialog-overlay — Welcome included, since Preferences must be reachable
+   * with no project open — is confined to `.desktop`'s box, which starts
+   * right under this 30px bar; that only keeps the overlay off the menu
+   * *titles* (y<30, always outside it). Once a dropdown opens, its panel
+   * extends down into `.desktop`'s box and an open overlay there wins the
+   * hit-test for every pixel they share, even though `.menu-drop` itself is
+   * z-index 200 — that 200 is scoped inside this element's own stacking
+   * context, so what actually matters for winning against a sibling
+   * `.dialog-overlay` is this z-index, not the dropdown's. Below 300 (the
+   * bug), every dropdown item under an open dialog was unclickable — the
+   * menu button that opened it still worked, since it sits above y=30, so
+   * the failure looked like "menu opens, item does nothing" rather than
+   * "menu is dead."
+   */
+  z-index: 310;
 }
 
 .is-electron-mac .menu-bar {
@@ -192,7 +207,7 @@ button {
 .menu-overlay {
   position: fixed;
   inset: 0;
-  /* Must sit BELOW .menu-bar (z 100): the dropdown's z-index lives inside the
+  /* Must sit BELOW .menu-bar (z 310): the dropdown's z-index lives inside the
      menu bar's stacking context, so an overlay above the bar would swallow
      clicks on menu items. */
   z-index: 90;
