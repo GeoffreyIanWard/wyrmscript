@@ -503,6 +503,13 @@ button {
   flex: 1;
   min-height: 0;
   overflow-y: scroll;
+  /* Containing block for `.block-cursor` (F-23) — it is appended as a real
+     DOM sibling of `.editor-host`, which has no box of its own
+     (`display: contents`), so the search for a positioned ancestor lands
+     here. Absolute descendants of a scrolling element scroll with its
+     content, which is what keeps the cursor glued to its character without
+     a scroll listener. */
+  position: relative;
 }
 
 /* Page geometry is variable-driven (F-06) so Preferences can move it live.
@@ -1575,6 +1582,40 @@ button {
 .page.ProseMirror::selection {
   background: var(--page-ink);
   color: var(--page-bg);
+}
+
+/* F-23: the block cursor itself paints nothing outside BIOS — the extension
+   that positions it (`lib/blockCursor.ts`) runs for every palette, since
+   recreating the editor on a palette switch would lose undo history, so
+   gating is entirely here. */
+.block-cursor {
+  display: none;
+  position: absolute;
+  pointer-events: none;
+  background: transparent;
+  z-index: 1;
+}
+
+[data-palette='bios'] .page.ProseMirror {
+  /* The native thin caret is redundant once the block cursor stands in for
+     it — showing both would read as two cursors. */
+  caret-color: transparent;
+}
+
+[data-palette='bios'] .block-cursor {
+  background: var(--page-ink);
+  animation: block-cursor-blink 1060ms steps(2, end) infinite;
+}
+
+@keyframes block-cursor-blink {
+  0%,
+  49% {
+    opacity: 0.55;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .page p.is-editor-empty:first-child::before {

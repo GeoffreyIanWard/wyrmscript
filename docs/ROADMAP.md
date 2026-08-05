@@ -381,9 +381,15 @@ Requested 2026-07-31, alongside F-20/F-21 but noticeably bigger — the most sub
 
 Worth splitting into a cheap pass (margin bars + paragraph marks, CSS-only) and a real pass (the ruler component) rather than one PR, given the gap in effort between the two halves.
 
-### F-23 · BIOS: block cursor in the editor pane 📋
+### F-23 · BIOS: block cursor in the editor pane ✅ shipped
 
-Requested 2026-07-31. Sounds like a CSS tweak and isn't one: browsers don't reliably support a block-shaped text caret through standard CSS (the experimental `caret-shape` property has no meaningful stable support), so an authentic block cursor needs `caret-color: transparent` plus a positioned decoration element tracking the real cursor — a small TipTap/ProseMirror plugin, not a palette-block change. Comparable in kind to the Manuscript-tier work above even though the ask reads small.
+Requested 2026-07-31, built 2026-08-04. A blinking block, BIOS-palette only, standing in for the native caret — confirmed a real CSS tweak wasn't enough (the experimental `caret-shape` property has no meaningful stable support), so this is `lib/blockCursor.ts`, a small ProseMirror `view` plugin.
+
+- **A positioned overlay, not a decoration.** `coordsAtPos(selection.head)` gives real screen coordinates; the element is appended as a DOM *sibling* of ProseMirror's own root (`view.dom.parentElement`), never a child — `view.dom`'s children are strictly reconciled against the document model, and a foreign node inside it would be fought over or silently removed on the next render.
+- **Width is measured, not guessed**, from `coordsAtPos(pos + 1)` when a next character exists (a precise per-character block, proportional font and all); falls back to a fixed default at a line/document end, where there is nothing to measure.
+- **The extension itself runs for every palette, always** — recreating the editor on a palette switch would lose undo history — and gating is entirely in CSS: `.block-cursor` paints fully transparent outside `[data-palette='bios']`, so the positioning math runs everywhere but nothing is ever drawn except there.
+- **Visible only focused with a collapsed selection.** ProseMirror's own `update` hook covers selection/doc transactions, but focus/blur can change with no transaction at all (clicking to a dialog, tabbing out), so the plugin also listens on `view.dom` directly for those.
+- Scrolling needs no listener at all: the overlay's containing block is `.terminal-scroll` (the actual scroll container, now `position: relative`), and an absolutely-positioned descendant of a scrolling element scrolls with its content — position is computed once per selection/doc/focus change and stays correct.
 
 ### F-24 · Close project + a real home screen with recents ✅ shipped — see Execution order §8
 
