@@ -6,6 +6,7 @@ import Highlight from '@tiptap/extension-highlight'
 import { DOC_PINS, SCENE_TAG, type EntityType } from '../../../shared/types'
 import { markdownToDoc } from '../lib/markdown'
 import { EntityLinks } from '../lib/entityLinks'
+import { BlockCursor } from '../lib/blockCursor'
 import { ENTITY_COLLECTIONS } from '../lib/entities'
 import { addTag, removeTag, togglePin } from '../lib/tags'
 import { useWyrm } from '../store'
@@ -153,6 +154,7 @@ export function Editor(): JSX.Element {
           link: false
         }),
         Highlight,
+        BlockCursor,
         EntityLinks.configure({
           // Read from the store at scan time so adding an entry re-links the
           // open scene without recreating the editor.
