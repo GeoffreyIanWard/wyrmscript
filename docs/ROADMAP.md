@@ -439,15 +439,13 @@ Open questions:
 - **Do line numbers count visual lines or paragraphs?** Visual is what a code editor does and what the request implies; paragraph numbering is far cheaper and arguably more useful for prose (it survives a resize). Ask before assuming.
 - Interacts with F-22's halftone ruler and margin marks — both want gutter furniture, and two independent gutter mechanisms would be a mistake.
 
-### F-28 · Windows 95 palette 📋
+### F-28 · Windows 95 palette ✅ shipped
 
-Requested 2026-07-31. Teal desktop, other Windows-esque chrome homages.
+Requested 2026-07-31, built 2026-08-04. Same "break the two-colour discipline on purpose" family as Ledger, Arcade and Famicom, pulling on a different piece of the existing system than any of the three: `.desktop` was already themed (`--paper`/`--dither-50`), so a teal desktop needed no new hook.
 
-This is the same "break the two-colour discipline on purpose" family as Ledger, Arcade and Famicom, not a new mechanism — but it pulls on a different piece of the existing system than any of those three:
-
-- **The desktop background is currently themed, not just the window.** `.desktop` already reads `--paper`/`--dither-50` (`retro.css`), so a teal desktop is in scope for the palette variables already — no new hook needed, unlike the nuclear-tiger website work where the "Windows 95 teal desktop" idea first appeared as a page-specific skin outside this app entirely. Here it's native.
-- **"Other Windows-esque homages"** is the open half of the request. Candidates worth naming rather than leaving implicit: a beveled (rather than flat 2px) border on `.mac-window` and buttons — real Win95 chrome is a raised 3D bevel, which is a genuine departure from every palette so far, all of which keep the flat 1-bit border language; a taskbar-style affordance somewhere in the chrome; the teal-and-grey combination itself (`#008080` desktop, `#c0c0c0` window chrome) rather than teal alone.
-- **Bevels are the one piece that isn't "just new CSS variables."** Every palette to date reskins colour and dither fill within the existing flat-chrome shape; a genuine 3D bevel changes the shape (multiple border colours simulating light/shadow, not achievable with a single `--ink` border). Worth deciding whether this palette gets that treatment or stays flat-chrome-with-Win95-colours — the former is a much bigger, more novel piece of work than any palette shipped so far.
+- **The open question — bevels or flat chrome — was asked rather than assumed**, since a genuine raised 3D border would be the first departure from the flat 1-bit shape every palette to date keeps, and would set a precedent other palettes might then be expected to match. Answer: flat chrome, Win95 *colours* only — `--ink: #000000`, `--paper: #c0c0c0`, same checkerboard dithers every flat palette already uses, just recoloured.
+- **The desktop stays a genuine two-tone split**, the same kind of deliberate departure Ledger/Arcade already made for their highlight colour, just applied to background regions instead: `.desktop` is solid `#008080` with no dither (the real Windows 95 desktop was flat colour, no texture), distinct from the silver window chrome.
+- **The writing page is white, not silver** — `--page-bg`/`--page-ink` override the palette's own ink/paper specifically for `.page`, matching a real Win95 document window (Notepad, WordPad: white paper inside silver chrome) rather than the "page = chrome" default every other comfort palette otherwise takes.
 
 ### F-29 · Timeline: line-graphic view ✅ shipped — see Execution order §5c
 
