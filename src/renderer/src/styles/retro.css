@@ -326,6 +326,24 @@ button {
   color: var(--paper);
 }
 
+/* F-25: the story-bible section headers (Glossary/Character Book/World
+   Book) previously rendered through the exact same row style as their own
+   entries — same weight, same size, nothing marking "this is a section"
+   versus "this is an entry that happens to be first". Bold plus a rule
+   underneath, the same distinguishing language `.fieldset legend` already
+   uses elsewhere in the chrome, scoped to these three headers only — the
+   manuscript folder tree above them isn't part of this request. */
+.binder-row.section-header {
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--ink);
+  margin-top: 2px;
+}
+
+.binder-row.section-header .entity-count {
+  font-weight: normal;
+}
+
 /* Icons are authored with literal 1-bit attributes; retarget them to the
    theme vars so phosphor modes and row inversion recolor them. */
 .glyph svg [stroke='#000'] {

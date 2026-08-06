@@ -172,7 +172,14 @@ function BibleSection({
 
   return (
     <>
-      <div className="binder-row" data-entity-type={type} onClick={() => setOpen((v) => !v)}>
+      {/* F-25: distinct from an ordinary row — bold, a rule underneath —
+          so "this is a section" reads at a glance instead of looking like
+          just another entry that happens to be first. */}
+      <div
+        className="binder-row section-header"
+        data-entity-type={type}
+        onClick={() => setOpen((v) => !v)}
+      >
         <span className={`twist${open ? ' open' : ''}`} aria-hidden>
           ▸
         </span>
