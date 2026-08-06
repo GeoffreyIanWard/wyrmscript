@@ -1944,7 +1944,8 @@ button {
 [data-palette='halftone'],
 [data-palette='blueprint'],
 [data-palette='bios'],
-[data-palette='collegiate'] {
+[data-palette='collegiate'],
+[data-palette='win95'] {
   --page-bg: var(--paper);
   --page-ink: var(--ink);
   --accent-character: var(--ink);
@@ -2076,6 +2077,39 @@ button {
    to read as "near" the text, not lock to it pixel-for-pixel. */
 [data-palette='collegiate'] .page {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='29'%3E%3Cpath d='M0 28h18' stroke='%23f2c14e' stroke-width='1' stroke-dasharray='3,3' stroke-opacity='0.35'/%3E%3C/svg%3E");
+}
+
+/* F-28: Windows 95, flat-chrome — Win95's colours (teal desktop, silver
+   window chrome) without its bevels. Every palette to date keeps the same
+   flat 1-bit border shape and only reskins colour/dither; a genuine raised
+   3D bevel would be the first departure from that shape, a bigger and more
+   novel piece of work than any palette shipped so far, and would set a
+   precedent other palettes might then be expected to match. Chose flat, to
+   stay consistent with the existing system rather than open that door. */
+[data-palette='win95'] {
+  --ink: #000000;
+  --paper: #c0c0c0;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0z' fill='%23000000'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%23000000'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23000000'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23000000'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23000000'/%3E%3C/svg%3E");
+  /* A real Win95 document window (Notepad, WordPad) is white paper inside
+     silver chrome, not silver throughout — the one deliberate departure from
+     this palette's own ink/paper for the writing surface specifically,
+     matching the actual reference rather than the shared "page = chrome"
+     default every comfort palette otherwise takes. */
+  --page-bg: #ffffff;
+  --page-ink: #000000;
+}
+
+/* Classic desktop teal, distinct from the silver window chrome — an
+   authentic two-tone split as deliberate as Ledger/Arcade's own kept
+   highlight colour, just applied to background regions instead. Flat, no
+   dither: the real Windows 95 desktop was solid colour, no texture. */
+[data-palette='win95'] .desktop {
+  background-color: #008080;
+  background-image: none;
 }
 
 /* Phosphor CRTs: palette plus glow, with scanlines added further down. */

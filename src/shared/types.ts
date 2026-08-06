@@ -290,7 +290,9 @@ export type AccentTheme = '1bit' | '4bit'
  * two-colour discipline entirely to run a full roster of real NES-palette
  * colours across ink/paper/accents/highlight (named `famicom` rather than
  * `nes` so it can't collide with the retired I-09 value in old settings
- * files — see the migration note in `main/wyrm/settings.ts`).
+ * files — see the migration note in `main/wyrm/settings.ts`); `win95` keeps
+ * a second colour too (teal desktop, silver window chrome, white page) but
+ * stays flat-chrome like every palette above — no 3D bevels (F-28).
  */
 export type PaletteTheme =
   | 'paper'
@@ -308,6 +310,7 @@ export type PaletteTheme =
   | 'collegiate'
   | 'virtualwyrm'
   | 'famicom'
+  | 'win95'
 
 export interface AppearanceSettings {
   accents: AccentTheme
