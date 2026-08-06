@@ -211,6 +211,11 @@ export function PrefsDialog({
               on={appearance.palette === 'famicom'}
               onPick={() => pickPalette('famicom')}
             />
+            <Radio
+              label="Windows 95 — teal desktop, silver chrome"
+              on={appearance.palette === 'win95'}
+              onPick={() => pickPalette('win95')}
+            />
             <div className="dialog-hint">CRT variants add scanlines and glow.</div>
           </fieldset>
           <fieldset className="fieldset">
