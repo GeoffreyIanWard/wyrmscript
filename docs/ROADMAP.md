@@ -401,14 +401,13 @@ Open questions worth settling before building:
 - **Where does "recent projects" live?** Nothing today tracks project history beyond the single `lastProjectPath` in `main/wyrm/settings.ts`. Needs a small ordered list (path + title + last-opened time) instead, capped and pruned when a path no longer opens (moved/deleted project folder).
 - **Does closing autosave first?** Every other operation that could lose work checkpoints first (house rule: nothing is ever lost) — closing a project should be no exception.
 
-### F-25 · Story-bible section headers need visual hierarchy 📋
+### F-25 · Story-bible section headers need visual hierarchy ✅ shipped
 
-Requested 2026-07-31. In the binder's Glossary/Character Book/World Book sections, the header row (`BibleSection` in `Binder.tsx`) and its entries render through the exact same `.binder-row` class as everything else — same font size, same weight, same padding. Nothing distinguishes "this is a section" from "this is an entry"; a header currently reads as just another row that happens to be first. Two directions worth weighing, not chosen yet:
+Requested 2026-07-31, built 2026-08-06. The header row (`BibleSection` in `Binder.tsx`) and its entries rendered through the exact same `.binder-row` class as everything else — nothing distinguished "this is a section" from "this is an entry that happens to be first."
 
-- **Make the headers visually distinct** — bolder/larger chrome type, a different background wash, or a rule under them — cheap, CSS-only, matches how `.fieldset legend` already gets its own treatment elsewhere in the chrome.
-- **Nest entries under headers** — indent them further than the current single `paddingLeft: 8 + 16` step (`Binder.tsx`'s entity row), so the tree structure itself carries the hierarchy the way folders already do for the manuscript binder above it.
-
-These aren't mutually exclusive — the manuscript binder's folder rows already indent children by depth, so doing the same for story-bible entries plus a distinct header treatment would bring the two trees into visual agreement rather than leaving story-bible sections as the one flat exception.
+- **Went with the roadmap's own lean rather than treating it as an open fork** — the two directions it named weren't presented as alternatives so much as complementary, and the entry indent (`paddingLeft: 8 + 16`) already matched a depth-1 folder child, so the actual gap was entirely the header's own styling, not the tree structure.
+- **Bold, letter-spaced, a rule underneath** — `.binder-row.section-header`, the same distinguishing language `.fieldset legend` already uses elsewhere in the chrome, applied to a full-width row instead of a floating label.
+- **Scoped to the three story-bible sections only** (Glossary, Character Book, World Book) — the manuscript folder tree above them wasn't part of this request, and folder rows there stay exactly as they were.
 
 ### F-26 · Stats page: hotkey, per-day figures, calendar heatmap 📋
 
