@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { JSX, MouseEvent } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Highlight from '@tiptap/extension-highlight'
+import type { Entity } from '../../../shared/types'
 import { DOC_PINS, SCENE_TAG, type EntityType } from '../../../shared/types'
 import { markdownToDoc } from '../lib/markdown'
 import { EntityLinks } from '../lib/entityLinks'
@@ -16,6 +17,58 @@ interface AddMenu {
   x: number
   y: number
   selection: string
+}
+
+/** F-30: hovering an auto-linked mention. Reveal is delayed so passing the
+ *  mouse over a name mid-sentence doesn't flash a tooltip on every read. */
+const HOVER_DELAY_MS = 400
+
+interface HoverTip {
+  entityId: string
+  x: number
+  y: number
+}
+
+/**
+ * F-30: pins/tags for the hovered entity, positioned just under the mention.
+ * `pointer-events: none` (see `retro.css`) so it can never itself be
+ * hovered, clicked, or steal focus — informational only, per the page-is-
+ * sacred house rule. Suppressed entirely when the entity carries neither,
+ * same "only what is set is listed" discipline as the side panel (F-31).
+ */
+function EntityHoverTip({
+  tip,
+  entities
+}: {
+  tip: HoverTip
+  entities: Entity[]
+}): JSX.Element | null {
+  const entity = entities.find((e) => e.id === tip.entityId)
+  const tags = entity?.tags ?? []
+  const pins = entity?.pins ?? []
+  if (!entity || (tags.length === 0 && pins.length === 0)) return null
+  return (
+    <div className="entity-hover-tip" style={{ left: tip.x, top: tip.y }} aria-hidden>
+      {tags.length > 0 && (
+        <div className="entity-tags">
+          {tags.map((tag) => (
+            <span key={tag} className="tag-chip on-paper">
+              #{tag}
+            </span>
+          ))}
+        </div>
+      )}
+      {pins.length > 0 && (
+        <div className="entity-tags">
+          {pins.map((pin) => (
+            <span key={pin} className="pin-toggle on">
+              {pin}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -129,9 +182,7 @@ export function Editor(): JSX.Element {
   const setEditor = useWyrm((s) => s.setEditor)
   const editorChanged = useWyrm((s) => s.editorChanged)
   const openEntityPanel = useWyrm((s) => s.openEntityPanel)
-
-  const [addMenu, setAddMenu] = useState<AddMenu | null>(null)
-  const [creating, setCreating] = useState<{ type: EntityType; name: string } | null>(null)
+  const entities = useWyrm((s) => s.entities)
 
   // Recreated per document (deps: [activeId]) so undo history never crosses
   // documents — ⌘Z in one scene must not resurrect another scene's text.
@@ -186,15 +237,6 @@ export function Editor(): JSX.Element {
     return () => setEditor(null)
   }, [editor, setEditor])
 
-  const onContextMenu = (event: MouseEvent<HTMLDivElement>): void => {
-    if (!editor) return
-    const { from, to } = editor.state.selection
-    const selection = editor.state.doc.textBetween(from, to, ' ').trim()
-    if (!selection) return // nothing selected: leave the native menu alone
-    event.preventDefault()
-    setAddMenu({ x: event.clientX, y: event.clientY, selection })
-  }
-
   return (
     <div className="terminal">
       <div className="terminal-chrome">
@@ -204,9 +246,87 @@ export function Editor(): JSX.Element {
         </div>
         <DocMetaBar />
       </div>
-      <div className="terminal-scroll" onContextMenu={onContextMenu}>
+      {/* Keyed by document: the context menu, "add to bible" flow and hover
+          tooltip are all transient UI tied to one document's screen content.
+          Remounting on switch resets them for free — no manual "is this
+          still valid" reset logic needed, and no stale tooltip pointing at a
+          mention from the document just left. */}
+      <TerminalContent key={activeId} editor={editor} entities={entities} />
+    </div>
+  )
+}
+
+function TerminalContent({
+  editor,
+  entities
+}: {
+  editor: ReturnType<typeof useEditor>
+  entities: Entity[]
+}): JSX.Element {
+  const [addMenu, setAddMenu] = useState<AddMenu | null>(null)
+  const [creating, setCreating] = useState<{ type: EntityType; name: string } | null>(null)
+  const [hoverTip, setHoverTip] = useState<HoverTip | null>(null)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    }
+  }, [])
+
+  const onContextMenu = (event: MouseEvent<HTMLDivElement>): void => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    const selection = editor.state.doc.textBetween(from, to, ' ').trim()
+    if (!selection) return // nothing selected: leave the native menu alone
+    event.preventDefault()
+    setAddMenu({ x: event.clientX, y: event.clientY, selection })
+  }
+
+  // F-30: delegated rather than attached per-mention, since entity links are
+  // redrawn on every re-scan (`lib/entityLinks.ts`) and per-node listeners
+  // would need re-binding on each pass.
+  const onMouseOver = (event: MouseEvent<HTMLDivElement>): void => {
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-entity]')
+    const entityId = target?.dataset.entity
+    if (!entityId || hoverTip?.entityId === entityId) return
+    const entity = entities.find((e) => e.id === entityId)
+    // Nothing to show — never start a timer for a reveal that would be empty.
+    if (!entity || ((entity.tags?.length ?? 0) === 0 && (entity.pins?.length ?? 0) === 0)) return
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    const rect = target.getBoundingClientRect()
+    hoverTimer.current = setTimeout(() => {
+      hoverTimer.current = null
+      setHoverTip({ entityId, x: rect.left, y: rect.bottom + 4 })
+    }, HOVER_DELAY_MS)
+  }
+
+  const onMouseOut = (event: MouseEvent<HTMLDivElement>): void => {
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-entity]')
+    if (!target) return
+    // Moving within the same mention (e.g. onto a child node) isn't leaving it.
+    const related = event.relatedTarget as Node | null
+    if (related && target.contains(related)) return
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current)
+      hoverTimer.current = null
+    }
+    // Dismisses instantly, no fade — informational only, per the page-is-sacred
+    // house rule; it must never linger once the mouse has moved on.
+    setHoverTip(null)
+  }
+
+  return (
+    <>
+      <div
+        className="terminal-scroll"
+        onContextMenu={onContextMenu}
+        onMouseOver={onMouseOver}
+        onMouseOut={onMouseOut}
+      >
         <EditorContent editor={editor} className="editor-host" />
       </div>
+      {hoverTip && <EntityHoverTip tip={hoverTip} entities={entities} />}
 
       {addMenu && (
         <>
@@ -241,6 +361,6 @@ export function Editor(): JSX.Element {
           onClose={() => setCreating(null)}
         />
       )}
-    </div>
+    </>
   )
 }
