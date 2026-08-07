@@ -34,4 +34,14 @@ if (typeof window !== 'undefined') {
     define(proto, 'getClientRects', () => Object.assign([], { item: () => null }))
     define(proto, 'getBoundingClientRect', emptyRect)
   }
+
+  // F-23's block cursor and F-27's gutter/page-view rules re-measure via
+  // ResizeObserver on layout change; jsdom does not implement it at all.
+  if (typeof window.ResizeObserver === 'undefined') {
+    define(window, 'ResizeObserver', function (this: ResizeObserver) {
+      this.observe = () => {}
+      this.unobserve = () => {}
+      this.disconnect = () => {}
+    } as unknown as typeof ResizeObserver)
+  }
 }

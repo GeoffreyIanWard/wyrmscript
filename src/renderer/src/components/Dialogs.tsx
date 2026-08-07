@@ -277,6 +277,34 @@ export function PrefsDialog({
             </div>
           </fieldset>
           <fieldset className="fieldset">
+            <legend>GUTTER</legend>
+            <Check
+              label="Line numbers"
+              on={appearance.lineNumbers}
+              onToggle={(lineNumbers) => onChange({ lineNumbers })}
+            />
+            <Check
+              label="Page view"
+              on={appearance.pageView}
+              onToggle={(pageView) => onChange({ pageView })}
+            />
+            <Stepper
+              label="LINES PER PAGE"
+              name="lines per page"
+              value={appearance.pageViewLines}
+              min={10}
+              max={60}
+              step={5}
+              format={(v) => `~${v} lines`}
+              onChange={(pageViewLines) => onChange({ pageViewLines })}
+            />
+            <div className="dialog-hint">
+              Line numbers count paragraphs, not wrapped lines, so they stay put across a resize.
+              Page view&rsquo;s rule is an approximation, not a real page break — it won&rsquo;t
+              match how the compiled manuscript actually paginates.
+            </div>
+          </fieldset>
+          <fieldset className="fieldset">
             <legend>WRITING STATS</legend>
             <Check
               label="Show word counts while writing"
