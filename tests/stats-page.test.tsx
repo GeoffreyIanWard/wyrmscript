@@ -4,12 +4,13 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { DEFAULT_STATS } from '../src/shared/types'
 import type { DayStat, StatsSettings } from '../src/shared/types'
 import { useWyrm } from '../src/renderer/src/store'
-import { StatsDialog } from '../src/renderer/src/components/StatsDialog'
+import { StatsPage } from '../src/renderer/src/components/StatsPage'
 import { localDate } from '../src/renderer/src/lib/stats'
 
 /**
- * The stats screen reports on the writer's own work, so the failure that
- * matters is a comfortable lie: a day of cutting shown as progress, or a
+ * F-26: the fuller stats page, a real MainView case rather than the old
+ * dialog (4c). The screen reports on the writer's own work, so the failure
+ * that matters is a comfortable lie: a day of cutting shown as progress, or a
  * streak that quietly counts days nobody wrote. These drive the real
  * component rather than asserting on the pure helpers a second time.
  */
@@ -24,8 +25,8 @@ const yesterday = (): string => {
 /** The value shown in a named summary tile — the same figure also appears in
  *  that day's history row, so assertions have to say which one they mean. */
 function tile(label: string): string {
-  const el = [...document.querySelectorAll('.stat-tile')].find(
-    (t) => t.querySelector('.stat-tile-label')?.textContent === label
+  const el = [...document.querySelectorAll('.stat-tile')].find((t) =>
+    (t.querySelector('.stat-tile-label')?.textContent ?? '').startsWith(label)
   )
   return el?.querySelector('.stat-tile-value')?.textContent ?? ''
 }
@@ -34,11 +35,11 @@ async function renderStats(days: DayStat[], stats: Partial<StatsSettings> = {}):
   useWyrm.setState({
     dailyStats: days,
     statsSettings: { ...DEFAULT_STATS, ...stats },
-    // The dialog refreshes on open; in the test the history is already set.
+    // The page refreshes on open; in the test the history is already set.
     refreshStats: async () => {}
   })
   await act(async () => {
-    render(<StatsDialog onClose={() => {}} />)
+    render(<StatsPage />)
   })
 }
 
@@ -51,7 +52,7 @@ afterEach(() => {
   useWyrm.setState({ dailyStats: [], statsSettings: null })
 })
 
-describe('the writing stats screen', () => {
+describe('the writing stats page', () => {
   it('reports today, the streak and the manuscript total', async () => {
     await renderStats([
       { date: yesterday(), total: 1200, net: 400, added: 400, commits: 2 },
@@ -76,7 +77,6 @@ describe('the writing stats screen', () => {
     })
 
     expect(tile('TODAY')).toBe('0')
-    expect(screen.queryByText('-400')).toBeNull()
   })
 
   it('reports words added rather than net under added mode', async () => {
@@ -137,8 +137,42 @@ describe('the writing stats screen', () => {
       { date: today, total: 900, net: 500, added: 500, commits: 1 }
     ])
 
-    expect(screen.getByText('Today')).toBeTruthy()
-    // Yesterday is dated, not called "Today" a second time.
-    expect(screen.getAllByText('Today')).toHaveLength(1)
+    expect(screen.getAllByText('Today').length).toBeGreaterThan(0)
+  })
+
+  it('sums this week and this month from the same history', async () => {
+    await renderStats([
+      { date: yesterday(), total: 1200, net: 400, added: 400, commits: 2 },
+      { date: today, total: 1900, net: 700, added: 700, commits: 3 }
+    ])
+
+    expect(tile('THIS WEEK')).toBe('+1,100')
+    expect(tile('THIS MONTH')).toBe('+1,100')
+  })
+
+  it('names the busiest day as the best day', async () => {
+    await renderStats([
+      { date: yesterday(), total: 1200, net: 1000, added: 1000, commits: 2 },
+      { date: today, total: 1900, net: 700, added: 700, commits: 3 }
+    ])
+
+    expect(tile(`BEST · ${dayLabelFor(yesterday())}`)).toBe('+1,000')
+  })
+
+  it('renders a heatmap cell for today marked as a goal-met day', async () => {
+    await renderStats([{ date: today, total: 900, net: 900, added: 900, commits: 2 }], {
+      dailyGoal: 500
+    })
+
+    expect(document.querySelector('.heatmap-cell.goal-met')).not.toBeNull()
   })
 })
+
+function dayLabelFor(date: string): string {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  })
+}

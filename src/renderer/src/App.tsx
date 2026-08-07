@@ -8,7 +8,7 @@ import { EntityEditor } from './components/EntityEditor'
 import { FolderView } from './components/FolderView'
 import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog } from './components/Dialogs'
-import { StatsDialog } from './components/StatsDialog'
+import { StatsPage } from './components/StatsPage'
 import { TimelineDialog } from './components/TimelineDialog'
 import { PlotGraphDialog } from './components/PlotGraphDialog'
 import { PlotlinesDialog } from './components/PlotlinesDialog'
@@ -115,6 +115,7 @@ function MainPane(): JSX.Element {
   const mainView = useWyrm((s) => s.mainView)
   if (mainView.kind === 'entity') return <EntityEditor key={mainView.id} entityId={mainView.id} />
   if (mainView.kind === 'folder') return <FolderView key={mainView.id} folderId={mainView.id} />
+  if (mainView.kind === 'stats') return <StatsPage />
   return <Editor />
 }
 
@@ -128,7 +129,6 @@ function App(): JSX.Element {
   const statsSettings = useWyrm((s) => s.statsSettings)
   const setStatsSettings = useWyrm((s) => s.setStatsSettings)
   const [prefsOpen, setPrefsOpen] = useState(false)
-  const [statsOpen, setStatsOpen] = useState(false)
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [plotGraphOpen, setPlotGraphOpen] = useState(false)
   const [plotlinesOpen, setPlotlinesOpen] = useState(false)
@@ -198,11 +198,15 @@ function App(): JSX.Element {
       }
       if (!(e.metaKey || e.ctrlKey)) return
       const state = useWyrm.getState()
-      if (e.key === 's') {
+      if (e.key === 's' && !e.shiftKey) {
         e.preventDefault()
         if (state.project) {
           void state.flushSave().then(() => setVersionDialog('commit'))
         }
+      } else if ((e.key === 'S' || (e.key === 's' && e.shiftKey)) && state.project) {
+        // ⇧⌘S — Writing Stats page (F-26).
+        e.preventDefault()
+        state.showStats()
       } else if (e.key === 'y' && state.activeDoc) {
         e.preventDefault()
         void state.flushSave().then(() => setVersionDialog('history'))
@@ -270,7 +274,7 @@ function App(): JSX.Element {
         }}
         onCompile={() => setCompileOpen(true)}
         onBackup={() => setBackupOpen(true)}
-        onStats={() => setStatsOpen(true)}
+        onStats={() => useWyrm.getState().showStats()}
         onTimeline={() => setTimelineOpen(true)}
         onPlotGraph={() => setPlotGraphOpen(true)}
         onPlotlines={() => setPlotlinesOpen(true)}
@@ -330,11 +334,6 @@ function App(): JSX.Element {
           />
         )}
         {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
-        {statsOpen && (
-          <ErrorBoundary label="Writing stats" onDismiss={() => setStatsOpen(false)}>
-            <StatsDialog onClose={() => setStatsOpen(false)} />
-          </ErrorBoundary>
-        )}
         {timelineOpen && (
           <ErrorBoundary label="Timeline" onDismiss={() => setTimelineOpen(false)}>
             <TimelineDialog onClose={() => setTimelineOpen(false)} />
