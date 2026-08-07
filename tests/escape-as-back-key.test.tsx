@@ -98,8 +98,9 @@ describe('the Escape key', () => {
   // I-10: the other half of the same story. The guard above keeps a loose-focus
   // Esc from navigating, but for a while that was all it did — the dialog
   // stayed open, because `useFocusTrap` only listened on the dialog's own root
-  // and nothing inside it had focus. Opening Project → Writing Stats… and
-  // pressing Esc left the writer reaching for the mouse.
+  // and nothing inside it had focus. Opening Project → Timeline… and pressing
+  // Esc left the writer reaching for the mouse. (Writing Stats used to be this
+  // test's example dialog too, before F-26 turned it into a MainView page.)
   it('closes a dialog opened from the menu, with focus never inside it', async () => {
     await openProject()
     await renderApp()
@@ -110,7 +111,7 @@ describe('the Escape key', () => {
     const project = screen.getByText('Project')
     act(() => project.focus())
     fireEvent.keyDown(project, { key: 'ArrowDown' })
-    fireEvent.keyDown(screen.getByRole('menubar'), { key: 'w' }) // Writing Stats…
+    fireEvent.keyDown(screen.getByRole('menubar'), { key: 't' }) // Timeline…
     await act(async () => {
       fireEvent.keyDown(screen.getByRole('menubar'), { key: 'Enter' })
     })

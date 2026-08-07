@@ -35,9 +35,13 @@ import { findNode, firstDoc, moveNode, removeNode, type DropPosition } from './l
 
 export type SaveState = 'saved' | 'dirty' | 'saving'
 
-/** What the main pane is showing: a manuscript document, a bible entry, or a folder's contents (F-08). */
+/** What the main pane is showing: a manuscript document, a bible entry, a
+ *  folder's contents (F-08), or the writing-stats page (F-26). */
 export type MainView =
-  { kind: 'doc' } | { kind: 'entity'; id: string } | { kind: 'folder'; id: string }
+  | { kind: 'doc' }
+  | { kind: 'entity'; id: string }
+  | { kind: 'folder'; id: string }
+  | { kind: 'stats' }
 
 function newId(): string {
   return Math.random().toString(36).slice(2, 10)
@@ -187,6 +191,8 @@ interface WyrmState {
   showDoc(): void
   /** F-08: open a folder-view listing in place of the writing terminal. */
   showFolder(id: string): void
+  /** F-26: open the writing-stats page in place of the writing terminal. */
+  showStats(): void
   /** F-14: pop one step of `viewHistory`. True if it actually went anywhere. */
   goBack(): boolean
 
@@ -945,6 +951,18 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // Binder navigation, same as selectDoc/showDoc — an arrival, not a hop
       // Esc should unwind (F-14's scope is doc<->entity detours only).
       set({ mainView: { kind: 'folder', id }, viewHistory: [] })
+    },
+
+    showStats() {
+      // A detour like showEntity, not an arrival like showDoc/showFolder —
+      // opened mid-draft via a hotkey, so Esc should return to exactly what
+      // was on screen rather than dumping the writer back at the manuscript.
+      const { mainView, viewHistory } = get()
+      if (mainView.kind === 'stats') return
+      set({
+        mainView: { kind: 'stats' },
+        viewHistory: [...viewHistory, mainView].slice(-VIEW_HISTORY_LIMIT)
+      })
     },
 
     goBack() {
