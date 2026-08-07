@@ -112,14 +112,18 @@ function Stepper({
 export function PrefsDialog({
   appearance,
   stats,
+  typewriterMode,
   onChange,
   onStatsChange,
+  onTypewriterModeChange,
   onClose
 }: {
   appearance: AppearanceSettings
   stats: StatsSettings
+  typewriterMode: boolean
   onChange: (patch: Partial<AppearanceSettings>) => void
   onStatsChange: (patch: Partial<StatsSettings>) => void
+  onTypewriterModeChange: (enabled: boolean) => void
   onClose: () => void
 }): JSX.Element {
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
@@ -317,7 +321,11 @@ export function PrefsDialog({
               on={appearance.firstLineIndent}
               onToggle={(firstLineIndent) => onChange({ firstLineIndent })}
             />
-            <Check label="Typewriter scrolling" />
+            <Check
+              label="Typewriter scrolling"
+              on={typewriterMode}
+              onToggle={onTypewriterModeChange}
+            />
             <Check label="WordStar key diamond (Ctrl-S/D/E/X)" />
             <Check label="UI sounds" />
           </fieldset>

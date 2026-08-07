@@ -124,6 +124,7 @@ function App(): JSX.Element {
   // window, which is worse than one frame in the default palette.
   const appearance = useWyrm((s) => s.appearance) ?? DEFAULT_APPEARANCE
   const setAppearance = useWyrm((s) => s.setAppearance)
+  const typewriterMode = useWyrm((s) => s.typewriterMode)
   const statsSettings = useWyrm((s) => s.statsSettings)
   const setStatsSettings = useWyrm((s) => s.setStatsSettings)
   const [prefsOpen, setPrefsOpen] = useState(false)
@@ -321,8 +322,10 @@ function App(): JSX.Element {
           <PrefsDialog
             appearance={appearance}
             stats={statsSettings}
+            typewriterMode={typewriterMode}
             onChange={(patch) => void setAppearance(patch)}
             onStatsChange={(patch) => void setStatsSettings(patch)}
+            onTypewriterModeChange={(enabled) => useWyrm.getState().setTypewriterMode(enabled)}
             onClose={() => setPrefsOpen(false)}
           />
         )}
