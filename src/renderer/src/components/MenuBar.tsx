@@ -240,7 +240,13 @@ export function MenuBar({
           action: () => createEntry('world')
         },
         { kind: 'sep' },
-        { kind: 'item', label: 'Writing Stats…', disabled: !hasProject, action: onStats },
+        {
+          kind: 'item',
+          label: 'Writing Stats…',
+          shortcut: '⇧⌘S',
+          disabled: !hasProject,
+          action: onStats
+        },
         { kind: 'item', label: 'Timeline…', disabled: !hasProject, action: onTimeline },
         { kind: 'item', label: 'Plot Graph…', disabled: !hasProject, action: onPlotGraph },
         { kind: 'item', label: 'Plotlines…', disabled: !hasProject, action: onPlotlines },
