@@ -518,6 +518,27 @@ Requested 2026-08-04, built 2026-08-07. Pressing Esc while Focus Mode (F-09) is 
 - **Found and fixed a real stale-closure bug while wiring it in.** The `keydown` listener's effect had an empty dependency array — meaning it captured `focusMode`'s value from the very first render (`false`) and never saw it change, so an Esc handler reading `focusMode` directly would have silently never fired no matter how many times the mode was actually toggled. Added `focusMode` to the effect's dependencies, which re-subscribes the listener on every toggle rather than reading a permanently-stale value.
 - Regression test asserts the ordering specifically, not just the end state: temporarily swapping the priority (Focus Mode checked before `goBack()`) makes it fail.
 
+### F-37 · Typewriter mode: keep the active line centered 💭
+
+Requested 2026-08-07. As the writer types past the middle of the visible page, `.terminal-scroll` auto-scrolls to keep the line being written centered — like paper feeding through a physical typewriter platen. Scrolling up manually to reread earlier text must still work normally, and must not be fought by the auto-scroll: it should only kick in again once the writer resumes typing on the bottommost line, not on every keystroke regardless of where the cursor is.
+
+There is already a disabled `Typewriter Scrolling` item in the View menu (`MenuBar.tsx`) waiting for exactly this — a toggle, not an always-on behaviour, consistent with how Focus Mode (F-09) works.
+
+- **The real design question is "how does it know not to fight manual scrolling."** The naive version (recenter the caret's line on every editor transaction) would yank the view back to the cursor the instant a writer scrolls up to check something earlier, which is the opposite of "just get out of the way" a writing tool needs. Likely needs to distinguish "the cursor moved because of typing" from "the cursor is unchanged but the writer scrolled" — auto-centering only fires on the former, and only when the caret is already at or near the bottom of the visible viewport (not every keystroke regardless of cursor position on screen).
+- **Same coordinate-tracking technique as F-23's block cursor** (`coordsAtPos` against the real ProseMirror selection, `.terminal-scroll` as the scrolling container) is the natural implementation path — this is a positioning problem in the same family, not a new mechanism.
+- Interacts with F-27's page view and F-38 below, if either ships — all three want to reason about where the writer's attention is relative to the scrolled content.
+
+### F-38 · Typewriter mode PLUS: paginated documents with auto-print 💭
+
+Requested 2026-08-07, building on F-37. Documents gain real pages — typing past the end of a page moves to a new one, and a finished page can "print" automatically (to PDF, matching the compiled manuscript, or to an actual connected printer), the way a page coming off a physical typewriter platen is simply done.
+
+This is a substantially bigger piece of work than F-37 and touches capability areas the app has not needed before (OS print integration), so it deserves its own scoping pass rather than folding into F-37's PR:
+
+- **What is a "page," concretely?** F-27 already flagged this exact question for its own dotted-rule page view and left it explicitly unresolved: real pagination depends on a paper size and font metrics, and "every N lines" is an approximation that will not match what the compiled `.docx`/PDF actually paginates to. This feature's whole premise is a *real* page boundary (something to print), so the approximation F-27 could get away with is not available here — needs an actual answer, not a placeholder.
+- **What does "print automatically" mean in practice?** Firing an OS print dialog the instant a page fills, with no writer confirmation, is a strong behavior to default to — worth confirming whether the request means literally that, or "make finishing a page one click from printed" (a nudge, not a silent trigger). The house rule that the writing terminal carries no notifications/interruptions cuts against anything that pops a dialog mid-sentence.
+- **PDF export already has a natural home**: `lib/compile.ts` already flattens the binder into a format-independent block list for text/`.docx` export (brief §8) — a paginated PDF output is plausibly a fourth `CompileFormat` there rather than a new export pipeline, if the page definition above lands on something compile-compatible.
+- **Real printer output is new ground for this app** — Electron exposes `webContents.print()`/`printToPDF()`, but silent/automatic printing (no dialog) needs a specific printer selected in advance and has real failure modes (offline printer, out of paper, wrong printer selected) that a "just works" feature can't quietly ignore. Worth deciding whether v1 is manual ("send this page to the printer" a writer clicks) before ever attempting the fully automatic version the request describes.
+
 ### CRT family: found in review 📋 — glow ✅ fixed, see I-09 for the rename
 
 Two notes from reviewing PR #16, both affecting the whole CRT palette group (`green`/`amber`/`vaporwave`/`virtualwyrm`, formerly named `nes` — see I-09):
