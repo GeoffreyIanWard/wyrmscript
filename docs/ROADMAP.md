@@ -526,6 +526,7 @@ Requested and built 2026-08-07. As the writer types past the middle of the visib
 - State lives in the zustand store (`typewriterMode`), not local `App` state — unlike Focus Mode, the toggle needs to be read from inside `Editor.tsx`, well below `App`, so a store getter avoids prop-drilling through `MainPane`. Read via a live getter (`useWyrm.getState().typewriterMode`) rather than a captured value, since the TipTap editor instance is only recreated when the active document changes.
 - Verified live in the browser preview: typing past the viewport midpoint in the last paragraph recenters the active line; the "outside the last paragraph" guard was confirmed to actually guard by temporarily deleting it and watching the matching test fail.
 - Interacts with F-27's page view and F-38 below, if either ships — all three want to reason about where the writer's attention is relative to the scrolled content.
+- **Found in review**: the Preferences dialog (`Dialogs.tsx`) already had a `Typewriter scrolling` checkbox from before this feature existed, but it was never wired up — omitting `onToggle` renders a `Check` row permanently disabled by design (see its own doc comment, "renders inert" for settings whose feature doesn't exist yet), which is exactly what shipped in the first PR. Wired it to the same `typewriterMode` store field the View menu and `⌥⌘T` already used, via a new `onTypewriterModeChange` prop threaded through `App.tsx` — so all three entry points now drive one shared toggle.
 
 ### F-38 · Typewriter mode PLUS: paginated documents with auto-print 💭
 
