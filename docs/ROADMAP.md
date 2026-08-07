@@ -510,12 +510,13 @@ Requested 2026-08-01, building on F-03 (shipped the same day). Ship a handful of
 - **Overlay mechanics**: a selectable preset curve drawn alongside the real one on the same axes — needs its own visual treatment (dashed line, distinct from the solid real curve) so the two are never mistaken for each other, and the x-axis needs to stretch/compress the preset to match however many scenes the writer actually has, since a preset is inherently a fixed shape and a manuscript has an arbitrary scene count.
 - Purely decorative/comparative — nothing about a preset should write to `DocMeta.tension`; it is a reference drawn on top, never data.
 
-### F-36 · Esc exits Focus Mode 💭
+### F-36 · Esc exits Focus Mode ✅ shipped
 
-Requested 2026-08-04. Pressing Esc while Focus Mode (F-09) is active should exit it, the same way it already closes a dialog or steps back through F-14's view history — right now Esc does nothing while focused, and the only way out is the zoom box or ⌥⌘F again.
+Requested 2026-08-04, built 2026-08-07. Pressing Esc while Focus Mode (F-09) is active now exits it, the same way it already closes a dialog or steps back through F-14's view history.
 
-- **Ordering against F-14.** `App`'s Esc handler already has a priority chain: an open dialog wins first, then `goBack()`. Exiting Focus Mode needs a slot in that chain — most likely last, after a dialog and after unwinding view history, so a writer deep in a story-bible detour inside Focus Mode steps back through their trail before the mode itself closes; the alternative (Focus Mode closes first) means Esc changes what's on screen twice in two different senses for one keypress and deserves a moment's thought either way.
-- Small and self-contained otherwise — `focusMode` is already local `App` state with a setter; this is one more branch in the existing Esc `onKey` handler, not a new mechanism.
+- **Went with the roadmap's own lean on ordering** rather than treating it as still-open: a dialog wins first, then `goBack()` unwinds one story-bible detour, and only once neither applies does Esc exit Focus Mode. A writer deep in a bible detour inside Focus Mode steps back through their trail one Esc at a time before the mode itself closes, rather than losing both at once.
+- **Found and fixed a real stale-closure bug while wiring it in.** The `keydown` listener's effect had an empty dependency array — meaning it captured `focusMode`'s value from the very first render (`false`) and never saw it change, so an Esc handler reading `focusMode` directly would have silently never fired no matter how many times the mode was actually toggled. Added `focusMode` to the effect's dependencies, which re-subscribes the listener on every toggle rather than reading a permanently-stale value.
+- Regression test asserts the ordering specifically, not just the end state: temporarily swapping the priority (Focus Mode checked before `goBack()`) makes it fail.
 
 ### CRT family: found in review 📋 — glow ✅ fixed, see I-09 for the rename
 
