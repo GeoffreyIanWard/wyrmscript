@@ -64,6 +64,7 @@ export function MenuBar({
     })
   }, [registerFocusMenus])
   const project = useWyrm((s) => s.project)
+  const typewriterMode = useWyrm((s) => s.typewriterMode)
   const editor = useWyrm((s) => s.editor)
   const newProjectAction = (): void => {
     void useWyrm.getState().newProject('')
@@ -191,7 +192,13 @@ export function MenuBar({
       key: 'view',
       title: 'View',
       items: [
-        { kind: 'item', label: 'Typewriter Scrolling', disabled: true },
+        {
+          kind: 'item',
+          label: typewriterMode ? 'Exit Typewriter Scrolling' : 'Typewriter Scrolling',
+          shortcut: '⌥⌘T',
+          disabled: !hasProject,
+          action: () => useWyrm.getState().setTypewriterMode(!typewriterMode)
+        },
         {
           kind: 'item',
           label: focusMode ? 'Exit Focus Mode' : 'Focus Mode',
