@@ -171,17 +171,28 @@ function App(): JSX.Element {
         focusMenusRef.current?.()
         return
       }
-      // Esc as "back" (F-14): unwind one story-bible detour. Dialogs must keep
-      // winning — `useFocusTrap` stops propagation for Esc, so a dialog with
-      // focus inside never reaches this handler, but focus can go loose (a
-      // click on the overlay's own backdrop), so the open-dialog check is a
-      // real guard rather than a belt-and-braces one. Every dialog in the app
+      // Esc, in priority order (F-14, then F-36): a dialog wins first —
+      // `useFocusTrap` stops propagation for Esc, so a dialog with focus
+      // inside never reaches this handler, but focus can go loose (a click
+      // on the overlay's own backdrop), so the open-dialog check is a real
+      // guard rather than a belt-and-braces one. Every dialog in the app
       // renders `.dialog-overlay`, which makes this one query cover all of
-      // them — including any added later — instead of a list of booleans that
-      // would silently fall out of date.
+      // them — including any added later — instead of a list of booleans
+      // that would silently fall out of date. Next, unwind one story-bible
+      // detour. Only once neither applies does Esc exit Focus Mode — last in
+      // the chain, so a writer deep in a bible detour inside Focus Mode
+      // steps back through their trail before the mode itself closes,
+      // rather than Esc changing what's on screen twice in one keypress.
       if (e.key === 'Escape') {
         if (document.querySelector('.dialog-overlay')) return
-        if (useWyrm.getState().goBack()) e.preventDefault()
+        if (useWyrm.getState().goBack()) {
+          e.preventDefault()
+          return
+        }
+        if (focusMode) {
+          e.preventDefault()
+          setFocusMode(false)
+        }
         return
       }
       if (!(e.metaKey || e.ctrlKey)) return
@@ -221,7 +232,11 @@ function App(): JSX.Element {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+    // focusMode must be a real dependency, not read via a stale closure —
+    // this effect only ever ran once before, so Esc always saw the Focus
+    // Mode value from first mount (false) no matter how many times it was
+    // actually toggled since (F-36).
+  }, [focusMode])
 
   return (
     <div
