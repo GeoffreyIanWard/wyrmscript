@@ -462,13 +462,14 @@ Design questions to settle before building, in the same settle-first spirit as F
 
 Likely relates to F-03 (plot graph) visually — both want a spatial board rather than a list — but the axes mean different things (F-03's y-axis is tension; this is purely chronological placement), so treat them as separate views rather than merging early.
 
-### F-30 · Show pins/tags on hover in the editor 💭
+### F-30 · Show pins/tags on hover in the editor ✅ shipped
 
-Requested 2026-08-01. Hovering an auto-linked entity mention (or, per the request's literal wording, a document) in the writing terminal should surface that thing's pins and tags without leaving the page. Open questions:
+Requested 2026-08-01, built 2026-08-06. Hovering an auto-linked entity mention in the writing terminal surfaces that entity's pins/tags in a small tooltip, without leaving the page.
 
-- **Hovering what, exactly?** Entity mentions are already decorations drawn by `lib/entityLinks.ts` — attaching a tooltip there is a natural extension. A whole *document's* pins/tags (the scope of F-31/F-32/F-33 below) has no equivalent in-prose surface to hover, since a document is the page itself, not a token on it — that half of the request likely means the binder row, not the terminal, and should be confirmed rather than assumed.
-- **Tooltip mechanics**: a hover delay (avoid flashing on every incidental mouse pass), and where it renders relative to the cursor so it never occludes the word being read. `lib/entityLinks.ts`'s existing debounce (350ms) is for re-scanning the document, a different timer from a hover-reveal delay — don't conflate them.
-- Needs to work under the "the page is sacred" house rule: informational only, dismisses instantly, never blocks typing or steals focus.
+- **The scope question was asked rather than assumed.** The request's literal wording also mentioned "a document," which has no equivalent in-prose token to hover — a document is the page itself. Confirmed: entity mentions only, not a second hover surface on binder rows. `lib/entityLinks.ts`'s existing decorations were the natural attachment point.
+- **A 400ms reveal delay** (a hover, not `lib/entityLinks.ts`'s unrelated 350ms re-scan debounce — different timers, deliberately not conflated) so reading a sentence doesn't flash a tooltip on every name it passes over. Suppressed entirely — no timer even started — for an entity with neither tags nor pins, the same "only what is set is listed" discipline as the side panel (F-31).
+- **Dismisses instantly, no fade**, per the page-is-sacred house rule: `pointer-events: none` so the tooltip itself can never be hovered or clicked, and mouseout clears both the timer and an already-shown tooltip with no lingering.
+- **A real render-lifecycle fix along the way**: the tooltip (and the context-menu/"add to bible" state beside it) is owned by a small `TerminalContent` subcomponent keyed by `activeId`, so switching documents resets it for free — no stale tooltip left pointing at a mention from the document just closed. The natural first draft (an effect comparing `activeId` against a ref, clearing state on change) tripped this repo's stricter lint rules against both synchronous `setState` in an effect and reading a ref during render; `key`-driven remounting is the React-recommended fix for exactly this "reset transient state when an id changes" shape, not a workaround.
 
 ### F-31 · Show pins/tags in the side panel ✅ shipped
 

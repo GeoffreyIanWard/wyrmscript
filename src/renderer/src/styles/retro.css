@@ -497,6 +497,24 @@ button {
   border-color: var(--ink);
 }
 
+/* F-30: pins/tags on hover, positioned just under the mention. Fixed rather
+   than anchored to a scrolling ancestor — it only exists while the mouse
+   holds still over one word, so it never needs to track scroll the way the
+   block cursor (F-23) does. `pointer-events: none` means it can never be
+   hovered or clicked itself, so it never competes for the mouse with the
+   word underneath it, and never becomes a second thing to dismiss. */
+.entity-hover-tip {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  padding: 6px 8px;
+  max-width: 260px;
+  font-size: 11px;
+}
+
 .tag-input.on-paper {
   width: 100px;
   flex: none;
