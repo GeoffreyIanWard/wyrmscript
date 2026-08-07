@@ -9,6 +9,8 @@ import { markdownToDoc } from '../lib/markdown'
 import { EntityLinks } from '../lib/entityLinks'
 import { BlockCursor } from '../lib/blockCursor'
 import { TypewriterScroll } from '../lib/typewriterScroll'
+import { LineNumbers } from '../lib/lineNumbers'
+import { PageView } from '../lib/pageView'
 import { ENTITY_COLLECTIONS } from '../lib/entities'
 import { addTag, removeTag, togglePin } from '../lib/tags'
 import { useWyrm } from '../store'
@@ -184,6 +186,12 @@ export function Editor(): JSX.Element {
   const editorChanged = useWyrm((s) => s.editorChanged)
   const openEntityPanel = useWyrm((s) => s.openEntityPanel)
   const entities = useWyrm((s) => s.entities)
+  // F-27: line numbers and page view read the store via a live getter (the
+  // editor instance is not recreated on a Preferences change), so toggling
+  // either one would otherwise sit invisible until the next real edit.
+  const lineNumbers = useWyrm((s) => s.appearance?.lineNumbers ?? false)
+  const pageView = useWyrm((s) => s.appearance?.pageView ?? false)
+  const pageViewLines = useWyrm((s) => s.appearance?.pageViewLines ?? 25)
 
   // Recreated per document (deps: [activeId]) so undo history never crosses
   // documents — ⌘Z in one scene must not resurrect another scene's text.
@@ -209,6 +217,13 @@ export function Editor(): JSX.Element {
         BlockCursor,
         TypewriterScroll.configure({
           getEnabled: () => useWyrm.getState().typewriterMode
+        }),
+        LineNumbers.configure({
+          getEnabled: () => useWyrm.getState().appearance?.lineNumbers ?? false
+        }),
+        PageView.configure({
+          getEnabled: () => useWyrm.getState().appearance?.pageView ?? false,
+          getLinesPerPage: () => useWyrm.getState().appearance?.pageViewLines ?? 25
         }),
         EntityLinks.configure({
           // Read from the store at scan time so adding an entry re-links the
@@ -240,6 +255,14 @@ export function Editor(): JSX.Element {
     }
     return () => setEditor(null)
   }, [editor, setEditor])
+
+  useEffect(() => {
+    // Neither setting fires a ProseMirror transaction on its own, so without
+    // this the gutter/rules would sit stale until the writer's next actual
+    // keystroke — a Preferences checkbox should take effect immediately.
+    if (!editor) return
+    editor.view.dispatch(editor.state.tr)
+  }, [editor, lineNumbers, pageView, pageViewLines])
 
   return (
     <div className="terminal">
