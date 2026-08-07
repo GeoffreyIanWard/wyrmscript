@@ -67,11 +67,25 @@ export interface DocMeta {
   modified: string
 }
 
+/**
+ * F-32/F-33: how a story-bible collection (Glossary/Character Book/World
+ * Book) orders its entries. `pin` only means anything for `character` — the
+ * other two collections have no pin vocabulary yet, so their sort control
+ * offers `alphabetical`/`tag` only. Unset means "use the collection's own
+ * default" (`pin` for characters, `alphabetical` otherwise) rather than
+ * eagerly writing a value, so older project files need no migration.
+ */
+export type EntitySortMode = 'alphabetical' | 'tag' | 'pin'
+
 export interface ProjectData {
   version: 1
   title: string
   binder: BinderNode[]
   trash: BinderNode[]
+  /** Per-collection (F-33) — Character Book, World Book and Glossary each
+   *  remember their own choice independently. Per-project, not app-level:
+   *  a shared project should look the same on every machine it's opened on. */
+  entitySort?: Partial<Record<EntityType, EntitySortMode>>
 }
 
 export interface ProjectInfo {

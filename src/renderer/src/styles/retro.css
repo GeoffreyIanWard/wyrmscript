@@ -484,6 +484,28 @@ button {
   left: auto;
 }
 
+/* F-32/F-33: the sort control's own row, shown only while its section is
+   expanded — same anchor pattern as the pin menu above. `margin-left: auto`
+   pushes it to the row's right edge, roughly where it would have sat had it
+   fit in the header (it doesn't — see the comment in Binder.tsx). */
+.sort-row {
+  padding-top: 2px;
+  padding-bottom: 4px;
+}
+
+.sort-menu-anchor {
+  position: relative;
+  margin-left: auto;
+  flex: none;
+}
+
+.sort-menu-anchor .sort-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: auto;
+}
+
 /* Entity editor's tags/pins fields sit on --paper, not the page — a distinct
    palette pair from the doc-meta-bar chips above, which sit on --page-bg. */
 .entity-tags {
