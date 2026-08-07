@@ -16,6 +16,7 @@ import type {
   DayStat,
   DocFile,
   Entity,
+  EntitySortMode,
   EntityType,
   MapPin,
   Plotline,
@@ -166,6 +167,8 @@ interface WyrmState {
   moveToTrash(id: string): Promise<void>
   restoreFromTrash(id: string): Promise<void>
   moveBinderNode(dragId: string, targetId: string, position: DropPosition): Promise<void>
+  /** F-32/F-33: per-collection, persisted with the project. */
+  setEntitySort(type: EntityType, mode: EntitySortMode): Promise<void>
 
   loadEntities(): Promise<void>
   /** Create an entry, optionally pre-named from a terminal selection. */
@@ -833,6 +836,14 @@ export const useWyrm = create<WyrmState>((set, get) => {
         setProject({ ...project })
         await persistProject()
       }
+    },
+
+    async setEntitySort(type, mode) {
+      const { project } = get()
+      if (!project) return
+      project.data.entitySort = { ...project.data.entitySort, [type]: mode }
+      setProject({ ...project })
+      await persistProject()
     },
 
     /* ---------- story bible ---------- */
