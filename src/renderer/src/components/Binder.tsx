@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { JSX, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react'
-import type { BinderNode, EntityType } from '../../../shared/types'
+import type { BinderNode, EntitySortMode, EntityType } from '../../../shared/types'
 import type { DropPosition } from '../lib/tree'
+import { defaultSortMode, sortEntities, sortModesFor } from '../lib/entitySort'
 import { useWyrm } from '../store'
 import { CharacterIcon, DocIcon, FolderIcon, GlossaryIcon, TrashIcon, WorldIcon } from './icons'
+
+const SORT_LABELS: Record<EntitySortMode, string> = {
+  pin: 'Pin',
+  tag: 'Tag',
+  alphabetical: 'A–Z'
+}
 
 interface MenuState {
   x: number
@@ -165,10 +172,18 @@ function BibleSection({
   const createEntity = useWyrm((s) => s.createEntity)
   const showEntity = useWyrm((s) => s.showEntity)
   const mainView = useWyrm((s) => s.mainView)
+  const project = useWyrm((s) => s.project)
+  const setEntitySort = useWyrm((s) => s.setEntitySort)
   const [open, setOpen] = useState(false)
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
 
   const entities = allEntities.filter((e) => e.type === type)
-  const sorted = [...entities].sort((a, b) => a.name.localeCompare(b.name))
+  // Unset means "this collection's own default" (F-32: Pin, pre-selected,
+  // for Character Book) rather than a value eagerly written for every
+  // project — see the type's own comment in shared/types.ts.
+  const sortMode = project?.data.entitySort?.[type] ?? defaultSortMode(type)
+  const sorted = sortEntities(entities, sortMode)
+  const availableSorts = sortModesFor(type)
 
   return (
     <>
@@ -189,6 +204,47 @@ function BibleSection({
       </div>
       {open && (
         <>
+          {/* F-32/F-33: its own row rather than crammed into the header —
+              `.binder` is a fixed 240px, and the header already has a
+              twist/icon/title/count competing for it; adding a sort control
+              there truncated section names ("Character Book" → "Chara…").
+              Shown only while expanded, since a collapsed section has
+              nothing visible to reorder anyway. */}
+          <div className="binder-row sort-row" data-entity-type={type}>
+            <div className="sort-menu-anchor">
+              <button
+                type="button"
+                className="btn small sort-toggle"
+                onClick={() => setSortMenuOpen((v) => !v)}
+              >
+                Sort: {SORT_LABELS[sortMode]} ▾
+              </button>
+              {sortMenuOpen && (
+                <>
+                  <div className="menu-overlay" onMouseDown={() => setSortMenuOpen(false)} />
+                  <div className="menu-drop sort-menu" role="menu">
+                    {availableSorts.map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={sortMode === mode}
+                        className="menu-item"
+                        onClick={() => {
+                          void setEntitySort(type, mode)
+                          setSortMenuOpen(false)
+                        }}
+                      >
+                        <span>
+                          [{sortMode === mode ? 'x' : ' '}] {SORT_LABELS[mode]}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
           {sorted.map((entity) => (
             <div
               key={entity.id}

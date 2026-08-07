@@ -479,20 +479,19 @@ Requested 2026-08-01, built 2026-08-04. `EntityPanel.tsx` (opened by clicking a 
 - **Only what is set is listed.** Unlike the editor, which shows the whole `CHARACTER_PINS` vocabulary so a writer can toggle within it, the panel lists just the pins an entry actually carries — greying out the other two would be noise in a surface whose job is a quick glance. Each section is omitted entirely when empty, matching how ALIASES and LOCATED IN already behave.
 - `.pin-toggle` gained an explicit `display: inline-block`. It had only ever been used on buttons, which are inline-block already; on an inline `<span>` the vertical padding would collapse and the chip would sit lopsided against its neighbours.
 
-### F-32 · Sort characters with significant pins to the top by default 💭
+### F-32 · Sort characters with significant pins to the top by default ✅ shipped — see F-33
 
-Requested 2026-08-01. The Character Book (and by extension Locations/World and Glossary) currently lists entries in whatever order they were created. Open questions:
+Requested 2026-08-01, built 2026-08-07. Shipped as F-33's `pin` mode, pre-selected for Character Book — exactly the "subsumed, not a second default" shape the roadmap already anticipated. See F-33 for the shipped decisions.
 
-- **What makes a pin "significant"?** `CHARACTER_PINS` is `Protagonist`, `Antagonist`, `Viewpoint Character` — is the ranking a fixed priority order among these three (Protagonist first, always), or does *any* pin outrank *no* pin with ties broken alphabetically? The former needs a designed ordering over the pin vocabulary itself, not just "has a pin vs. doesn't."
-- **Interacts directly with F-33** (below) — a "default sort," a "pin sort," and an "alphabetical sort" are three states of one control, not three separate features. Design them together: F-33's sort toggle likely subsumes this request as its "pin" mode's default-selected option, rather than being a second, independent default layered underneath it.
+### F-33 · Sort story-bible lists alphabetically or by pin/tag ✅ shipped
 
-### F-33 · Sort story-bible lists alphabetically or by pin/tag 💭
+Requested 2026-08-01, built 2026-08-07 alongside F-32 — one control, as expected. A `Sort:` toggle in each of Character Book / World Book / Glossary, offering Pin (characters only) / Tag / A–Z. Four open questions, all asked directly rather than assumed — see the conversation for the full framing:
 
-Requested 2026-08-01, alongside F-32 — same control, most likely. A sort toggle for the Character Book / World Book / Glossary lists in the binder. Open questions:
-
-- **What does "sort by tag" mean for entries with several tags, or none?** Alphabetical is unambiguous; grouping by tag needs a rule for multi-tag entries (which tag wins?) and a bucket for untagged ones (first, last, or interleaved alphabetically among the tagged groups?).
-- **Is this per-collection (character/world/glossary each remember their own sort) or one global setting?** The three collections have different pin vocabularies (only characters have one at all today), so "sort by pin" may not even apply to World/Glossary — worth deciding whether their sort control offers the same options or a reduced set.
-- Persisted where — app-level settings (like appearance) or per-project? A shared project opened on two machines arguably wants the same sort, favoring per-project.
+- **Pin ranking is a fixed priority**, not "any pin beats none": Protagonist, then Antagonist, then Viewpoint Character, then unpinned. An entry holding several pins ranks by the most significant one it has (a Protagonist who is also tagged Viewpoint Character still reads as the Protagonist).
+- **Tag ranking uses the alphabetically-first tag** an entry carries, not the one typed first — order shouldn't depend on incidental typing sequence. Untagged entries sort last, after every tagged entry, not interleaved or first.
+- **Per-collection, not global.** Character Book, World Book and Glossary each remember their own choice independently; World/Glossary offer only Tag/A–Z since `CHARACTER_PINS` is the only pin vocabulary that exists today (`sortModesFor` in `lib/entitySort.ts`).
+- **Persisted per-project** (`ProjectData.entitySort`, unset meaning "this collection's own default" rather than a value eagerly written for every project) — a shared project looks the same on every machine it's opened on, not different depending on who last touched it.
+- **Found and fixed a real layout bug while verifying live**: the sort control was first built into the section header, which is a fixed 240px row already carrying a twist/icon/title/count — adding it there truncated long section names ("Character Book" → "Chara…"). Moved to its own row, shown only while the section is expanded (a collapsed section has nothing to reorder anyway).
 
 ### F-34 · Browse the glossary/story bible by tag 💭
 
