@@ -53,6 +53,13 @@ interface WyrmState {
   wordCount: number
   lastCommitAt: number | null
   renamingId: string | null
+  /** F-37: keeps the active line centered while writing at the document's
+   *  true end. Lives here rather than local `App` state, unlike Focus Mode,
+   *  because the editor itself (nested well below `App`) needs to read it —
+   *  a toggle, not persisted, matching Focus Mode's own "fresh launch always
+   *  starts in the normal view" precedent. */
+  typewriterMode: boolean
+  setTypewriterMode(enabled: boolean): void
   /** F-24: the Welcome/home screen's recents list; loaded whenever no project is open. */
   recentProjects: RecentProject[]
   loadRecentProjects(): Promise<void>
@@ -291,6 +298,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     wordCount: 0,
     lastCommitAt: null,
     renamingId: null,
+    typewriterMode: false,
     recentProjects: [],
     entities: [],
     entityIndex: buildEntityIndex([]),
@@ -404,6 +412,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
 
     setEditor(editor) {
       set({ editor })
+    },
+
+    setTypewriterMode(enabled) {
+      set({ typewriterMode: enabled })
     },
 
     editorChanged() {

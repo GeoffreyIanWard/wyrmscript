@@ -225,6 +225,10 @@ function App(): JSX.Element {
         // entry above: Option remaps e.key, so this must not check 'f'.
         e.preventDefault()
         setFocusMode((v) => !v)
+      } else if (e.altKey && e.metaKey && !e.shiftKey && e.code === 'KeyT' && state.project) {
+        // ⌥⌘T — Typewriter scrolling (F-37). Same e.code reasoning as ⌥⌘F.
+        e.preventDefault()
+        state.setTypewriterMode(!state.typewriterMode)
       } else if (e.key === ',') {
         e.preventDefault()
         setPrefsOpen(true)
