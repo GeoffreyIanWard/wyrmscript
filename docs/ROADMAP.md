@@ -409,19 +409,21 @@ Requested 2026-07-31, built 2026-08-06. The header row (`BibleSection` in `Binde
 - **Bold, letter-spaced, a rule underneath** — `.binder-row.section-header`, the same distinguishing language `.fieldset legend` already uses elsewhere in the chrome, applied to a full-width row instead of a floating label.
 - **Scoped to the three story-bible sections only** (Glossary, Character Book, World Book) — the manuscript folder tree above them wasn't part of this request, and folder rows there stay exactly as they were.
 
-### F-26 · Stats page: hotkey, per-day figures, calendar heatmap 📋
+### F-26 · Stats page: hotkey, per-day figures, calendar heatmap ✅ shipped
 
-Requested 2026-07-31, straight after 4c shipped. The current Writing Stats dialog is the small version of this: today, streak, manuscript total, and a fortnight of bars. The ask is a fuller **page** reachable by hotkey, with:
+Requested 2026-07-31, built 2026-08-07. Replaces the old Writing Stats dialog (4c) with a real page in the main pane — **⇧⌘S** or Project → Writing Stats…, opened as an F-14 detour (Esc returns to exactly what was on screen, same as a story-bible entry) rather than an arrival.
 
-- **More figures** — words per day, words in this manuscript, presumably also per-document and per-period totals (this month, this draft).
-- **A GitHub-contributions-style calendar.** Every day with a checkpoint is marked; days that beat the goal are marked complete, or better, shaded on a gradient by volume.
+Three open questions from the original entry were settled before building:
 
-Most of the data already exists. `main/wyrm/stats.ts` returns `DayStat[]` for the whole history — `date`, `total`, `net`, `added`, `commits` per day — so a heatmap is a rendering job, not a data job. Things to settle before building:
+- **A page, not a dialog** — a new `MainView` case (`{ kind: 'stats' }`) alongside `doc`/`entity`/`folder`, so a year of history has room. `showStats()` follows `showEntity`'s push-onto-`viewHistory` pattern rather than `showFolder`'s "clear and arrive" one.
+- **Gradient buckets are dither density**, exactly as flagged: `--dither-25/50/75` plus a solid `--ink` fourth step, bucketed by each day's magnitude against the visible range's peak.
+- **"Wrote" and "hit goal" are visually separate.** A day's dither level always encodes volume; a small paper-on-ink corner mark rides on top only when that day's words met the goal, so the two facts read independently instead of one flattening into the other.
 
-- **A page, not a dialog?** Everything else in the app that fills the main pane is a `MainView` case (`doc` | `entity`); a stats *page* would be a third. That is the honest way to do it and interacts with F-14's Esc-as-back stack. A hotkey that opens the existing dialog is much cheaper and might be enough — worth deciding rather than drifting.
-- **Gradient buckets.** GitHub uses four shades against a rolling maximum. In a strictly two-colour palette that has to be dither density rather than colour (the `--dither-25/50/75` set is exactly three steps plus solid — a natural fit, and it would look properly period).
-- **Which day counts as "complete"?** Beating the goal is the obvious rule, but 4c deliberately made the *streak* about showing up rather than hitting the target. Two different rules on one screen needs the visual to distinguish "wrote" from "hit goal" rather than conflating them.
-- **`dailyStats` currently walks the whole history on each call** (memoised per blob, so repeat calls are cheap). A year-long heatmap is the first thing that would make a slow first walk noticeable on a large project — worth measuring on real data before optimising.
+Also shipped, beyond the four figures already in the old dialog (today, streak, manuscript total, a day list): **this week**, **this month**, and **best day** totals, all derived from the same `DayStat[]` history `main/wyrm/stats.ts` already returns — no new data layer. Per-document totals from the original "presumably" wishlist are deliberately **not** included: `main/wyrm/stats.ts` tracks whole-manuscript word counts per day, not a per-document breakdown, and building that is a real data-model question of its own rather than a rendering one — left for a future pass if asked for.
+
+- **Found while building the heatmap, not caused by it:** a 53-week grid for a project with only two weeks of real history is mostly "no data yet" cells. The first pass rendered those fully invisible (transparent, no border), which reads exactly like a broken grid rather than an intentional absence — confirmed by mistaking it for one live in the browser. Fixed with a faint dotted outline (`opacity: 0.35`) so the grid's shape stays legible everywhere, while real data still reads unambiguously via solid dither fill.
+- **The grid caps at the project's earliest checkpoint on one side and today on the other** (`dailyStats[0]?.date`), rather than always rendering a full 53 weeks of blank cells before a young project's actual history — days outside that range use the same dotted "no data" treatment as future days in the current week.
+- `dailyStats` walking the whole history on each call (flagged as worth measuring) was not a problem in practice at the scale tested — left as-is per the original note, revisit only if it's felt on a large real project.
 
 ### F-27 · Line numbers and page view 📋
 

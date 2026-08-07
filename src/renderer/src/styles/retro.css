@@ -853,6 +853,117 @@ button {
   text-align: right;
 }
 
+/* ---------- writing stats page (F-26) ---------- */
+
+.stats-page-body {
+  max-width: 900px;
+}
+
+.stat-tiles-wide {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (min-width: 640px) {
+  .stat-tiles-wide {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+.heatmap-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.heatmap {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  width: max-content;
+}
+
+.heatmap-dow-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 8px;
+  padding-top: 14px;
+  flex: none;
+}
+
+.heatmap-dow-labels span {
+  height: 10px;
+  line-height: 10px;
+}
+
+.heatmap-grid {
+  display: flex;
+  gap: 2px;
+}
+
+.heatmap-column {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+}
+
+.heatmap-month-mark {
+  height: 12px;
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.heatmap-cell {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--ink);
+  background-color: var(--paper);
+  position: relative;
+}
+
+/* No data at all — before the project existed, or still in the future.
+   A fully invisible cell here reads as a broken grid rather than "nothing
+   yet", so it keeps a faint dotted outline instead of vanishing outright. */
+.heatmap-cell.out-of-range {
+  border-style: dotted;
+  background: none;
+  opacity: 0.35;
+}
+
+.heatmap-cell.level-1 {
+  background-image: var(--dither-25);
+  background-size: 4px 4px;
+}
+
+.heatmap-cell.level-2 {
+  background-image: var(--dither-50);
+  background-size: 4px 4px;
+}
+
+.heatmap-cell.level-3 {
+  background-image: var(--dither-75);
+  background-size: 4px 4px;
+}
+
+.heatmap-cell.level-4 {
+  background-color: var(--ink);
+  background-image: none;
+}
+
+/* A goal-met marker rides on top of whatever shade the day already is —
+   paper-on-ink or ink-on-paper, so it stays visible at every level. */
+.heatmap-cell.goal-met::after {
+  content: '';
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 3px;
+  height: 3px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+}
+
 /* ---------- timeline (F-02) ---------- */
 
 .timeline-list {
