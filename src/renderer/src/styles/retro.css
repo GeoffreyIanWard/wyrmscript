@@ -2207,6 +2207,73 @@ button {
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23101010'/%3E%3C/svg%3E");
 }
 
+/* F-22: black margin bars flanking `.page`, signalling the print margin —
+   pure pseudo-elements, same "no JS at all" tier as F-20/F-21's ruled lines
+   and grid, since a bar needs no real measurement, just a position relative
+   to `.page`'s own box. Flush against `.page`'s own edge (no gap) rather
+   than floating further out in the margin: F-27's line-number gutter also
+   lives out there, right-aligned so its digits end just short of `.page`'s
+   edge, and a bar with any gap sits exactly where those digits render. */
+[data-palette='halftone'] .page {
+  position: relative;
+}
+
+[data-palette='halftone'] .page::before,
+[data-palette='halftone'] .page::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: var(--ink);
+}
+
+[data-palette='halftone'] .page::before {
+  left: -6px;
+}
+
+[data-palette='halftone'] .page::after {
+  right: -6px;
+}
+
+/* F-22: a pilcrow after every paragraph — the cheap half of the request,
+   pure CSS, no editor changes. Stays in the prose font rather than the
+   chrome bitmap font: it is appended directly into the reading flow, not a
+   standalone piece of UI furniture. */
+[data-palette='halftone'] .page p::after {
+  content: ' ¶';
+  opacity: 0.5;
+}
+
+/* F-22: the ruler bar itself (see `HalftoneRuler.tsx` for why it needs a
+   real component). `position: sticky` inside `.terminal-scroll` rather than
+   a fixed header above it — sharing that scroll container is what keeps its
+   centering identical to `.page`'s own. */
+.halftone-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.halftone-ruler-track {
+  position: relative;
+  height: 10px;
+  font-family: var(--font-chrome);
+  font-size: 9px;
+}
+
+.halftone-ruler-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  opacity: 0.65;
+}
+
 /* Drafting table: navy ground, icy cyan-white ink, dithers as grid-paper
    ruling (an L of horizontal + vertical rule per tile) instead of dots or
    checkerboard. */
