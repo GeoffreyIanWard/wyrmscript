@@ -425,20 +425,14 @@ Also shipped, beyond the four figures already in the old dialog (today, streak, 
 - **The grid caps at the project's earliest checkpoint on one side and today on the other** (`dailyStats[0]?.date`), rather than always rendering a full 53 weeks of blank cells before a young project's actual history — days outside that range use the same dotted "no data" treatment as future days in the current week.
 - `dailyStats` walking the whole history on each call (flagged as worth measuring) was not a problem in practice at the scale tested — left as-is per the original note, revisit only if it's felt on a large real project.
 
-### F-27 · Line numbers and page view 📋
+### F-27 · Line numbers and page view ✅ shipped
 
-Requested 2026-07-31. Two related editor-gutter treatments, **both off by default** — the page is sacred, and neither belongs in a writer's default view:
+Requested 2026-07-31, built 2026-08-07. Two related editor-gutter treatments, both off by default — the page is sacred, and neither belongs in a writer's default view — toggled independently in Preferences → GUTTER:
 
-- **Line numbers**, the way a code editor shows them.
-- **Page view**: a dotted rule across the page every N lines, standing in for a page break.
-
-Neither is a CSS-only job, and the reason is the same for both: the editor is a ProseMirror document of paragraphs, and a *visual line* is a wrapped-text artefact that only the layout engine knows about. A paragraph can be one line or forty depending on the measure (F-06), the text size, and the window width — all of which change live. So this needs either a ProseMirror decoration plugin measuring rendered line boxes, or a gutter that re-measures on resize. Same family of work as F-23's block cursor.
-
-Open questions:
-
-- **What is a "page"?** Real pagination depends on a paper size and font metrics; "every N lines" is a decent approximation but will not match what the compiled `.docx` actually paginates to. Worth being honest in the UI about which one it is rather than implying a print preview.
-- **Do line numbers count visual lines or paragraphs?** Visual is what a code editor does and what the request implies; paragraph numbering is far cheaper and arguably more useful for prose (it survives a resize). Ask before assuming.
-- Interacts with F-22's halftone ruler and margin marks — both want gutter furniture, and two independent gutter mechanisms would be a mistake.
+- **Line numbers** in a gutter left of the page, one per **paragraph**, not wrapped visual line. Settled up front: visual-line numbering is what a code editor does and what the request implies literally, but paragraph numbering was chosen instead — a paragraph is a stable unit that survives a resize or font-size change with no remeasuring, unlike a visual line, which is a wrapped-text artefact of the current measure/size/window width. `lib/lineNumbers.ts`, a positioned-overlay ProseMirror view plugin in the same family as F-23's block cursor: a real DOM sibling of the editor root, placed with `coordsAtPos`, never a decoration.
+- **Page view**: a dotted rule every N *visual* lines, standing in for an approximate page break — deliberately never called a "page break" anywhere in the UI, including the Preferences hint text, since real pagination depends on a paper size and font metrics this app does not model and won't match what the compiled `.docx`/PDF actually paginates to. Unlike line numbers, this has no choice but to count wrapped visual lines: a page is a unit of screen space, and one long paragraph can span several on its own. `lib/pageView.ts` measures with `Range.getClientRects()` per paragraph — one client rect per wrapped line — rather than a decoration, since a rule needs to draw *between* lines.
+- Both extensions re-measure via a `ResizeObserver` on the page element rather than a plain `window resize` listener, so a real edit, a window resize, *and* a Preferences geometry change (font size, measure, line height) all trigger a re-measure through one mechanism. Neither setting fires a ProseMirror transaction on its own though, so `Editor.tsx` dispatches a no-op transaction whenever `lineNumbers`/`pageView`/`pageViewLines` change — otherwise toggling a checkbox would sit invisible until the next real keystroke.
+- Interacts with F-22's halftone ruler and margin marks, both still backlog — two independent gutter mechanisms would be a mistake if that one ships next, so it should read this file's gutter furniture rather than inventing its own.
 
 ### F-28 · Windows 95 palette ✅ shipped
 

@@ -591,6 +591,39 @@ button {
   margin-bottom: 1em;
 }
 
+/* ---------- gutter furniture (F-27) ---------- */
+
+/* Positioned like `.block-cursor` — a real sibling of `.editor-host`
+   (`display: contents`), so `.terminal-scroll` is the nearest positioned
+   ancestor and these scroll with the content for free. Both start hidden;
+   the extensions themselves flip `display` once enabled. */
+.line-number-gutter,
+.page-view-rules {
+  display: none;
+  position: absolute;
+  top: 0;
+  pointer-events: none;
+}
+
+.line-number {
+  position: absolute;
+  right: 0;
+  width: 100%;
+  text-align: right;
+  font-family: var(--font-chrome);
+  font-size: 9px;
+  opacity: 0.5;
+  transform: translateY(-0.15em);
+}
+
+.page-view-rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dotted var(--ink);
+  opacity: 0.5;
+}
+
 /* First-line indent is opt-in: applied automatically it makes the caret jump
    right on every Enter, and sits inconsistently beside soft-wrapped and
    hard-break lines, which reads as the indent drifting. */
