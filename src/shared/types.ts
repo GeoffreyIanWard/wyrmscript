@@ -336,6 +336,15 @@ export interface AppearanceSettings {
   fontSize: number
   /** Prose line height, unitless. */
   lineHeight: number
+  /** F-27: paragraph numbers in a gutter beside the page. Off by default —
+   *  the page is sacred, and gutter furniture is not a writer's default view. */
+  lineNumbers: boolean
+  /** F-27: a dotted rule every `pageViewLines` visual lines, standing in for
+   *  an approximate page break. Off by default. */
+  pageView: boolean
+  /** F-27: how many visual lines between page-view rules. An approximation,
+   *  not real pagination — see `lib/pageView.ts`. */
+  pageViewLines: number
 }
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
@@ -344,7 +353,10 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   firstLineIndent: false,
   measure: 62,
   fontSize: 17,
-  lineHeight: 1.7
+  lineHeight: 1.7,
+  lineNumbers: false,
+  pageView: false,
+  pageViewLines: 25
 }
 
 /* ---------- Writing stats (4c, brief §8) ---------- */
