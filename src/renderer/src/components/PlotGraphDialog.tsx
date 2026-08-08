@@ -4,6 +4,7 @@ import type { DocFile } from '../../../shared/types'
 import { api } from '../lib/api'
 import { timelineCards, type TimelineCard } from '../lib/timeline'
 import { clampTension, DEFAULT_TENSION, TENSION_MAX } from '../lib/plotGraph'
+import { findMasterPlot, MASTER_PLOTS, sampleMasterPlot } from '../lib/masterPlots'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { useWyrm } from '../store'
 
@@ -17,6 +18,10 @@ import { useWyrm } from '../store'
  *
  * One curve only (design decision) — overlaying a curve per plotline needs
  * F-04's plotline model to exist first, which it doesn't yet.
+ *
+ * F-35 adds an optional *reference* curve on top: a preset dramatic shape
+ * (`lib/masterPlots.ts`), drawn dashed so it can never be mistaken for the
+ * writer's own solid line, and never written back to `DocMeta.tension`.
  */
 
 const PX_PER_UNIT_X = 140
@@ -39,6 +44,10 @@ export function PlotGraphDialog({ onClose }: { onClose: () => void }): JSX.Eleme
   const [docs, setDocs] = useState<DocFile[] | null>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
   const dragRef = useRef<Drag | null>(null)
+  // F-35: local state, deliberately not persisted — a reference curve is
+  // something a writer holds up against their own for a moment, not a
+  // setting about their manuscript.
+  const [presetId, setPresetId] = useState('')
 
   useEffect(() => {
     if (!project) return
@@ -78,6 +87,16 @@ export function PlotGraphDialog({ onClose }: { onClose: () => void }): JSX.Eleme
 
   const sorted = [...cards].sort((a, b) => a.order - b.order)
   const points = sorted.map((c) => `${xFor(c.order)},${yFor(visualTension(c))}`).join(' ')
+
+  // F-35: the preset is stretched to however many scenes exist, then plotted
+  // against the same x positions as the real nodes — so the two curves are
+  // always compared beat-for-beat rather than over different spans.
+  const preset = presetId ? findMasterPlot(presetId) : undefined
+  const presetPoints = preset
+    ? sampleMasterPlot(preset, sorted.length)
+        .map((tension, i) => `${xFor(sorted[i].order)},${yFor(tension)}`)
+        .join(' ')
+    : ''
 
   const startDrag =
     (id: string, tension: number) =>
@@ -138,6 +157,29 @@ export function PlotGraphDialog({ onClose }: { onClose: () => void }): JSX.Eleme
             </div>
           )}
           {cards.length > 0 && (
+            <div className="control-row plot-graph-preset-row">
+              <label className="field-name" htmlFor="master-plot">
+                COMPARE WITH
+              </label>
+              <select
+                id="master-plot"
+                className="text-field"
+                value={presetId}
+                onChange={(e) => setPresetId(e.target.value)}
+              >
+                <option value="">None</option>
+                {MASTER_PLOTS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <span className="spacer" />
+              {preset && <span className="plot-graph-preset-key">reference</span>}
+            </div>
+          )}
+          {preset && <div className="dialog-hint">{preset.blurb}</div>}
+          {cards.length > 0 && (
             <div className="plot-graph-track" style={{ width: trackWidth, height: trackHeight }}>
               <svg
                 className="plot-graph-svg"
@@ -155,6 +197,11 @@ export function PlotGraphDialog({ onClose }: { onClose: () => void }): JSX.Eleme
                     y2={yFor(t)}
                   />
                 ))}
+                {/* Under the real curve, so the writer's own line is never
+                    obscured by a reference drawn on top of it. */}
+                {presetPoints && (
+                  <polyline className="plot-graph-preset" points={presetPoints} fill="none" />
+                )}
                 <polyline className="plot-graph-curve" points={points} fill="none" />
               </svg>
               {[0, 5, 10].map((t) => (
