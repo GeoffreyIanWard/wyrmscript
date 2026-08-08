@@ -370,16 +370,16 @@ Requested 2026-07-31, built 2026-08-04. `[data-palette='collegiate'] .page` gets
 
 Requested 2026-07-31, built 2026-08-04 alongside F-20 — same technique family, same effort tier. `[data-palette='blueprint'] .page` gets a sparse 48px grid (an L of top+left rule per tile, the same tiling trick as the palette's own dense chrome dither, just scaled up and toned down), explicitly wider and fainter than the crosshatch so it reads as drafting-table grid paper rather than competing with the prose.
 
-### F-22 · Halftone: margins, ruler and newspaper-editing marks 📋
+### F-22 · Halftone: margins, ruler and newspaper-editing marks ✅ shipped
 
-Requested 2026-07-31, alongside F-20/F-21 but noticeably bigger — the most substantial of this batch. Four asks bundled together:
+Requested 2026-07-31, built 2026-08-07. Shipped the three concrete asks as one PR rather than splitting by effort tier as originally floated — the ruler turned out not to be that much bigger once the margin bars existed to align with:
 
-- **Black margin bars** flanking `.page`, signalling the print margin visually. Plausibly pure CSS (pseudo-elements either side of the page column).
-- **Visible margin measurements and ruler accents**, in both the page and the surrounding chrome. Rendering real numbers against the actual configured measure (F-06) is more than a background image — likely wants a small dedicated component (a ruler bar), not a CSS-only treatment.
-- **Paragraph marks** (¶) shown where appropriate. The cheap part of this request — `[data-palette='halftone'] .page p::after { content: ' ¶'; }` gets most of the way there with no editor changes.
-- **"Old-school newspaper-editing vibe wherever possible"** — evocative but unscoped as written. Needs a concrete shortlist (proofreader's marks? column-inch annotations? a specific reference image) before it's buildable rather than open-ended.
+- **Black margin bars** flanking `.page`, pure `::before`/`::after` pseudo-elements, same "no JS at all" tier as F-20/F-21's ruled lines and grid. Flush against `.page`'s own edge (no gap) rather than floating further out, for a reason found live rather than anticipated — see below.
+- **A ruler bar with real measurements**, `HalftoneRuler.tsx` — the one piece that couldn't be a decorative background image, since the tick numbers have to track the actual configured line width (F-06). `ch` is exact for this on the monospace prose font, so tick positions are plain CSS (`left: Nch`) rather than anything measured in JS. Rendered as the first child of `.terminal-scroll` with `position: sticky`, not a separate fixed header — sharing that scroll container is what keeps its centering identical to `.page`'s own; a wrapper outside `.terminal-scroll` would center against the full pane width, while `.page` centers against the width remaining after the scrollbar.
+- **Paragraph marks** (¶), pure CSS as scoped: `[data-palette='halftone'] .page p::after`.
+- **The vague fourth ask — "old-school newspaper-editing vibe wherever possible" — deliberately not built.** Asked rather than guessed: left in the backlog until there's a concrete shortlist (proofreader's marks? column-inch annotations? a reference image) worth designing against, rather than inventing scope nobody confirmed.
 
-Worth splitting into a cheap pass (margin bars + paragraph marks, CSS-only) and a real pass (the ruler component) rather than one PR, given the gap in effort between the two halves.
+**Found live, not anticipated:** the margin bars were first placed floating outside `.page` at `-14px`, in the same reserved band F-27's line-number gutter occupies (a right-aligned column ending 8px short of `.page`'s edge). The bar's opaque fill sat directly over where the digits render, silently hiding every line number whenever both features were on together — nothing crashed, the number was simply invisible under solid black. Moved the bars flush to `.page`'s own edge (`-6px`, 0 gap) instead, clearing the gutter's territory entirely. A reminder that two features each individually correct can still collide the moment they share screen space — verifying "does it look right" needs enabling combinations, not just one flag at a time.
 
 ### F-23 · BIOS: block cursor in the editor pane ✅ shipped
 
