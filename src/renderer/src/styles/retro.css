@@ -1153,6 +1153,31 @@ button {
   stroke-width: 2;
 }
 
+/* F-35: the reference shape. Dashed and thinner than the real curve, with
+   a longer dash than `.plot-graph-gridline`'s dotted rule so all three
+   lines stay distinguishable — this must never be mistaken for the
+   writer's own data. */
+.plot-graph-preset {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 7 4;
+  opacity: 0.55;
+}
+
+.plot-graph-preset-row {
+  margin-bottom: 6px;
+}
+
+/* Names the dashed line in the same visual language it is drawn in, rather
+   than relying on the writer to infer which curve is which. */
+.plot-graph-preset-key {
+  font-size: 9px;
+  letter-spacing: 1px;
+  padding: 1px 6px;
+  border-bottom: 2px dashed var(--ink);
+  opacity: 0.55;
+}
+
 .plot-graph-axis-label {
   position: absolute;
   left: 4px;
