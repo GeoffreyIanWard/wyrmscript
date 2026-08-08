@@ -15,6 +15,7 @@ import { ENTITY_COLLECTIONS } from '../lib/entities'
 import { addTag, removeTag, togglePin } from '../lib/tags'
 import { useWyrm } from '../store'
 import { NewEntityDialog } from './EntityPanel'
+import { HalftoneRuler } from './HalftoneRuler'
 
 interface AddMenu {
   x: number
@@ -192,6 +193,11 @@ export function Editor(): JSX.Element {
   const lineNumbers = useWyrm((s) => s.appearance?.lineNumbers ?? false)
   const pageView = useWyrm((s) => s.appearance?.pageView ?? false)
   const pageViewLines = useWyrm((s) => s.appearance?.pageViewLines ?? 25)
+  // F-22: the Halftone ruler needs a real component (not a CSS background
+  // image like F-20/F-21's ruled lines/grid) since its numbers have to track
+  // the actual configured measure, not just decorate near it.
+  const showRuler = useWyrm((s) => s.appearance?.palette) === 'halftone'
+  const measure = useWyrm((s) => s.appearance?.measure ?? 62)
 
   // Recreated per document (deps: [activeId]) so undo history never crosses
   // documents — ⌘Z in one scene must not resurrect another scene's text.
@@ -278,17 +284,27 @@ export function Editor(): JSX.Element {
           Remounting on switch resets them for free — no manual "is this
           still valid" reset logic needed, and no stale tooltip pointing at a
           mention from the document just left. */}
-      <TerminalContent key={activeId} editor={editor} entities={entities} />
+      <TerminalContent
+        key={activeId}
+        editor={editor}
+        entities={entities}
+        showRuler={showRuler}
+        measure={measure}
+      />
     </div>
   )
 }
 
 function TerminalContent({
   editor,
-  entities
+  entities,
+  showRuler,
+  measure
 }: {
   editor: ReturnType<typeof useEditor>
   entities: Entity[]
+  showRuler: boolean
+  measure: number
 }): JSX.Element {
   const [addMenu, setAddMenu] = useState<AddMenu | null>(null)
   const [creating, setCreating] = useState<{ type: EntityType; name: string } | null>(null)
@@ -351,6 +367,7 @@ function TerminalContent({
         onMouseOver={onMouseOver}
         onMouseOut={onMouseOut}
       >
+        {showRuler && <HalftoneRuler measure={measure} />}
         <EditorContent editor={editor} className="editor-host" />
       </div>
       {hoverTip && <EntityHoverTip tip={hoverTip} entities={entities} />}
