@@ -9,9 +9,9 @@ Retro desktop word processor for long-form fiction. WordStar focus, Scrivener st
 
 ## Where things stand
 
-All six phases are shipped, plus compile/export, local backup, GitHub sync, and the comfort/navigation halves of the quality-of-life batch. **Geoffrey writes in this app for real** — his project lives at `~/Documents/testoria.wyrm`, which is useful for reproducing bugs against real data, and it means regressions cost him actual work.
+**Everything in the Execution order section is shipped** as of v0.2.0 — all six phases, compile/export, local backup, GitHub sync, the full quality-of-life batch (comfort, navigation, writing stats), the whole story-structure cluster (pins/tags, timeline, plot graph, plotlines, character graph, nested locations, world map), folder view, Esc-as-back, and the home screen. **Geoffrey writes in this app for real** — his project lives at `~/Documents/testoria.wyrm`, which is useful for reproducing bugs against real data, and it means regressions cost him actual work.
 
-Next up is writing stats (4c), then the story-structure cluster — which is **gated on designing F-10 (pins & tags) first**, since the timeline, plot graph, character graph and world map are all views over that one metadata model. See the Execution order section of the roadmap.
+What's left is the backlog only, and every remaining item is 💭 (needs design before it can be scheduled): F-34 (browse the story bible by tag), F-38 (paginated typewriter mode with auto-print), and the Manuscript-tier palette cluster F-15–F-18 plus the F-19 paid-tier product question. There is no longer a "next up" the roadmap decides on its own — pick one with Geoffrey and settle its open questions first.
 
 ## Workflow
 
