@@ -42,13 +42,21 @@ appImage:
 npmRebuild: false
 # Used only to upload built installers to GitHub Releases from CI (`--publish
 # always`); the app has no auto-updater wired in, so this isn't a live
-# update channel yet. draft:false because electron-builder's default is a
-# draft release, invisible to the public and to /releases/latest — the
+# update channel yet. releaseType:release because electron-builder defaults
+# to a draft release, invisible to the public and to /releases/latest — the
 # first real release run landed as an unpublished draft with a working
 # download page pointing at nothing, and it took a manual `gh release edit
 # --draft=false` to fix. Never rely on remembering that step again.
+#
+# It must be `releaseType`, not `draft: false`: GithubOptions is
+# `additionalProperties: false` in electron-builder 26.x and has no `draft`
+# key at all, so `draft: false` fails every branch of the publish `oneOf`.
+# ajv then reports that as five confusing "configuration.publish.provider
+# must be equal to constant" errors — one per provider branch — which says
+# nothing about the key actually at fault. That is exactly how v0.2.0's
+# first build failed on all three platforms.
 publish:
   provider: github
   owner: GeoffreyIanWard
   repo: wyrmscript
-  draft: false
+  releaseType: release
