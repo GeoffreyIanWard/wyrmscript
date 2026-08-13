@@ -36,12 +36,14 @@ import { findNode, firstDoc, moveNode, removeNode, type DropPosition } from './l
 export type SaveState = 'saved' | 'dirty' | 'saving'
 
 /** What the main pane is showing: a manuscript document, a bible entry, a
- *  folder's contents (F-08), or the writing-stats page (F-26). */
+ *  folder's contents (F-08), the writing-stats page (F-26), or the tag
+ *  browser (F-34). */
 export type MainView =
   | { kind: 'doc' }
   | { kind: 'entity'; id: string }
   | { kind: 'folder'; id: string }
   | { kind: 'stats' }
+  | { kind: 'tags' }
 
 function newId(): string {
   return Math.random().toString(36).slice(2, 10)
@@ -193,6 +195,16 @@ interface WyrmState {
   showFolder(id: string): void
   /** F-26: open the writing-stats page in place of the writing terminal. */
   showStats(): void
+  /** F-34: open the browse-by-tag page in place of the writing terminal. */
+  showTags(): void
+  /**
+   * F-34: the tag currently being browsed. Lives here rather than inside
+   * `TagBrowser` because opening a result unmounts the page — with local
+   * state the filter was lost on every Esc back, which breaks the feature's
+   * central loop (pick a tag, open something, come back to the same list).
+   */
+  tagFilter: string | null
+  setTagFilter(tag: string | null): void
   /** F-14: pop one step of `viewHistory`. True if it actually went anywhere. */
   goBack(): boolean
 
@@ -311,6 +323,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     panelEntityId: null,
     mainView: { kind: 'doc' },
     viewHistory: [],
+    tagFilter: null,
     plotlines: [],
     relationships: [],
     mapPins: [],
@@ -961,6 +974,22 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (mainView.kind === 'stats') return
       set({
         mainView: { kind: 'stats' },
+        viewHistory: [...viewHistory, mainView].slice(-VIEW_HISTORY_LIMIT)
+      })
+    },
+
+    setTagFilter(tag) {
+      set({ tagFilter: tag })
+    },
+
+    showTags() {
+      // Same detour semantics as showStats: browsing tags is a look-something-
+      // up trip away from the page, and Esc should put the writer back exactly
+      // where they were — including on a bible entry they came from.
+      const { mainView, viewHistory } = get()
+      if (mainView.kind === 'tags') return
+      set({
+        mainView: { kind: 'tags' },
         viewHistory: [...viewHistory, mainView].slice(-VIEW_HISTORY_LIMIT)
       })
     },

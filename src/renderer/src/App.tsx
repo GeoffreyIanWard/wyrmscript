@@ -9,6 +9,7 @@ import { FolderView } from './components/FolderView'
 import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog } from './components/Dialogs'
 import { StatsPage } from './components/StatsPage'
+import { TagBrowser } from './components/TagBrowser'
 import { TimelineDialog } from './components/TimelineDialog'
 import { PlotGraphDialog } from './components/PlotGraphDialog'
 import { PlotlinesDialog } from './components/PlotlinesDialog'
@@ -120,6 +121,7 @@ function MainPane(): JSX.Element {
   if (mainView.kind === 'entity') return <EntityEditor key={mainView.id} entityId={mainView.id} />
   if (mainView.kind === 'folder') return <FolderView key={mainView.id} folderId={mainView.id} />
   if (mainView.kind === 'stats') return <StatsPage />
+  if (mainView.kind === 'tags') return <TagBrowser />
   return <Editor />
 }
 
@@ -305,6 +307,7 @@ function App(): JSX.Element {
         onCompile={() => setCompileOpen(true)}
         onBackup={() => setBackupOpen(true)}
         onStats={() => useWyrm.getState().showStats()}
+        onBrowseTags={() => useWyrm.getState().showTags()}
         onTimeline={() => setTimelineOpen(true)}
         onPlotGraph={() => setPlotGraphOpen(true)}
         onPlotlines={() => setPlotlinesOpen(true)}
