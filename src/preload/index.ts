@@ -48,6 +48,8 @@ const api: WyrmApi = {
   deleteMapPin: (path, id) => ipcRenderer.invoke('mapPin:delete', path, id),
 
   exportFile: (defaultName, data) => ipcRenderer.invoke('compile:export', defaultName, data),
+  renderPdf: (html) => ipcRenderer.invoke('compile:pdf', html),
+  printHtml: (html) => ipcRenderer.invoke('compile:print', html),
 
   getAppearance: () => ipcRenderer.invoke('appearance:get'),
   setAppearance: (patch) => ipcRenderer.invoke('appearance:set', patch),

@@ -15,6 +15,8 @@ type MenuBarProps = {
   onPreferences: () => void
   onVersionDialog: (dialog: 'commit' | 'history' | 'variants') => void
   onCompile: () => void
+  /** F-38: send the manuscript to the OS print dialog. */
+  onPrint: () => void
   onBackup: () => void
   onStats: () => void
   /** F-34: the browse-by-tag page. */
@@ -40,6 +42,7 @@ export function MenuBar({
   onPreferences,
   onVersionDialog,
   onCompile,
+  onPrint,
   onBackup,
   onStats,
   onBrowseTags,
@@ -149,6 +152,13 @@ export function MenuBar({
           shortcut: '⇧⌘E',
           disabled: !hasProject,
           action: onCompile
+        },
+        {
+          kind: 'item',
+          label: 'Print Manuscript…',
+          shortcut: '⌘P',
+          disabled: !hasProject,
+          action: onPrint
         }
       ]
     },
