@@ -17,6 +17,8 @@ type MenuBarProps = {
   onCompile: () => void
   onBackup: () => void
   onStats: () => void
+  /** F-34: the browse-by-tag page. */
+  onBrowseTags: () => void
   onTimeline: () => void
   onPlotGraph: () => void
   onPlotlines: () => void
@@ -40,6 +42,7 @@ export function MenuBar({
   onCompile,
   onBackup,
   onStats,
+  onBrowseTags,
   onTimeline,
   onPlotGraph,
   onPlotlines,
@@ -258,6 +261,12 @@ export function MenuBar({
           shortcut: '⇧⌘S',
           disabled: !hasProject,
           action: onStats
+        },
+        {
+          kind: 'item',
+          label: 'Browse by Tag…',
+          disabled: !hasProject,
+          action: onBrowseTags
         },
         { kind: 'item', label: 'Timeline…', disabled: !hasProject, action: onTimeline },
         { kind: 'item', label: 'Plot Graph…', disabled: !hasProject, action: onPlotGraph },
