@@ -658,6 +658,15 @@ export function createMockApi(): WyrmApi {
       // No save dialog and no disk in the browser preview — the compile
       // dialog's preview pane is where the output is actually inspected.
       return `/demo/${defaultName}`
+    },
+    async toggleFullScreen(): Promise<boolean> {
+      // There is no OS window to take fullscreen in the browser preview, and
+      // the browser's own F11 already does the equivalent — App.tsx only
+      // intercepts the key under Electron, so this is never reached there.
+      return false
+    },
+    async setTitleBarOverlay(): Promise<void> {
+      // Windows-only native chrome; nothing to recolour in a browser tab.
     }
   }
 }

@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { TITLE_BAR_OVERLAY_HEIGHT } from '../shared/types'
 import { registerIpc } from './wyrm/ipc'
 
 function createWindow(): void {
@@ -17,6 +18,24 @@ function createWindow(): void {
     autoHideMenuBar: true,
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 10, y: 10 } }
+      : {}),
+    // F-39: Windows previously got no equivalent of the macOS branch above,
+    // so the native title bar sat stacked on top of the app's own retro menu
+    // bar — two chrome bars, only on Windows. `hidden` + an overlay removes
+    // the frame while keeping real minimize/maximize/close buttons, and
+    // `.menu-bar` is already an app-region drag handle on every platform, so
+    // the window stays movable. Colours are placeholders for the first paint
+    // only; the renderer recolours them to the live palette via
+    // `setTitleBarOverlay` (see `App.tsx`).
+    ...(process.platform === 'win32'
+      ? {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: {
+            color: '#ffffff',
+            symbolColor: '#000000',
+            height: TITLE_BAR_OVERLAY_HEIGHT
+          }
+        }
       : {}),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
