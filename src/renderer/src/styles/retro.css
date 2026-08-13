@@ -895,6 +895,76 @@ button {
   text-align: right;
 }
 
+/* ---------- browse by tag (F-34) ---------- */
+
+.tag-browser-body {
+  max-width: 900px;
+}
+
+/* "Chunky buttons", as asked for — deliberately heavier than the `.tag-chip`
+   used to *display* a tag on an entry, because these are the primary control
+   on the page rather than metadata hanging off a row. */
+.tag-button-wall {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tag-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 6px 10px;
+  font-family: var(--font-chrome);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+/* Inverted rather than tinted, so the selection reads in every palette
+   including the strictly two-colour ones. */
+.tag-button.on {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.tag-button-count {
+  font-size: 9px;
+  border: 1px solid currentColor;
+  padding: 0 4px;
+}
+
+.tag-result-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--ink);
+  cursor: pointer;
+}
+
+.tag-result-row:last-child {
+  border-bottom: none;
+}
+
+.tag-result-name {
+  flex: none;
+  font-size: 12px;
+}
+
+.tag-result-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  flex: 1;
+  font-size: 10px;
+}
+
 /* ---------- writing stats page (F-26) ---------- */
 
 .stats-page-body {
