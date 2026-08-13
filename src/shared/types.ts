@@ -347,6 +347,17 @@ export interface AppearanceSettings {
   pageViewLines: number
 }
 
+/**
+ * F-39, Windows: height of the native window-control overlay, in px.
+ *
+ * **Must stay equal to `.menu-bar`'s height in `retro.css`** — the overlay
+ * sits on top of that bar, and any mismatch shows as caption buttons that
+ * float above or hang below the retro chrome. Duplicated here only because
+ * the main process cannot read the stylesheet; `retro.css` remains the
+ * source of truth for the bar itself.
+ */
+export const TITLE_BAR_OVERLAY_HEIGHT = 30
+
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   accents: '1bit',
   palette: 'paper',
@@ -583,4 +594,19 @@ export interface WyrmApi {
     path: string,
     choices: { path: string; resolution: ConflictResolution }[]
   ): Promise<SyncOutcome>
+
+  /**
+   * F-39: real OS fullscreen — the thing that actually covers the Windows
+   * taskbar. Distinct from maximize (which never does) and from Focus Mode
+   * (renderer-only). Returns the resulting state so the caller never has to
+   * track it independently of the window.
+   */
+  toggleFullScreen(): Promise<boolean>
+  /**
+   * F-39, Windows only: recolour the native window-control overlay to match
+   * the active palette. Colours are passed in rather than derived in main,
+   * because the palettes live in `retro.css` and duplicating their hex values
+   * into TypeScript would be a second source of truth. No-op off Windows.
+   */
+  setTitleBarOverlay(color: string, symbolColor: string): Promise<void>
 }

@@ -72,7 +72,11 @@ const api: WyrmApi = {
   disconnectSync: (path) => ipcRenderer.invoke('sync:disconnect', path),
   setLocalOnly: (path) => ipcRenderer.invoke('sync:localOnly', path),
   syncNow: (path) => ipcRenderer.invoke('sync:now', path),
-  resolveSyncConflicts: (path, choices) => ipcRenderer.invoke('sync:resolve', path, choices)
+  resolveSyncConflicts: (path, choices) => ipcRenderer.invoke('sync:resolve', path, choices),
+
+  toggleFullScreen: () => ipcRenderer.invoke('window:toggleFullScreen'),
+  setTitleBarOverlay: (color, symbolColor) =>
+    ipcRenderer.invoke('window:titleBarOverlay', color, symbolColor)
 }
 
 contextBridge.exposeInMainWorld('wyrm', api)

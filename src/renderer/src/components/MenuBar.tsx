@@ -27,6 +27,8 @@ type MenuBarProps = {
   onPalette: () => void
   focusMode: boolean
   onFocusMode: () => void
+  /** F-39: real OS fullscreen, distinct from Focus Mode's in-window declutter. */
+  onFullScreen: () => void
   /** Set by App to a function that moves keyboard focus into the menu bar (F-07). */
   registerFocusMenus?: (focus: () => void) => void
 }
@@ -48,6 +50,7 @@ export function MenuBar({
   onPalette,
   focusMode,
   onFocusMode,
+  onFullScreen,
   registerFocusMenus
 }: MenuBarProps): JSX.Element {
   const [open, setOpen] = useState<string | null>(null)
@@ -205,6 +208,15 @@ export function MenuBar({
           shortcut: '⌥⌘F',
           disabled: !hasProject,
           action: onFocusMode
+        },
+        {
+          // F-39. Not gated on `hasProject`, unlike everything above it: this
+          // is a property of the window, not of the manuscript, and the
+          // Welcome screen is exactly where someone might want it too.
+          kind: 'item',
+          label: 'Full Screen',
+          shortcut: 'F11',
+          action: onFullScreen
         },
         { kind: 'sep' },
         { kind: 'item', label: 'Corkboard', disabled: true },
