@@ -528,7 +528,7 @@ Requested and built 2026-08-07. As the writer types past the middle of the visib
 - Interacts with F-27's page view and F-38 below, if either ships — all three want to reason about where the writer's attention is relative to the scrolled content.
 - **Found in review**: the Preferences dialog (`Dialogs.tsx`) already had a `Typewriter scrolling` checkbox from before this feature existed, but it was never wired up — omitting `onToggle` renders a `Check` row permanently disabled by design (see its own doc comment, "renders inert" for settings whose feature doesn't exist yet), which is exactly what shipped in the first PR. Wired it to the same `typewriterMode` store field the View menu and `⌥⌘T` already used, via a new `onTypewriterModeChange` prop threaded through `App.tsx` — so all three entry points now drive one shared toggle.
 
-### F-38 · Typewriter mode PLUS: paginated documents with auto-print 💭
+### F-38 · Typewriter mode PLUS: paginated documents with auto-print 🔨 in progress
 
 Requested 2026-08-07, building on F-37. Documents gain real pages — typing past the end of a page moves to a new one, and a finished page can "print" automatically (to PDF, matching the compiled manuscript, or to an actual connected printer), the way a page coming off a physical typewriter platen is simply done.
 
@@ -538,6 +538,22 @@ This is a substantially bigger piece of work than F-37 and touches capability ar
 - **What does "print automatically" mean in practice?** Firing an OS print dialog the instant a page fills, with no writer confirmation, is a strong behavior to default to — worth confirming whether the request means literally that, or "make finishing a page one click from printed" (a nudge, not a silent trigger). The house rule that the writing terminal carries no notifications/interruptions cuts against anything that pops a dialog mid-sentence.
 - **PDF export already has a natural home**: `lib/compile.ts` already flattens the binder into a format-independent block list for text/`.docx` export (brief §8) — a paginated PDF output is plausibly a fourth `CompileFormat` there rather than a new export pipeline, if the page definition above lands on something compile-compatible.
 - **Real printer output is new ground for this app** — Electron exposes `webContents.print()`/`printToPDF()`, but silent/automatic printing (no dialog) needs a specific printer selected in advance and has real failure modes (offline printer, out of paper, wrong printer selected) that a "just works" feature can't quietly ignore. Worth deciding whether v1 is manual ("send this page to the printer" a writer clicks) before ever attempting the fully automatic version the request describes.
+
+**Scoped 2026-08-12, split in two.** Answers to the questions above:
+
+- **A page is Chromium's page, not ours.** Pagination happens at print time against a real paper size, using Electron's own print engine — the only page model that matches what physically comes out. No editor-side pagination was added; F-27's dotted rule stays the on-screen approximation it already says it is.
+- **Auto-print reuses F-27's lines-per-page** as the "page finished" trigger. This resolves a real conflict: auto-printing needs a boundary the *editor* knows about, which print-side pagination alone never provides. Consequence, accepted knowingly: a chunk is sized by line count, not paper metrics, so it may not exactly fill a sheet.
+- **PDF is a fourth `CompileFormat`**, as predicted — `renderHtml` joins `renderText`/`renderMarkdown`/`docxBytes` as another pure function of the same block list.
+
+**Part 1 ✅ shipped:** PDF export and manual printing.
+
+- `renderHtml` produces standard-manuscript-format HTML (12pt monospace, double-spaced, 1in margins), which `compile:pdf` turns into PDF bytes via `printToPDF`, and `compile:print` sends to the OS print dialog. **File → Print Manuscript… (⌘P)**.
+- Both render in a **throwaway offscreen window**, never the writer's own: `printToPDF` paginates whatever the window is showing, so reusing the main window would navigate the manuscript out from under them. Destroyed in a `finally` so a load failure can't leak a hidden window per attempt.
+- Unlike `.docx`, PDF bytes can't be built in `compile()` — pagination is async and lives in main — so the store renders HTML and round-trips through IPC.
+- `silent: false` on printing is deliberate for v1: the writer picks the printer and sees failures where they expect them.
+- Degrades honestly in the browser preview: PDF export reports "PDF export needs the desktop app" rather than writing a file that isn't a PDF, and `printHtml` **throws** rather than returning `false` — false means "the writer cancelled", and reporting a missing print engine as a cancellation would leave ⌘P silently doing nothing.
+
+**Part 2 (next):** printer selection and settings, and the auto-print-on-page-completion trigger, off by default.
 
 ### F-39 · Real fullscreen, and Windows' doubled-up title bar ✅ shipped
 
