@@ -133,6 +133,15 @@ button {
   padding-left: 76px; /* clearance for macOS traffic lights (hiddenInset) */
 }
 
+/* F-39: the mirror image on Windows. The native caption buttons are drawn as
+   an overlay in the top-right (three at ~46px), so the Project menu title
+   would otherwise sit underneath them and be unclickable. The overlay's own
+   height is set from TITLE_BAR_OVERLAY_HEIGHT and must match this bar's
+   30px — see the constant's comment in shared/types.ts. */
+.is-electron-win .menu-bar {
+  padding-right: 138px;
+}
+
 .menu-slot {
   display: flex;
   align-items: stretch;
