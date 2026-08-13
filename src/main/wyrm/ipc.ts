@@ -16,6 +16,7 @@ import type {
   SyncOutcome,
   SyncStatus
 } from '../../shared/types'
+import { TITLE_BAR_OVERLAY_HEIGHT } from '../../shared/types'
 import { commitAll, createVariant, deleteVariant, listVariants, logCommits } from './git'
 import { deleteEntity, listEntities, readAllDocs, writeEntity } from './entities'
 import { deletePlotline, listPlotlines, writePlotline } from './plotlines'
@@ -411,5 +412,32 @@ export function registerIpc(): void {
     if (typeof data === 'string') await fsp.writeFile(result.filePath, data, 'utf8')
     else await fsp.writeFile(result.filePath, Buffer.from(data))
     return result.filePath
+  })
+
+  /* ---------- window (F-39) ---------- */
+
+  // Real OS fullscreen, which is what actually covers the Windows taskbar —
+  // maximize never does. Returns the resulting state rather than letting the
+  // renderer track its own copy, which would drift the moment the window is
+  // un-fullscreened by any other route (Esc on macOS, the caption buttons).
+  ipcMain.handle('window:toggleFullScreen', () => {
+    const win = focusedWindow()
+    if (!win) return false
+    const next = !win.isFullScreen()
+    win.setFullScreen(next)
+    return next
+  })
+
+  ipcMain.handle('window:titleBarOverlay', (_e, color: string, symbolColor: string) => {
+    // Guarded twice over: `setTitleBarOverlay` throws outright on a window
+    // that wasn't created with `titleBarOverlay`, which is every window off
+    // Windows — an unguarded call would reject into the renderer on macOS
+    // and Linux on every palette change.
+    if (process.platform !== 'win32') return
+    focusedWindow()?.setTitleBarOverlay({
+      color,
+      symbolColor,
+      height: TITLE_BAR_OVERLAY_HEIGHT
+    })
   })
 }

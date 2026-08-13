@@ -23,12 +23,16 @@ import { CommandPalette } from './components/CommandPalette'
 import { SearchDialog } from './components/SearchDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useWyrm } from './store'
-import { isElectron } from './lib/api'
+import { api, isElectron } from './lib/api'
 import { summarize } from './lib/stats'
 
 import { DEFAULT_APPEARANCE } from '../../shared/types'
 
 const isElectronMac = /Macintosh/.test(navigator.userAgent) && /Electron/.test(navigator.userAgent)
+/** F-39: Windows Electron gets a hidden title bar plus a native caption-button
+ *  overlay, so the menu bar needs clearance on the right the way the macOS
+ *  build already needs it on the left for the traffic lights. */
+const isElectronWin = /Windows/.test(navigator.userAgent) && /Electron/.test(navigator.userAgent)
 
 function useNow(intervalMs: number): number {
   const [now, setNow] = useState(() => Date.now())
@@ -125,6 +129,7 @@ function App(): JSX.Element {
   // window, which is worse than one frame in the default palette.
   const appearance = useWyrm((s) => s.appearance) ?? DEFAULT_APPEARANCE
   const setAppearance = useWyrm((s) => s.setAppearance)
+  const screenRef = useRef<HTMLDivElement>(null)
   const typewriterMode = useWyrm((s) => s.typewriterMode)
   const statsSettings = useWyrm((s) => s.statsSettings)
   const setStatsSettings = useWyrm((s) => s.setStatsSettings)
@@ -170,6 +175,15 @@ function App(): JSX.Element {
       if (e.key === 'F10' || (e.altKey && !e.metaKey && !e.shiftKey && e.code === 'KeyF')) {
         e.preventDefault()
         focusMenusRef.current?.()
+        return
+      }
+      // F11 — real OS fullscreen (F-39), the only thing that covers the
+      // Windows taskbar; maximize never does. Deliberately left alone outside
+      // Electron: the browser's own F11 already does this, and swallowing it
+      // would take a working shortcut away in the preview.
+      if (e.key === 'F11' && isElectron) {
+        e.preventDefault()
+        void api.toggleFullScreen()
         return
       }
       // Esc, in priority order (F-14, then F-36): a dialog wins first —
@@ -247,9 +261,25 @@ function App(): JSX.Element {
     // actually toggled since (F-36).
   }, [focusMode])
 
+  // F-39, Windows: keep the native caption buttons in the palette's colours.
+  // The values are read back out of the live DOM rather than mapped in TS,
+  // so `retro.css` stays the only place a palette's ink/paper is defined —
+  // a second copy here would silently drift the first time a palette is
+  // retuned. Runs after paint, so `data-palette` is already applied.
+  useEffect(() => {
+    if (!isElectronWin || !screenRef.current) return
+    const styles = getComputedStyle(screenRef.current)
+    const paper = styles.getPropertyValue('--paper').trim()
+    const ink = styles.getPropertyValue('--ink').trim()
+    if (paper && ink) void api.setTitleBarOverlay(paper, ink)
+  }, [appearance.palette, appearance.accents])
+
   return (
     <div
-      className={`screen${isElectronMac ? ' is-electron-mac' : ''}`}
+      ref={screenRef}
+      className={`screen${isElectronMac ? ' is-electron-mac' : ''}${
+        isElectronWin ? ' is-electron-win' : ''
+      }`}
       data-accents={appearance.accents}
       data-palette={appearance.palette}
       data-indent={appearance.firstLineIndent ? 'on' : 'off'}
@@ -285,6 +315,7 @@ function App(): JSX.Element {
         onPalette={() => setPaletteOpen(true)}
         focusMode={focusMode}
         onFocusMode={() => setFocusMode((v) => !v)}
+        onFullScreen={() => void api.toggleFullScreen()}
         registerFocusMenus={(focus) => {
           focusMenusRef.current = focus
         }}
