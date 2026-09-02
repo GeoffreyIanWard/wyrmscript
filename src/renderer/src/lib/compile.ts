@@ -254,12 +254,101 @@ export function renderMarkdown(blocks: CompileBlock[]): string {
   return kept.join('\n\n') + (kept.length > 0 ? '\n' : '')
 }
 
+/* ---------- html (F-38, for PDF) ---------- */
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function runsToHtml(runs: CompileInline[]): string {
+  return runs
+    .map((run) => {
+      if ('break' in run) return '<br>'
+      let html = escapeHtml(run.text)
+      // Nested innermost-out, matching how the other renderers stack marks.
+      if (run.highlight) html = `<mark>${html}</mark>`
+      if (run.italic) html = `<em>${html}</em>`
+      if (run.bold) html = `<strong>${html}</strong>`
+      return html
+    })
+    .join('')
+}
+
+/**
+ * F-38: print-ready HTML — the input to a real PDF, produced by Electron's
+ * own print engine rather than a hand-rolled PDF serializer.
+ *
+ * **This is the one format whose pagination is not ours.** Every other
+ * renderer here decides its own layout; this one deliberately hands that job
+ * to the browser's layout engine against a real paper size, because that is
+ * the only definition of "page" that matches what physically comes out. The
+ * `@page` rule below is the whole page model.
+ *
+ * Styled as standard manuscript format — 12pt monospace, double-spaced, 1in
+ * margins, indented paragraphs — which is both what fiction submissions
+ * expect and, conveniently, what this app already looks like.
+ */
+export function renderHtml(blocks: CompileBlock[]): string {
+  const body: string[] = []
+  for (const block of blocks) {
+    switch (block.kind) {
+      case 'titlePage':
+        body.push(
+          `<section class="title-page"><h1>${escapeHtml(block.title)}</h1>` +
+            block.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('') +
+            `</section>`
+        )
+        break
+      case 'heading':
+        body.push(`<h${block.level + 1}>${escapeHtml(block.text)}</h${block.level + 1}>`)
+        break
+      case 'separator':
+        if (block.text) body.push(`<p class="sep">${escapeHtml(block.text)}</p>`)
+        break
+      case 'pageBreak':
+        body.push('<div class="page-break"></div>')
+        break
+      case 'paragraph':
+        body.push(`<p>${runsToHtml(block.runs)}</p>`)
+        break
+    }
+  }
+
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  @page { size: Letter; margin: 1in; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12pt;
+    line-height: 2;
+    color: #000;
+  }
+  p { margin: 0; text-indent: 2em; orphans: 2; widows: 2; }
+  /* The first paragraph after a break starts flush left, as in print. */
+  h1 + p, h2 + p, h3 + p, .sep + p, .page-break + p { text-indent: 0; }
+  .sep { text-indent: 0; text-align: center; margin: 1em 0; }
+  h1, h2, h3 { font-weight: normal; text-align: center; margin: 0 0 2em; page-break-after: avoid; }
+  mark { background: none; text-decoration: underline; }
+  .page-break { page-break-after: always; }
+  .title-page { text-align: center; page-break-after: always; }
+  .title-page p { text-indent: 0; }
+</style></head><body>
+${body.join('\n')}
+</body></html>`
+}
+
 /* ---------- entry point ---------- */
 
 const EXTENSIONS: Record<CompileOptions['format'], string> = {
   txt: 'txt',
   md: 'md',
-  docx: 'docx'
+  docx: 'docx',
+  pdf: 'pdf'
 }
 
 /**

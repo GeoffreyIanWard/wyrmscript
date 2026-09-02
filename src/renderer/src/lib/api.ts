@@ -659,6 +659,18 @@ export function createMockApi(): WyrmApi {
       // dialog's preview pane is where the output is actually inspected.
       return `/demo/${defaultName}`
     },
+    async renderPdf(): Promise<Uint8Array | null> {
+      // No Chromium print engine in a browser tab — the compile dialog
+      // surfaces this as "PDF export needs the desktop app" rather than
+      // writing a file that isn't a PDF.
+      return null
+    },
+    async printHtml(): Promise<boolean> {
+      // Throws rather than returning false: false means "the writer
+      // cancelled", and reporting a missing print engine as a cancellation
+      // would leave ⌘P silently doing nothing in the preview.
+      throw new Error('Printing needs the desktop app.')
+    },
     async toggleFullScreen(): Promise<boolean> {
       // There is no OS window to take fullscreen in the browser preview, and
       // the browser's own F11 already does the equivalent — App.tsx only
