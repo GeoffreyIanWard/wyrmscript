@@ -12,8 +12,13 @@ const PREVIEW_LIMIT = 8000
 const FORMATS: { value: CompileFormat; label: string }[] = [
   { value: 'txt', label: 'Plain text (.txt)' },
   { value: 'md', label: 'Markdown (.md)' },
-  { value: 'docx', label: 'Word (.docx)' }
+  { value: 'docx', label: 'Word (.docx)' },
+  { value: 'pdf', label: 'PDF (.pdf)' }
 ]
+
+/** Formats with real pages, where a page break between folders means
+ *  something. F-38 added PDF to what was previously .docx alone. */
+const PAGED_FORMATS: CompileFormat[] = ['docx', 'pdf']
 
 type SeparatorMode = 'hash' | 'stars' | 'blank' | 'custom'
 
@@ -162,7 +167,7 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
       titlePage,
       docTitles,
       folderTitles,
-      pageBreakBetweenFolders: pageBreaks && format === 'docx'
+      pageBreakBetweenFolders: pageBreaks && PAGED_FORMATS.includes(format)
     }),
     [format, selected, sepMode, customSep, titlePage, docTitles, folderTitles, pageBreaks]
   )
@@ -275,8 +280,8 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
               <Check label="Folder titles" on={folderTitles} onToggle={setFolderTitles} />
               <Check
                 label="Page break between folders"
-                on={pageBreaks && format === 'docx'}
-                disabled={format !== 'docx'}
+                on={pageBreaks && PAGED_FORMATS.includes(format)}
+                disabled={!PAGED_FORMATS.includes(format)}
                 onToggle={setPageBreaks}
               />
             </fieldset>

@@ -414,6 +414,60 @@ export function registerIpc(): void {
     return result.filePath
   })
 
+  /**
+   * F-38: HTML in, PDF bytes out, paginated by Chromium's own print engine
+   * against a real paper size — the only page model that matches what comes
+   * out of a printer.
+   *
+   * Rendered in a throwaway offscreen window rather than the writer's own:
+   * `printToPDF` paginates whatever that window is currently showing, so
+   * reusing the main window would mean navigating the manuscript away from
+   * under them. `show: false` keeps it off-screen, and the window is
+   * destroyed in a `finally` so a load failure cannot leak a hidden window
+   * per export attempt.
+   */
+  ipcMain.handle('compile:pdf', async (_e, html: string) => {
+    const sheet = new BrowserWindow({
+      show: false,
+      webPreferences: { offscreen: true, javascript: false }
+    })
+    try {
+      // A data: URL rather than a temp file — nothing to clean up, and the
+      // content never touches disk unencrypted on its way to the PDF.
+      await sheet.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+      // `printBackground` off: manuscript format is black on white, and
+      // letting backgrounds through would ink the highlight marks solid.
+      return await sheet.webContents.printToPDF({ printBackground: false })
+    } finally {
+      sheet.destroy()
+    }
+  })
+
+  /**
+   * F-38: the same offscreen-sheet trick as `compile:pdf`, but handed to the
+   * OS print dialog instead of a file. `silent: false` is the whole point of
+   * this v1 — the writer sees the dialog, picks a printer, and a failure
+   * surfaces where they expect it rather than vanishing into a background
+   * job. Resolves once the dialog is dismissed either way; `false` means the
+   * writer cancelled, which is not an error.
+   */
+  ipcMain.handle('compile:print', async (_e, html: string) => {
+    const sheet = new BrowserWindow({
+      show: false,
+      webPreferences: { offscreen: true, javascript: false }
+    })
+    try {
+      await sheet.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+      return await new Promise<boolean>((resolve) => {
+        sheet.webContents.print({ silent: false, printBackground: false }, (success) =>
+          resolve(success)
+        )
+      })
+    } finally {
+      sheet.destroy()
+    }
+  })
+
   /* ---------- window (F-39) ---------- */
 
   // Real OS fullscreen, which is what actually covers the Windows taskbar —

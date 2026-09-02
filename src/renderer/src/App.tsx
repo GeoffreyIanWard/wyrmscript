@@ -26,6 +26,8 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { useWyrm } from './store'
 import { api, isElectron } from './lib/api'
 import { summarize } from './lib/stats'
+import { errorMessage } from './lib/errors'
+import { DEFAULT_COMPILE_OPTIONS } from './lib/compile'
 
 import { DEFAULT_APPEARANCE } from '../../shared/types'
 
@@ -148,6 +150,9 @@ function App(): JSX.Element {
   const [syncOpen, setSyncOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  /** F-38: printing happens without a dialog, so a failure needs somewhere
+   *  to land — silence would read as "nothing happened". */
+  const [printError, setPrintError] = useState<string | null>(null)
   // Distraction-free writing (F-09): binder, side panel and status bar hide;
   // the page keeps its own measure and centres in the space that's left.
   // Deliberately not persisted — a fresh launch always starts in the normal
@@ -165,6 +170,16 @@ function App(): JSX.Element {
   useEffect(() => {
     void boot()
   }, [boot])
+
+  // F-38. Uses the compile dialog's defaults rather than opening it first:
+  // "print the manuscript" is a single intent, and anyone wanting to choose
+  // scenes or separators is already reaching for Compile Manuscript instead.
+  const runPrint = (): void => {
+    void useWyrm
+      .getState()
+      .printManuscript(DEFAULT_COMPILE_OPTIONS)
+      .catch((err) => setPrintError(errorMessage(err)))
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -235,6 +250,12 @@ function App(): JSX.Element {
       } else if ((e.key === 'E' || (e.key === 'e' && e.shiftKey)) && state.project) {
         e.preventDefault()
         setCompileOpen(true)
+      } else if (e.key === 'p' && !e.shiftKey && !e.altKey && state.project) {
+        // ⌘P — print (F-38). Overrides the browser's own print in the
+        // preview deliberately: printing the app's chrome is never what a
+        // writer means here.
+        e.preventDefault()
+        runPrint()
       } else if (e.key === 'k' && !e.altKey && state.project) {
         e.preventDefault()
         setPaletteOpen(true)
@@ -305,6 +326,7 @@ function App(): JSX.Element {
             .then(() => setVersionDialog(dialog))
         }}
         onCompile={() => setCompileOpen(true)}
+        onPrint={runPrint}
         onBackup={() => setBackupOpen(true)}
         onStats={() => useWyrm.getState().showStats()}
         onBrowseTags={() => useWyrm.getState().showTags()}
@@ -368,6 +390,29 @@ function App(): JSX.Element {
           />
         )}
         {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
+        {printError !== null && (
+          <div className="dialog-overlay" onMouseDown={() => setPrintError(null)}>
+            <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="title-bar">
+                <button
+                  type="button"
+                  aria-label="Close"
+                  className="close-box"
+                  onClick={() => setPrintError(null)}
+                />
+                <span className="title">Print</span>
+              </div>
+              <div className="dialog-body">
+                <div className="error-text">{printError}</div>
+              </div>
+              <div className="dialog-buttons">
+                <button type="button" className="btn default" onClick={() => setPrintError(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {timelineOpen && (
           <ErrorBoundary label="Timeline" onDismiss={() => setTimelineOpen(false)}>
             <TimelineDialog onClose={() => setTimelineOpen(false)} />

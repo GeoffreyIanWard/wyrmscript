@@ -27,7 +27,7 @@ import type {
 } from '../../shared/types'
 import { PLOTLINE_COLOURS } from '../../shared/types'
 import { api } from './lib/api'
-import { compile, compileFileName } from './lib/compile'
+import { compile, compileFileName, renderHtml } from './lib/compile'
 import { docToMarkdown, markdownToDoc, countWords } from './lib/markdown'
 import { buildEntityIndex, type EntityIndex } from './lib/entities'
 import { refreshEntityLinks } from './lib/entityLinks'
@@ -168,6 +168,12 @@ interface WyrmState {
 
   /** Every document keyed by id — the compile dialog's source of truth. */
   loadAllDocs(): Promise<Map<string, DocFile>>
+  /**
+   * F-38: checkpoint, then send the manuscript to the OS print dialog.
+   * Shares the compile pipeline so what prints is exactly what a PDF export
+   * would produce. False means the writer cancelled the dialog.
+   */
+  printManuscript(options: CompileOptions): Promise<boolean>
   /** Checkpoint, then compile the manuscript and write it wherever the writer picks. */
   compileManuscript(
     options: CompileOptions
@@ -755,8 +761,32 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const docs = await get().loadAllDocs()
       const result = compile(project.data, docs, options, true)
       const name = compileFileName(project.data.title, result.extension)
-      const path = await api.exportFile(name, result.bytes ?? result.text)
+      // PDF bytes cannot be built here: pagination is Chromium's job (F-38),
+      // which lives in the main process and is async — unlike .docx, whose
+      // container `compile` can assemble synchronously.
+      let data: string | Uint8Array = result.bytes ?? result.text
+      if (options.format === 'pdf') {
+        const pdf = await api.renderPdf(renderHtml(result.blocks))
+        if (!pdf) throw new Error('PDF export needs the desktop app.')
+        data = pdf
+      }
+      const path = await api.exportFile(name, data)
       return { result, path }
+    },
+
+    async printManuscript(options) {
+      const { project } = get()
+      if (!project) throw new Error('No project is open')
+      // Same checkpoint-first discipline as compile (brief §6): what comes
+      // off the printer must correspond to a state that can be returned to.
+      await get().flushSave()
+      const committed = await api.commit(project.path, 'Auto: before print')
+      commitDirty = false
+      if (committed) set({ lastCommitAt: Date.now() })
+
+      const docs = await get().loadAllDocs()
+      const result = compile(project.data, docs, options)
+      return api.printHtml(renderHtml(result.blocks))
     },
 
     async addDoc(parentId) {

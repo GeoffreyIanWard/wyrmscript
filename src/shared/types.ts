@@ -231,7 +231,7 @@ export interface VariantInfo {
 
 /* ---------- Compile / export (brief §8) ---------- */
 
-export type CompileFormat = 'txt' | 'md' | 'docx'
+export type CompileFormat = 'txt' | 'md' | 'docx' | 'pdf'
 
 /**
  * A formatted span of manuscript text. Only the three supported marks exist —
@@ -551,6 +551,19 @@ export interface WyrmApi {
 
   /** Show a save dialog and write compiled output. Returns the path, or null if cancelled. */
   exportFile(defaultName: string, data: string | Uint8Array): Promise<string | null>
+  /**
+   * F-38: render print-ready HTML to PDF bytes using Electron's own print
+   * engine, so pagination is the real thing rather than a second guess.
+   * Returns null where there is no print engine (the browser preview).
+   */
+  renderPdf(html: string): Promise<Uint8Array | null>
+  /**
+   * F-38: send print-ready HTML to the OS print dialog. Resolves false when
+   * the writer cancels — a choice, not a failure. Rejects where there is no
+   * print engine at all (the browser preview), which is a different thing
+   * and must not masquerade as a cancellation.
+   */
+  printHtml(html: string): Promise<boolean>
 
   /** Appearance is app-level, not per-project — it follows the writer. */
   getAppearance(): Promise<AppearanceSettings>
