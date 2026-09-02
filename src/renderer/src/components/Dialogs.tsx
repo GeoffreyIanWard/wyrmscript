@@ -5,6 +5,8 @@ import type {
   AppearanceSettings,
   AccentTheme,
   PaletteTheme,
+  PrinterInfo,
+  PrintSettings,
   StatsSettings
 } from '../../../shared/types'
 
@@ -113,6 +115,12 @@ export function PrefsDialog({
   appearance,
   stats,
   typewriterMode,
+  print,
+  // Defaulted rather than required: a dialog that hard-crashes because a list
+  // prop was absent is exactly the "one panel takes down the app" failure the
+  // house rules forbid, and `print` already tolerates being null.
+  printers = [],
+  onPrintChange,
   onChange,
   onStatsChange,
   onTypewriterModeChange,
@@ -121,6 +129,9 @@ export function PrefsDialog({
   appearance: AppearanceSettings
   stats: StatsSettings
   typewriterMode: boolean
+  print: PrintSettings | null
+  printers?: PrinterInfo[]
+  onPrintChange: (patch: Partial<PrintSettings>) => void
   onChange: (patch: Partial<AppearanceSettings>) => void
   onStatsChange: (patch: Partial<StatsSettings>) => void
   onTypewriterModeChange: (enabled: boolean) => void
@@ -302,6 +313,39 @@ export function PrefsDialog({
               Line numbers count paragraphs, not wrapped lines, so they stay put across a resize.
               Page view&rsquo;s rule is an approximation, not a real page break — it won&rsquo;t
               match how the compiled manuscript actually paginates.
+            </div>
+          </fieldset>
+          <fieldset className="fieldset">
+            <legend>PRINTING</legend>
+            <Check
+              label="Print each page as it fills"
+              on={print?.autoPrint ?? false}
+              onToggle={(autoPrint) => onPrintChange({ autoPrint })}
+            />
+            <div className="control-row">
+              <label className="field-name" htmlFor="printer">
+                PRINTER
+              </label>
+              <span className="spacer" />
+              <select
+                id="printer"
+                className="text-field"
+                value={print?.printerName ?? ''}
+                onChange={(e) => onPrintChange({ printerName: e.target.value })}
+              >
+                <option value="">Choose a printer…</option>
+                {printers.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.displayName}
+                    {p.isDefault ? ' (default)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="dialog-hint">
+              {printers.length === 0
+                ? 'No printers found. Auto-printing needs one chosen here.'
+                : 'A page is your Lines per page setting above, not a measured sheet — so a page may not exactly fill one. Auto-printing prints silently to the chosen printer and never interrupts you, which also means a paper jam is between you and the printer.'}
             </div>
           </fieldset>
           <fieldset className="fieldset">
