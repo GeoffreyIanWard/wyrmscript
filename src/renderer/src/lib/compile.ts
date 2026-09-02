@@ -175,6 +175,26 @@ function runsToPlain(runs: CompileInline[], breakAs: string): string {
   return runs.map((run) => ('break' in run ? breakAs : run.text)).join('')
 }
 
+/**
+ * F-38 part 2: blocks from a live ProseMirror document fragment — one
+ * auto-printed page — rather than from stored Markdown.
+ *
+ * Deliberately routed through the same `runsFromParagraph` the compile
+ * pipeline uses, so an auto-printed page and a compiled PDF render bold,
+ * italic and highlight identically. Extracting plain text here instead would
+ * have been simpler and silently wrong: the page coming off the printer would
+ * lose every mark the PDF keeps.
+ */
+export function blocksFromDoc(doc: JSONContent): CompileBlock[] {
+  const blocks: CompileBlock[] = []
+  for (const node of doc.content ?? []) {
+    if (node.type !== 'paragraph') continue
+    const runs = runsFromParagraph(node)
+    if (runs.length > 0) blocks.push({ kind: 'paragraph', runs })
+  }
+  return blocks
+}
+
 /* ---------- plain text ---------- */
 
 /**
