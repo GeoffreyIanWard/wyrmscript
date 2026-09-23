@@ -325,6 +325,7 @@ export type PaletteTheme =
   | 'virtualwyrm'
   | 'famicom'
   | 'win95'
+  | 'manuscript'
 
 export interface AppearanceSettings {
   accents: AccentTheme

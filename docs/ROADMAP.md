@@ -334,13 +334,19 @@ Locations nest: a building inside a neighbourhood inside a city inside a country
 
 Esc pops the writer to whatever they were looking at before, rather than doing nothing — opening a glossary entry from a document and hitting Esc returns to that document. Requested 2026-07-30, design settled and built 2026-08-02. A capped `viewHistory: MainView[]` in the store, pushed by `showEntity` and popped by `goBack()`; the flagged scope question was settled narrow (doc↔entity hops only — binder navigation clears the stack rather than joining it). See §6 for the full decisions and for I-10, a pre-existing focus-trap gap found while verifying this.
 
-### F-15 · Manuscript mode 💭
+### F-15 · Manuscript mode ✅
 
-A fully medieval palette, a period display face for chrome (still legible), and — the real feature, not a palette trick — the first letter of each paragraph rendered as a giant illuminated capital. Requested 2026-07-30, explicitly asked to be "on par with" the visual weight of a full theme rather than a `[data-palette]` recolour.
+Shipped. A vellum-and-iron-gall palette (`[data-palette='manuscript']`), a blackletter chrome face, a legible period serif for prose, and illuminated capitals chosen by the writer rather than applied to every paragraph.
 
-- The drop cap is cheap in principle — CSS `::first-letter` on `.page p` naturally targets the first letter of a block, no editor changes needed — but it wants a genuine calligraphic/blackletter face for just that one glyph, which the app doesn't have today. `@fontsource` likely has a workable option (something in the Fraktur/uncial family) for the capital, kept separate from a _legible_ period-flavoured serif for the body text — the request is explicit that body prose must "still be readable," so the two faces can't be the same one.
-- New font dependency, so it's worth its own PR rather than folding into a batch of palette blocks — this is the one item in this group with a real, if small, supply-chain footprint (a license to check, a file to vendor).
-- Ties into the paid-variant idea below more than any other item here, since it's the most visually complete of the four.
+**Fonts.** `@fontsource/unifrakturmaguntia` for chrome and the capitals, `@fontsource/cardo` for body prose — both OFL-1.1, both vendored as npm packages and imported in `main.tsx`, so they are bundled locally and work offline. Two faces, deliberately: the request was explicit that body prose stay readable, so Fraktur is atmosphere and Cardo does the reading.
+
+**This is the first palette to change the prose font**, which is a genuine precedent — until now a palette only remapped colour and dithers, and the house rule "chrome uses the bitmap font" held universally. Both `--font-chrome` and `--font-prose` are now palette-overridable. A palette that repaints the prose face must keep it a reading face; atmosphere belongs in the chrome.
+
+**The drop-cap rule is the writer's.** The opening paragraph always gets a capital, and so does any paragraph that follows a deliberate blank line — an extra Return. So an author sprinkles as many or as few as they like with a gesture they already know, and never learns a syntax. `lib/dropCaps.ts` marks them as a ProseMirror decoration rather than CSS, because `p:empty + p` cannot express the rule (ProseMirror renders an empty paragraph as `<p><br></p>`, not an empty element). The decoration runs under every palette and is gated entirely in CSS, the same reasoning as F-23's block cursor — recreating the editor on a palette switch would throw away undo history.
+
+**Authored blank lines now survive the round trip.** This was the enabling change and the riskiest part of the work: `markdown.ts` previously collapsed any run of blank lines to a single paragraph break, so the gesture the drop-cap rule depends on was being silently discarded on every save. `markdownToDoc` now reconstructs empty paragraphs from markdown-it's `token.map` line ranges, and `docToMarkdown` emits exactly one extra newline per empty paragraph. The asymmetry matters: an earlier version of the fix wrote two newlines and read back one, which **grew the gaps on every save** (3 blank lines → 5 → 9). There is an explicit anti-inflation test pinning round-trip stability, and it is worth keeping — a serialization bug of this shape corrupts files quietly and cumulatively.
+
+**Latent cascade bug found and fixed.** `data-palette` lives on `.screen`, but `font-family` was only declared on `body`, one level above. A custom property resolves where it is *used*, and inheritance passes the already-resolved value down — so the `:root` font was baked in before any palette could speak, and every chrome element that merely inherited kept Silkscreen while elements that re-declared the variable themselves switched. Half the chrome in one face, half in another. `.screen` now re-declares `font-family: var(--font-chrome)`; it is a no-op for every other palette. The same class of bug was already known and commented for `color`/`background` in the flat-palette block. Guarded by `tests/palette-fonts.test.ts`, which asserts against the stylesheet source because jsdom does not resolve custom properties through inheritance and a DOM test would guard nothing.
 
 ### F-16 · Wargames mode 💭
 
@@ -356,7 +362,7 @@ A fully medieval palette, a period display face for chrome (still legible), and 
 
 ### F-18 · Gothic mode 💭
 
-"A gothic literary overhaul." Requested 2026-07-31, "on par with" Manuscript. Overlaps with F-15 (illuminated capitals, a period display face, a dark ornamented palette) but reads as a distinct identity — cathedral/blackletter rather than illuminated-scriptorium. Worth designing F-15 first and then deciding whether Gothic is a sibling built on the same drop-cap/period-font mechanism or wants its own.
+"A gothic literary overhaul." Requested 2026-07-31, "on par with" Manuscript. Overlaps with F-15 (illuminated capitals, a period display face, a dark ornamented palette) but reads as a distinct identity — cathedral/blackletter rather than illuminated-scriptorium. F-15 has now shipped, so the open question is answerable: decide whether Gothic is a sibling built on the same drop-cap/period-font mechanism (both are already palette-overridable, and `lib/dropCaps.ts` is palette-agnostic) or wants its own.
 
 ### F-19 · Paid supporter tier for premium variants 💭 — product decision, not a design one
 
