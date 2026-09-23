@@ -11,6 +11,7 @@ import { BlockCursor } from '../lib/blockCursor'
 import { TypewriterScroll } from '../lib/typewriterScroll'
 import { LineNumbers } from '../lib/lineNumbers'
 import { PageView } from '../lib/pageView'
+import { DropCaps } from '../lib/dropCaps'
 import { ENTITY_COLLECTIONS } from '../lib/entities'
 import { addTag, removeTag, togglePin } from '../lib/tags'
 import { useWyrm } from '../store'
@@ -231,6 +232,7 @@ export function Editor(): JSX.Element {
           getEnabled: () => useWyrm.getState().appearance?.pageView ?? false,
           getLinesPerPage: () => useWyrm.getState().appearance?.pageViewLines ?? 25
         }),
+        DropCaps,
         EntityLinks.configure({
           // Read from the store at scan time so adding an entry re-links the
           // open scene without recreating the editor.

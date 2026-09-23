@@ -61,12 +61,39 @@ function inlineToNodes(tokens: Token[]): JSONContent[] {
 export function markdownToDoc(source: string): JSONContent {
   const tokens = md.parse(source, {})
   const paragraphs: JSONContent[] = []
+  /** Line after the previous paragraph, for measuring the gap to the next. */
+  let previousEnd: number | null = null
+  let pendingMap: [number, number] | null = null
+
   for (const token of tokens) {
-    if (token.type === 'inline' && token.children) {
-      const content = inlineToNodes(token.children)
-      paragraphs.push(content.length > 0 ? { type: 'paragraph', content } : { type: 'paragraph' })
+    if (token.type === 'paragraph_open') {
+      pendingMap = (token.map as [number, number] | null) ?? null
+      continue
     }
+    if (token.type !== 'inline' || !token.children) continue
+
+    // Authored spacing survives the round trip. markdown-it collapses any run
+    // of blank lines into a single paragraph break, so the line numbers are
+    // the only surviving record of how many the writer actually typed: one
+    // blank line is an ordinary break, and every blank line beyond that is a
+    // deliberate gap, kept as an empty paragraph.
+    //
+    // Without this, a writer's blank line vanished the next time the document
+    // was opened — the file on disk kept it (docToMarkdown always wrote it
+    // back out), but parsing dropped it, and the following save then erased
+    // it for good. Silent loss of something authored, which the house rules
+    // do not allow.
+    if (pendingMap && previousEnd != null) {
+      const blankLines = pendingMap[0] - previousEnd
+      for (let i = 1; i < blankLines; i++) paragraphs.push({ type: 'paragraph' })
+    }
+
+    const content = inlineToNodes(token.children)
+    paragraphs.push(content.length > 0 ? { type: 'paragraph', content } : { type: 'paragraph' })
+    if (pendingMap) previousEnd = pendingMap[1]
+    pendingMap = null
   }
+
   if (paragraphs.length === 0) paragraphs.push({ type: 'paragraph' })
   return { type: 'doc', content: paragraphs }
 }
@@ -119,16 +146,40 @@ function serializeInline(nodes: JSONContent[], level = 0): string {
 }
 
 export function docToMarkdown(doc: JSONContent): string {
-  const paragraphs: string[] = []
+  /** Serialized text paragraphs, and the empty paragraphs standing before each. */
+  const texts: string[] = []
+  const gaps: number[] = []
+  let pendingEmpties = 0
+
   for (const block of doc.content ?? []) {
     if (block.type !== 'paragraph') continue
     // Escape block-level markers other tools might interpret at line start.
-    paragraphs.push(serializeInline(block.content ?? []).replace(/^([#>+-])/, '\\$1'))
+    const text = serializeInline(block.content ?? []).replace(/^([#>+-])/, '\\$1')
+    if (text === '') {
+      pendingEmpties++
+      continue
+    }
+    texts.push(text)
+    gaps.push(pendingEmpties)
+    pendingEmpties = 0
   }
-  // Drop trailing empty paragraphs but keep interior ones meaningful (as best
-  // Markdown allows — consecutive blanks collapse on the next parse).
-  while (paragraphs.length > 0 && paragraphs[paragraphs.length - 1] === '') paragraphs.pop()
-  return paragraphs.join('\n\n') + (paragraphs.length > 0 ? '\n' : '')
+
+  if (texts.length === 0) return ''
+
+  // An empty paragraph is written as **one** extra newline, not as an empty
+  // entry in a `\n\n` join. That asymmetry matters: `markdownToDoc` reads a
+  // run of b blank lines back as b-1 empty paragraphs, so writing 2 newlines
+  // per empty paragraph would read back as twice as many, and the gap would
+  // double on every single save. One newline each is the fixed point —
+  // `tests/markdown.test.ts` pins it by round-tripping twice.
+  //
+  // Leading and trailing empty paragraphs are dropped: a file that opens or
+  // ends on blank lines is noise, and Markdown discards them on parse anyway.
+  let out = texts[0]
+  for (let i = 1; i < texts.length; i++) {
+    out += '\n\n' + '\n'.repeat(gaps[i]) + texts[i]
+  }
+  return out + '\n'
 }
 
 // Re-exported so the existing `from './markdown'` imports keep working, but
