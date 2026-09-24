@@ -431,7 +431,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }): JSX.Element {
             <WyrmIcon size={48} />
           </div>
           <div className="about-small">
-            <div>WYRMSTAR 0.1.0</div>
+            <div>WYRMSTAR {__APP_VERSION__}</div>
             <div>A retro word processor for novel writing.</div>
             <div>Nothing is ever truly lost.</div>
           </div>
