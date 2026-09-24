@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { EntityType } from '../../../shared/types'
 import { useWyrm } from '../store'
+import { isConnected } from '../lib/syncState'
 import { WyrmIcon } from './icons'
 
 type MenuItem =
@@ -80,7 +81,11 @@ export function MenuBar({
   }
   const hasProject = Boolean(project)
   const hasDoc = Boolean(useWyrm((s) => s.activeDoc))
-  const syncMode = useWyrm((s) => s.syncStatus?.mode)
+  // Gated on an actual reachable remote, not on the stored intent: a project
+  // whose remote vanished from .git/config still has mode 'github', and Sync
+  // Now used to stay live and throw (F-01).
+  const syncStatus = useWyrm((s) => s.syncStatus)
+  const canSync = isConnected(syncStatus)
   const createEntry = (type: EntityType): void => {
     const state = useWyrm.getState()
     void state.createEntity(type, 'Untitled').then((created) => {
@@ -293,8 +298,16 @@ export function MenuBar({
         {
           kind: 'item',
           label: 'Sync Now',
-          disabled: syncMode !== 'github',
-          action: () => void useWyrm.getState().syncNow(true)
+          disabled: !canSync,
+          // Only to stop an unhandled rejection: `syncNow` raises the quiet
+          // needs-attention flag itself before rethrowing, so a failure still
+          // reaches the writer through the status bar rather than vanishing.
+          action: () => {
+            void useWyrm
+              .getState()
+              .syncNow(true)
+              .catch(() => {})
+          }
         },
         { kind: 'item', label: 'Sync Settings…', disabled: !hasProject, action: onSyncSettings },
         {
