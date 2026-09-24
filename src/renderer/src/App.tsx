@@ -91,7 +91,7 @@ function StatusBar(): JSX.Element {
           : '◆ SYNCED'
       : isRemoteMissing(syncStatus)
         ? '◆ SYNC — NEEDS YOUR EYE'
-        : backupSettings?.path
+        : backupSettings?.targets.length
           ? '◆ LOCAL + BACKUP'
           : '◆ LOCAL'
   // One switch covers every ambient counter (here and in the editor header):
@@ -119,7 +119,7 @@ function StatusBar(): JSX.Element {
       )}
       <span className="spacer" />
       <span>{agoLabel(lastCommitAt, now)}</span>
-      <span title={syncStatus?.remoteUrl ?? backupSettings?.path ?? project?.path}>
+      <span title={syncStatus?.remoteUrl ?? backupSettings?.targets[0]?.path ?? project?.path}>
         {placeLabel}
       </span>
     </div>

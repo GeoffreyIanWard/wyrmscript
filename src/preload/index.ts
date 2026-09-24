@@ -64,7 +64,7 @@ const api: WyrmApi = {
   getBackupSettings: (path) => ipcRenderer.invoke('backup:get', path),
   chooseBackupLocation: (path) => ipcRenderer.invoke('backup:choose', path),
   setBackupAuto: (path, auto) => ipcRenderer.invoke('backup:auto', path, auto),
-  clearBackupLocation: (path) => ipcRenderer.invoke('backup:clear', path),
+  removeBackupTarget: (path, targetId) => ipcRenderer.invoke('backup:remove', path, targetId),
   backupNow: (path) => ipcRenderer.invoke('backup:now', path),
   restoreFromBackup: () => ipcRenderer.invoke('backup:restore'),
 

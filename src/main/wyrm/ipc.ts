@@ -35,7 +35,10 @@ import {
 } from './project'
 import {
   readAppearance,
+  addBackupTarget,
   readBackupSettings,
+  removeBackupTarget,
+  updateBackupTarget,
   readRecentProjects,
   readSettings,
   readPrintSettings,
@@ -50,7 +53,7 @@ import {
   writeStatsSettings,
   writeSyncProject
 } from './settings'
-import { backupNameFor, backupProject, restoreBackup } from './backup'
+import { backupNameFor, backupToAll, restoreBackup } from './backup'
 import { dailyStats } from './stats'
 import {
   clearRemote,
@@ -221,26 +224,33 @@ export function registerIpc(): void {
       properties: ['createDirectory']
     })
     if (result.canceled || !result.filePath) return null
-    return writeBackupSettings(path, { path: result.filePath })
+    return addBackupTarget(path, result.filePath)
   })
 
   ipcMain.handle('backup:auto', (_e, path: string, auto: boolean) =>
     writeBackupSettings(path, { auto })
   )
 
-  ipcMain.handle('backup:clear', (_e, path: string) =>
-    writeBackupSettings(path, { path: null, auto: false, lastBackupAt: null })
+  ipcMain.handle('backup:remove', (_e, path: string, targetId: string) =>
+    removeBackupTarget(path, targetId)
   )
 
   ipcMain.handle('backup:now', async (_e, path: string) => {
     const settings = await readBackupSettings(path)
-    if (!settings.path) throw new Error('No backup location has been chosen for this project.')
-    const outcome = await backupProject(path, settings.path)
-    // Only a real mirror advances the timestamp — "up to date" keeps the time
-    // of the backup that actually holds the work.
-    if (outcome.status === 'backed-up')
-      await writeBackupSettings(path, { lastBackupAt: outcome.at })
-    return outcome
+    if (settings.targets.length === 0)
+      throw new Error('No backup location has been chosen for this project.')
+    const run = await backupToAll(path, settings.targets)
+    // Each target carries its own timestamp: the whole point of several is
+    // that they fall out of date independently. Only a real mirror advances
+    // one — "up to date" keeps the time of the backup that actually holds the
+    // work, and unreachable leaves it alone entirely so the panel can show how
+    // long a card has been out.
+    for (const result of run.results) {
+      if (result.status === 'ok' && result.outcome.status === 'backed-up') {
+        await updateBackupTarget(path, result.targetId, { lastBackupAt: result.outcome.at })
+      }
+    }
+    return run
   })
 
   ipcMain.handle('backup:restore', async () => {
