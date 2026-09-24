@@ -2,7 +2,13 @@ import fs from 'node:fs'
 import { promises as fsp } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import git from 'isomorphic-git'
-import type { BackupOutcome, ProjectData } from '../../shared/types'
+import type {
+  BackupOutcome,
+  BackupRun,
+  BackupTarget,
+  ProjectData,
+  TargetResult
+} from '../../shared/types'
 import { commitAll } from './git'
 
 /**
@@ -136,6 +142,70 @@ async function verifyReadable(backupPath: string, oid: string): Promise<number> 
  * Mirror a project into its backup repository. Commits any pending work first,
  * so the backup can never be missing the last few minutes of writing.
  */
+/**
+ * Whether a target can be written to right now.
+ *
+ * The common case for removable media is that it is simply not plugged in, so
+ * this asks a narrow question: does the backup folder exist, or — for one that
+ * has not been created yet — does its parent? An unmounted volume answers no
+ * to both, because the mount point itself disappears. A target that exists but
+ * is read-only still counts as reachable; that is a genuine failure and should
+ * be reported as one rather than silently skipped.
+ */
+export async function isReachable(backupPath: string): Promise<boolean> {
+  try {
+    await fsp.access(backupPath)
+    return true
+  } catch {
+    try {
+      await fsp.access(dirname(backupPath))
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+/**
+ * Mirrors a project to every configured target (F-40).
+ *
+ * Targets are independent: one unplugged card must not stop the external drive
+ * from being written, and one genuine failure must not stop the others either.
+ * So every target is attempted and every result is reported, rather than the
+ * run stopping at the first problem.
+ *
+ * Deliberately sequential. These are large object copies, often to slow
+ * removable media, and `backupProject` begins by committing the working tree —
+ * running them concurrently would have several mirrors racing the same
+ * `commitAll` against one repo.
+ */
+export async function backupToAll(
+  projectPath: string,
+  targets: BackupTarget[]
+): Promise<BackupRun> {
+  const results: TargetResult[] = []
+  for (const target of targets) {
+    if (!(await isReachable(target.path))) {
+      results.push({ targetId: target.id, status: 'unreachable' })
+      continue
+    }
+    try {
+      results.push({
+        targetId: target.id,
+        status: 'ok',
+        outcome: await backupProject(projectPath, target.path)
+      })
+    } catch (err) {
+      results.push({
+        targetId: target.id,
+        status: 'failed',
+        message: err instanceof Error ? err.message : String(err)
+      })
+    }
+  }
+  return { at: Date.now(), results }
+}
+
 export async function backupProject(
   projectPath: string,
   backupPath: string

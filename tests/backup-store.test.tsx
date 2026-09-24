@@ -27,18 +27,24 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  // The mock api keeps backup settings in a module-level map that outlives a
+  // test, so these were only ever isolated by accident — whichever test ran
+  // last happened to clear the location. Reset it explicitly instead.
+  const path = await api.getLastProjectPath()
+  if (path) {
+    for (const target of (await api.getBackupSettings(path)).targets) {
+      await api.removeBackupTarget(path, target.id)
+    }
+    await api.setBackupAuto(path, false)
+  }
   useWyrm.setState({ project: null, booted: false, backupSettings: null })
 })
 
 describe('backup settings', () => {
   it('starts unconfigured and never invents a location', async () => {
     await openDemo()
-    expect(useWyrm.getState().backupSettings).toEqual({
-      path: null,
-      auto: false,
-      lastBackupAt: null
-    })
+    expect(useWyrm.getState().backupSettings).toEqual({ targets: [], auto: false })
   })
 
   it('refuses to back up before a location is chosen', async () => {
@@ -49,26 +55,28 @@ describe('backup settings', () => {
   it('records the location and the time of a successful backup', async () => {
     await openDemo()
     await useWyrm.getState().chooseBackupLocation()
-    expect(useWyrm.getState().backupSettings?.path).toBeTruthy()
+    expect(useWyrm.getState().backupSettings?.targets[0]?.path).toBeTruthy()
 
-    const outcome = await useWyrm.getState().backupNow()
+    const run = await useWyrm.getState().backupNow()
 
-    expect(outcome.status).toBe('backed-up')
-    expect(useWyrm.getState().backupSettings?.lastBackupAt).toBeGreaterThan(0)
+    expect(run.results[0].status).toBe('ok')
+    expect(useWyrm.getState().backupSettings?.targets[0]?.lastBackupAt).toBeGreaterThan(0)
   })
 
-  it('forgetting a location clears the schedule with it', async () => {
+  it('forgetting a location removes only that one', async () => {
     await openDemo()
     await useWyrm.getState().chooseBackupLocation()
+    await useWyrm.getState().chooseBackupLocation()
     await useWyrm.getState().setBackupAuto(true)
+    const [first, second] = useWyrm.getState().backupSettings!.targets
 
-    await useWyrm.getState().clearBackupLocation()
+    await useWyrm.getState().removeBackupTarget(first.id)
 
-    expect(useWyrm.getState().backupSettings).toEqual({
-      path: null,
-      auto: false,
-      lastBackupAt: null
-    })
+    const after = useWyrm.getState().backupSettings!
+    expect(after.targets.map((t) => t.id)).toEqual([second.id])
+    // The schedule belongs to the project, not to any one location — dropping
+    // a drive must not silently switch automatic backup off for the rest.
+    expect(after.auto).toBe(true)
   })
 })
 

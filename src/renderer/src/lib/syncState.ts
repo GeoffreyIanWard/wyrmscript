@@ -43,5 +43,6 @@ export function hasSecondCopy(
   status: SyncStatus | null | undefined,
   backup: BackupSettings | null | undefined
 ): boolean {
-  return isConnected(status) || backup?.path != null
+  if (backup == null) return isConnected(status)
+  return isConnected(status) || backup.targets.length > 0
 }

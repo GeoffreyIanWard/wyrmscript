@@ -113,7 +113,12 @@ describe('the connected predicate', () => {
   })
 
   it('counts a backup as a second copy, and a dead remote as none', () => {
-    expect(hasSecondCopy(LOCAL_ONLY, { path: '/Volumes/ext/novel' } as never)).toBe(true)
+    expect(
+      hasSecondCopy(LOCAL_ONLY, {
+        targets: [{ id: 't1', path: '/Volumes/ext/novel', lastBackupAt: null }],
+        auto: false
+      })
+    ).toBe(true)
     expect(hasSecondCopy(CONNECTED, null)).toBe(true)
     expect(hasSecondCopy(LOCAL_ONLY, null)).toBe(false)
     // Intent alone is not a copy.
@@ -191,7 +196,10 @@ describe('the local-only panel', () => {
     // false and exactly the nagging F-01 forbids.
     useWyrm.setState({
       syncStatus: LOCAL_ONLY,
-      backupSettings: { path: '/Volumes/ext/novel' } as never
+      backupSettings: {
+        targets: [{ id: 't1', path: '/Volumes/ext/novel', lastBackupAt: null }],
+        auto: true
+      }
     })
     render(<SyncDialog onClose={() => {}} onOpenBackup={() => {}} />)
 
@@ -202,7 +210,10 @@ describe('the local-only panel', () => {
   it('is honest that a backup on the same disk does not count', async () => {
     useWyrm.setState({
       syncStatus: LOCAL_ONLY,
-      backupSettings: { path: '/Users/x/novel-backup' } as never
+      backupSettings: {
+        targets: [{ id: 't1', path: '/Users/x/novel-backup', lastBackupAt: null }],
+        auto: true
+      }
     })
     render(<SyncDialog onClose={() => {}} onOpenBackup={() => {}} />)
 

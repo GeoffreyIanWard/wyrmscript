@@ -1,6 +1,6 @@
 import type {
   AppearanceSettings,
-  BackupOutcome,
+  BackupRun,
   BackupSettings,
   BinderNode,
   CommitInfo,
@@ -272,7 +272,11 @@ function demoProject(): MockProject {
   return project
 }
 
-const demoBackup = (): BackupSettings => ({ path: null, auto: false, lastBackupAt: null })
+const demoBackup = (): BackupSettings => ({ targets: [], auto: false })
+
+/** Monotonic, so a removed target's id is never handed out again — reusing one
+ *  would collide as a React key and make Forget remove the wrong row. */
+let demoTargetSeq = 0
 
 /**
  * A fortnight of plausible writing days, ending today, for the browser
@@ -620,18 +624,24 @@ export function createMockApi(): WyrmApi {
     },
 
     async getBackupSettings(path: string): Promise<BackupSettings> {
-      return { ...(backups.get(path) ?? { path: null, auto: false, lastBackupAt: null }) }
+      return { ...(backups.get(path) ?? demoBackup()) }
     },
     async chooseBackupLocation(path: string): Promise<BackupSettings> {
-      // No native dialog in the browser preview — stand in a plausible drive so
-      // the configured state is still explorable.
+      // No native dialog in the browser preview — stand in plausible drives so
+      // the configured state, and several targets at once, stay explorable.
+      const current = backups.get(path) ?? demoBackup()
+      const name = path
+        .split('/')
+        .pop()
+        ?.replace(/\.wyrm$/, '')
+      const volumes = ['/Volumes/Backup', '/Volumes/CARD', '/Volumes/Archive']
+      const next = volumes[current.targets.length % volumes.length]
       const settings: BackupSettings = {
-        path: `/Volumes/Backup/${path
-          .split('/')
-          .pop()
-          ?.replace(/\.wyrm$/, '')}.wyrm.git`,
-        auto: backups.get(path)?.auto ?? false,
-        lastBackupAt: backups.get(path)?.lastBackupAt ?? null
+        ...current,
+        targets: [
+          ...current.targets,
+          { id: `target-${++demoTargetSeq}`, path: `${next}/${name}.wyrm.git`, lastBackupAt: null }
+        ]
       }
       backups.set(path, settings)
       return { ...settings }
@@ -641,17 +651,43 @@ export function createMockApi(): WyrmApi {
       backups.set(path, settings)
       return { ...settings }
     },
-    async clearBackupLocation(path: string): Promise<BackupSettings> {
-      const settings: BackupSettings = { path: null, auto: false, lastBackupAt: null }
+    async removeBackupTarget(path: string, targetId: string): Promise<BackupSettings> {
+      const current = backups.get(path) ?? demoBackup()
+      const settings = { ...current, targets: current.targets.filter((t) => t.id !== targetId) }
       backups.set(path, settings)
       return { ...settings }
     },
-    async backupNow(path: string): Promise<BackupOutcome> {
+    async backupNow(path: string): Promise<BackupRun> {
       const settings = backups.get(path)
-      if (!settings?.path) throw new Error('No backup location has been chosen for this project.')
+      if (!settings?.targets.length)
+        throw new Error('No backup location has been chosen for this project.')
       const at = Date.now()
-      backups.set(path, { ...settings, lastBackupAt: at })
-      return { status: 'backed-up', objectsCopied: 12, branches: 1, filesVerified: 5, at }
+      // The third demo volume stands in for an unplugged card, so the panel's
+      // stale/unreachable state is visible in the preview without disk.
+      const results = settings.targets.map((t) =>
+        t.path.startsWith('/Volumes/Archive')
+          ? ({ targetId: t.id, status: 'unreachable' } as const)
+          : ({
+              targetId: t.id,
+              status: 'ok',
+              outcome: {
+                status: 'backed-up',
+                objectsCopied: 12,
+                branches: 1,
+                filesVerified: 5,
+                at
+              }
+            } as const)
+      )
+      backups.set(path, {
+        ...settings,
+        targets: settings.targets.map((t) =>
+          results.some((r) => r.targetId === t.id && r.status === 'ok')
+            ? { ...t, lastBackupAt: at }
+            : t
+        )
+      })
+      return { at, results: [...results] }
     },
     async restoreFromBackup(): Promise<ProjectInfo | null> {
       // Restoring needs real repositories on disk; the preview has neither.

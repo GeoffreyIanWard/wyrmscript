@@ -9,7 +9,8 @@ import type {
   StatsSettings
 } from '../../shared/types'
 import { DEFAULT_APPEARANCE, DEFAULT_PRINT, DEFAULT_STATS } from '../../shared/types'
-import type { BackupSettings } from '../../shared/types'
+import { randomUUID } from 'node:crypto'
+import type { BackupSettings, BackupTarget } from '../../shared/types'
 
 /** F-24: how many recently-opened projects the home screen offers. */
 const RECENT_PROJECTS_LIMIT = 8
@@ -45,7 +46,7 @@ interface AppSettings {
   recentProjects?: RecentProject[]
 }
 
-const NO_BACKUP: BackupSettings = { path: null, auto: false, lastBackupAt: null }
+const NO_BACKUP: BackupSettings = { targets: [], auto: false }
 const NO_SYNC: SyncProjectSettings = { mode: 'unset', lastSyncAt: null, pendingSync: false }
 
 function settingsFile(): string {
@@ -128,9 +129,40 @@ export async function writeSyncProject(
   return next
 }
 
+/**
+ * The single-target shape this setting had before F-40. Read, never written.
+ */
+interface LegacyBackupSettings {
+  path?: string | null
+  auto?: boolean
+  lastBackupAt?: number | null
+}
+
+/**
+ * Upgrades a pre-F-40 backup setting in place. Migration happens on read
+ * rather than in a one-shot pass because there is no moment we control when
+ * every project's settings are loaded — a writer may open a project that has
+ * not been touched since before the upgrade, months from now.
+ *
+ * Losing a configured backup location here would quietly leave a project with
+ * no second copy while the app still claimed one existed, so the legacy path
+ * is carried over with its last-backup time intact rather than being reset.
+ */
+function migrate(stored: (BackupSettings & LegacyBackupSettings) | undefined): BackupSettings {
+  if (stored == null) return NO_BACKUP
+  if (Array.isArray(stored.targets)) {
+    return { targets: stored.targets, auto: stored.auto ?? false }
+  }
+  const targets: BackupTarget[] =
+    typeof stored.path === 'string' && stored.path.length > 0
+      ? [{ id: randomUUID(), path: stored.path, lastBackupAt: stored.lastBackupAt ?? null }]
+      : []
+  return { targets, auto: stored.auto ?? false }
+}
+
 export async function readBackupSettings(projectPath: string): Promise<BackupSettings> {
   const settings = await readSettings()
-  return settings.backups?.[projectPath] ?? NO_BACKUP
+  return migrate(settings.backups?.[projectPath])
 }
 
 export async function writeBackupSettings(
@@ -138,9 +170,43 @@ export async function writeBackupSettings(
   patch: Partial<BackupSettings>
 ): Promise<BackupSettings> {
   const settings = await readSettings()
-  const next: BackupSettings = { ...NO_BACKUP, ...settings.backups?.[projectPath], ...patch }
+  // Migrate before patching, so a patch landing on a legacy record does not
+  // drop the target it already had.
+  const next: BackupSettings = { ...migrate(settings.backups?.[projectPath]), ...patch }
   await writeSettings({ backups: { ...settings.backups, [projectPath]: next } })
   return next
+}
+
+/** Replaces one target's fields, leaving every other target untouched. */
+export async function updateBackupTarget(
+  projectPath: string,
+  targetId: string,
+  patch: Partial<Omit<BackupTarget, 'id'>>
+): Promise<BackupSettings> {
+  const current = await readBackupSettings(projectPath)
+  return writeBackupSettings(projectPath, {
+    targets: current.targets.map((t) => (t.id === targetId ? { ...t, ...patch } : t))
+  })
+}
+
+export async function addBackupTarget(projectPath: string, path: string): Promise<BackupSettings> {
+  const current = await readBackupSettings(projectPath)
+  // Adding a location twice would mirror to it twice per checkpoint and show
+  // it twice in the panel; treat a repeat add as a no-op.
+  if (current.targets.some((t) => t.path === path)) return current
+  return writeBackupSettings(projectPath, {
+    targets: [...current.targets, { id: randomUUID(), path, lastBackupAt: null }]
+  })
+}
+
+export async function removeBackupTarget(
+  projectPath: string,
+  targetId: string
+): Promise<BackupSettings> {
+  const current = await readBackupSettings(projectPath)
+  return writeBackupSettings(projectPath, {
+    targets: current.targets.filter((t) => t.id !== targetId)
+  })
 }
 
 export async function readRecentProjects(): Promise<RecentProject[]> {
