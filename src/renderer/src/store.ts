@@ -701,7 +701,21 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { project } = get()
       if (!project) throw new Error('No project is open')
       await get().flushSave()
-      const outcome = await api.syncNow(project.path)
+      let outcome: SyncOutcome
+      try {
+        outcome = await api.syncNow(project.path)
+      } catch (err) {
+        // A sync that failed must never look like one that worked. Callers
+        // fire this with `void` (the menu item, the post-checkpoint auto-sync,
+        // the back-online retry), so without this the failure was either an
+        // unhandled rejection or swallowed by a bare `.catch`, and the writer
+        // was left believing their work had reached GitHub. Raising the quiet
+        // flag puts `◆ SYNC — NEEDS YOUR EYE` in the status bar — the existing
+        // non-nagging channel — and we still rethrow so an interactive caller
+        // can surface the actual error (F-01).
+        set({ syncNeedsAttention: true })
+        throw err
+      }
       if (outcome.status === 'conflicts') {
         // The page is sacred: only a sync the writer asked for may put a
         // dialog on screen. A background one leaves a quiet flag instead.

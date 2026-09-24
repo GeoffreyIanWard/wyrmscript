@@ -17,6 +17,7 @@ import { CharacterGraphDialog } from './components/CharacterGraphDialog'
 import { WorldMapDialog } from './components/WorldMapDialog'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { CompileDialog } from './components/CompileDialog'
+import { isConnected, isRemoteMissing } from './lib/syncState'
 import { BackupDialog } from './components/BackupDialog'
 import { SyncDialog } from './components/SyncDialog'
 import { ConflictDialog } from './components/ConflictDialog'
@@ -75,17 +76,24 @@ function StatusBar(): JSX.Element {
   const saveLabel = saveState === 'saved' ? 'SAVED' : saveState === 'saving' ? 'SAVING…' : 'EDITED'
   // States what is true, and stays quiet otherwise — neither an unbacked-up
   // nor a local-only project is nagged at from the status bar (F-01).
+  //
+  // `isConnected` rather than `mode === 'github'`: a project whose remote has
+  // gone from .git/config used to report ◆ SYNCED while having nowhere to push,
+  // which is the one lie this bar must never tell. It now reads as needing
+  // attention, which is what it is.
   const placeLabel = !isElectron
     ? '◇ DEMO — IN MEMORY'
-    : syncStatus?.mode === 'github'
+    : isConnected(syncStatus)
       ? syncNeedsAttention
         ? '◆ SYNC — NEEDS YOUR EYE'
-        : syncStatus.pendingSync
+        : syncStatus?.pendingSync
           ? '◆ SYNC — WAITING'
           : '◆ SYNCED'
-      : backupSettings?.path
-        ? '◆ LOCAL + BACKUP'
-        : '◆ LOCAL'
+      : isRemoteMissing(syncStatus)
+        ? '◆ SYNC — NEEDS YOUR EYE'
+        : backupSettings?.path
+          ? '◆ LOCAL + BACKUP'
+          : '◆ LOCAL'
   // One switch covers every ambient counter (here and in the editor header):
   // a writer who does not want to watch a number climb does not want it in
   // two places. Writing Stats still answers on demand.
@@ -469,7 +477,15 @@ function App(): JSX.Element {
         )}
         {syncOpen && (
           <ErrorBoundary label="Sync" onDismiss={() => setSyncOpen(false)}>
-            <SyncDialog onClose={() => setSyncOpen(false)} />
+            <SyncDialog
+              onClose={() => setSyncOpen(false)}
+              // Hands the writer straight to Backup from the local-only panel,
+              // rather than naming a menu item and leaving them to find it.
+              onOpenBackup={() => {
+                setSyncOpen(false)
+                setBackupOpen(true)
+              }}
+            />
           </ErrorBoundary>
         )}
         {paletteOpen && (

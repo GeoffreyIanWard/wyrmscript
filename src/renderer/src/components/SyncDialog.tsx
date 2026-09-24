@@ -117,10 +117,20 @@ function OutcomeView({ outcome }: { outcome: SyncOutcome }): JSX.Element {
   return <div className="error-text">{outcome.detail}</div>
 }
 
-export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
+export function SyncDialog({
+  onClose,
+  onOpenBackup
+}: {
+  onClose: () => void
+  /** Opens the Backup dialog. The local-only panel offers it directly rather
+   *  than telling the writer to go and find a menu item (F-01). */
+  onOpenBackup?: () => void
+}): JSX.Element {
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const project = useWyrm((s) => s.project)
   const syncStatus = useWyrm((s) => s.syncStatus)
+  const backupSettings = useWyrm((s) => s.backupSettings)
+  const backedUp = backupSettings?.path != null
   const loadSyncStatus = useWyrm((s) => s.loadSyncStatus)
   const setSyncClientId = useWyrm((s) => s.setSyncClientId)
   const signInStart = useWyrm((s) => s.signInStart)
@@ -327,9 +337,10 @@ export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
           {screen === 'picker' && (
             <>
               <div className="dialog-hint" style={{ marginTop: 0 }}>
-                Local-only means this machine is the only copy of “
-                {project?.data.title ?? 'this project'}” — unless a Backup is also set (Project →
-                Backup…).
+                Keeping “{project?.data.title ?? 'this project'}” on this machine is a real choice,
+                and nothing here will nag you about it. What it means: this computer holds the only
+                copy. Every version is kept forever, but all of that history lives on one disk, and
+                a disk that dies takes it with it.
               </div>
               <div className="control-row">
                 <button
@@ -349,11 +360,33 @@ export function SyncDialog({ onClose }: { onClose: () => void }): JSX.Element {
 
           {screen === 'local-only' && (
             <>
-              <div className="dialog-hint" style={{ marginTop: 0 }}>
-                “{project?.data.title ?? 'This project'}” stays on this machine only — unless a
-                Backup is also set (Project → Backup…).
-              </div>
+              {backedUp ? (
+                <div className="dialog-hint" style={{ marginTop: 0 }}>
+                  “{project?.data.title ?? 'This project'}” stays on this machine, and is copied to
+                  your backup location. If that location is on a different drive, or somewhere that
+                  leaves this building, you are covered for a disk failure. If it is a folder on
+                  this same disk, it is not — nothing here can tell which, so it is worth knowing
+                  yourself.
+                </div>
+              ) : (
+                <div className="dialog-hint" style={{ marginTop: 0 }}>
+                  “{project?.data.title ?? 'This project'}” lives on this machine and nowhere else.
+                  Every version is kept forever, but all of that history is on one disk, and a disk
+                  that dies takes it with it. A backup on another drive is what protects against
+                  that.
+                </div>
+              )}
               <div className="control-row">
+                {onOpenBackup && (
+                  <button
+                    type="button"
+                    className={backedUp ? 'btn' : 'btn default'}
+                    disabled={busy != null}
+                    onClick={onOpenBackup}
+                  >
+                    {backedUp ? 'Backup Settings…' : 'Set Up a Backup…'}
+                  </button>
+                )}
                 <button type="button" className="btn" disabled={busy != null} onClick={pickGithub}>
                   Sync with GitHub
                 </button>
