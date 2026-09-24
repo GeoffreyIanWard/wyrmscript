@@ -26,6 +26,9 @@ function renderPrefs(
     <PrefsDialog
       appearance={appearance}
       stats={stats}
+      print={null}
+      printers={[]}
+      onPrintChange={() => {}}
       onChange={onChange}
       onStatsChange={onStatsChange}
       onClose={() => {}}

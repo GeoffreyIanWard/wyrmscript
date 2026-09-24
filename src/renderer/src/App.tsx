@@ -30,6 +30,7 @@ import { errorMessage } from './lib/errors'
 import { DEFAULT_COMPILE_OPTIONS } from './lib/compile'
 
 import { DEFAULT_APPEARANCE } from '../../shared/types'
+import type { PrinterInfo } from '../../shared/types'
 
 const isElectronMac = /Macintosh/.test(navigator.userAgent) && /Electron/.test(navigator.userAgent)
 /** F-39: Windows Electron gets a hidden title bar plus a native caption-button
@@ -135,6 +136,12 @@ function App(): JSX.Element {
   const setAppearance = useWyrm((s) => s.setAppearance)
   const screenRef = useRef<HTMLDivElement>(null)
   const typewriterMode = useWyrm((s) => s.typewriterMode)
+  const printSettings = useWyrm((s) => s.printSettings)
+  // F-38: fetched when Preferences opens rather than at boot — the printer
+  // list is an OS query whose answer changes while the app runs (a printer
+  // added, a laptop leaving a network), and nothing outside this dialog
+  // needs it.
+  const [printers, setPrinters] = useState<PrinterInfo[]>([])
   const statsSettings = useWyrm((s) => s.statsSettings)
   const setStatsSettings = useWyrm((s) => s.setStatsSettings)
   const [prefsOpen, setPrefsOpen] = useState(false)
@@ -290,6 +297,15 @@ function App(): JSX.Element {
   // a second copy here would silently drift the first time a palette is
   // retuned. Runs after paint, so `data-palette` is already applied.
   useEffect(() => {
+    if (!prefsOpen) return
+    let live = true
+    void api.listPrinters().then((list) => live && setPrinters(list))
+    return () => {
+      live = false
+    }
+  }, [prefsOpen])
+
+  useEffect(() => {
     if (!isElectronWin || !screenRef.current) return
     const styles = getComputedStyle(screenRef.current)
     const paper = styles.getPropertyValue('--paper').trim()
@@ -383,6 +399,9 @@ function App(): JSX.Element {
             appearance={appearance}
             stats={statsSettings}
             typewriterMode={typewriterMode}
+            print={printSettings}
+            printers={printers}
+            onPrintChange={(patch) => void useWyrm.getState().setPrintSettings(patch)}
             onChange={(patch) => void setAppearance(patch)}
             onStatsChange={(patch) => void setStatsSettings(patch)}
             onTypewriterModeChange={(enabled) => useWyrm.getState().setTypewriterMode(enabled)}

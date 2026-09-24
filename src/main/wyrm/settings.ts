@@ -2,8 +2,13 @@ import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 
-import type { AppearanceSettings, RecentProject, StatsSettings } from '../../shared/types'
-import { DEFAULT_APPEARANCE, DEFAULT_STATS } from '../../shared/types'
+import type {
+  AppearanceSettings,
+  PrintSettings,
+  RecentProject,
+  StatsSettings
+} from '../../shared/types'
+import { DEFAULT_APPEARANCE, DEFAULT_PRINT, DEFAULT_STATS } from '../../shared/types'
 import type { BackupSettings } from '../../shared/types'
 
 /** F-24: how many recently-opened projects the home screen offers. */
@@ -32,6 +37,8 @@ interface AppSettings {
    *  belongs to the writer, not to one manuscript. The counts themselves are
    *  not stored here — they are derived from each project's git history. */
   stats?: Partial<StatsSettings>
+  /** F-38: auto-print and the chosen printer — app-level, like appearance. */
+  print?: Partial<PrintSettings>
   /** F-24: most-recent first, capped at RECENT_PROJECTS_LIMIT. Outlives
    *  `lastProjectPath` being cleared on close — closing a project removes it
    *  from auto-reopen, not from the list a writer picks it back up from. */
@@ -88,6 +95,17 @@ export async function readStatsSettings(): Promise<StatsSettings> {
 export async function writeStatsSettings(patch: Partial<StatsSettings>): Promise<StatsSettings> {
   const next = { ...(await readStatsSettings()), ...patch }
   await writeSettings({ stats: next })
+  return next
+}
+
+export async function readPrintSettings(): Promise<PrintSettings> {
+  const settings = await readSettings()
+  return { ...DEFAULT_PRINT, ...settings.print }
+}
+
+export async function writePrintSettings(patch: Partial<PrintSettings>): Promise<PrintSettings> {
+  const next = { ...(await readPrintSettings()), ...patch }
+  await writeSettings({ print: next })
   return next
 }
 
