@@ -104,6 +104,59 @@ describe('round-trip stability', () => {
   }
 })
 
+/**
+ * F-15: a writer's blank line is authored spacing, and used to vanish the next
+ * time the document was opened — the file kept it, but parsing dropped it and
+ * the following save erased it for good. It now survives, which is also what
+ * lets the Manuscript palette put a drop cap after a deliberate gap.
+ *
+ * The delicate part is that the two directions agree. Writing an empty
+ * paragraph as two newlines instead of one reads back as twice as many, and
+ * the gap doubles on every save — so each case here round-trips twice.
+ */
+describe('authored blank lines', () => {
+  it('keeps a deliberate gap as an empty paragraph', () => {
+    const doc = markdownToDoc('One.\n\n\nTwo.\n')
+    const kinds = (doc.content ?? []).map((p) => (p.content ? 'text' : 'empty'))
+
+    expect(kinds).toEqual(['text', 'empty', 'text'])
+  })
+
+  it('treats a single blank line as an ordinary paragraph break', () => {
+    const doc = markdownToDoc('One.\n\nTwo.\n')
+
+    expect((doc.content ?? []).every((p) => p.content)).toBe(true)
+  })
+
+  it('scales with how many blank lines were typed', () => {
+    const doc = markdownToDoc('One.\n\n\n\nTwo.\n')
+    const empties = (doc.content ?? []).filter((p) => !p.content).length
+
+    expect(empties).toBe(2)
+  })
+
+  it('round-trips a gap byte-for-byte', () => {
+    expect(roundTrip('One.\n\n\nTwo.\n')).toBe('One.\n\n\nTwo.\n')
+  })
+
+  it('does not grow the gap on repeated saves', () => {
+    // The failure this guards: an asymmetry between reading and writing makes
+    // every save add blank lines, and a manuscript inflates quietly forever.
+    const once = roundTrip('A.\n\n\nB.\n\nC.\n')
+    const twice = roundTrip(once)
+    const thrice = roundTrip(twice)
+
+    expect(twice).toBe(once)
+    expect(thrice).toBe(once)
+  })
+
+  it('drops leading and trailing blank lines rather than preserving them', () => {
+    // Markdown discards them on parse anyway; keeping them would mean a file
+    // whose first save silently differed from what was read.
+    expect(roundTrip('\n\n\nOnly.\n\n\n')).toBe('Only.\n')
+  })
+})
+
 describe('countWords', () => {
   it('counts simple words', () => {
     expect(countWords('one two three')).toBe(3)
