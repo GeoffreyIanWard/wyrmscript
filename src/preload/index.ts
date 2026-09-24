@@ -49,7 +49,10 @@ const api: WyrmApi = {
 
   exportFile: (defaultName, data) => ipcRenderer.invoke('compile:export', defaultName, data),
   renderPdf: (html) => ipcRenderer.invoke('compile:pdf', html),
-  printHtml: (html) => ipcRenderer.invoke('compile:print', html),
+  printHtml: (html, options) => ipcRenderer.invoke('compile:print', html, options),
+  listPrinters: () => ipcRenderer.invoke('print:printers'),
+  getPrintSettings: () => ipcRenderer.invoke('print:settings:get'),
+  setPrintSettings: (patch) => ipcRenderer.invoke('print:settings:set', patch),
 
   getAppearance: () => ipcRenderer.invoke('appearance:get'),
   setAppearance: (patch) => ipcRenderer.invoke('appearance:set', patch),
