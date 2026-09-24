@@ -534,7 +534,7 @@ Requested and built 2026-08-07. As the writer types past the middle of the visib
 - Interacts with F-27's page view and F-38 below, if either ships — all three want to reason about where the writer's attention is relative to the scrolled content.
 - **Found in review**: the Preferences dialog (`Dialogs.tsx`) already had a `Typewriter scrolling` checkbox from before this feature existed, but it was never wired up — omitting `onToggle` renders a `Check` row permanently disabled by design (see its own doc comment, "renders inert" for settings whose feature doesn't exist yet), which is exactly what shipped in the first PR. Wired it to the same `typewriterMode` store field the View menu and `⌥⌘T` already used, via a new `onTypewriterModeChange` prop threaded through `App.tsx` — so all three entry points now drive one shared toggle.
 
-### F-38 · Typewriter mode PLUS: paginated documents with auto-print 🔨 in progress
+### F-38 · Typewriter mode PLUS: paginated documents with auto-print ✅ shipped
 
 Requested 2026-08-07, building on F-37. Documents gain real pages — typing past the end of a page moves to a new one, and a finished page can "print" automatically (to PDF, matching the compiled manuscript, or to an actual connected printer), the way a page coming off a physical typewriter platen is simply done.
 
@@ -559,7 +559,18 @@ This is a substantially bigger piece of work than F-37 and touches capability ar
 - `silent: false` on printing is deliberate for v1: the writer picks the printer and sees failures where they expect them.
 - Degrades honestly in the browser preview: PDF export reports "PDF export needs the desktop app" rather than writing a file that isn't a PDF, and `printHtml` **throws** rather than returning `false` — false means "the writer cancelled", and reporting a missing print engine as a cancellation would leave ⌘P silently doing nothing.
 
-**Part 2 (next):** printer selection and settings, and the auto-print-on-page-completion trigger, off by default.
+**Part 2 ✅ shipped:** printer selection, settings, and the auto-print trigger.
+
+- **Preferences → PRINTING**: "Print each page as it fills" (off by default) and a printer picker fed by `getPrintersAsync()`. New `PrintSettings`, app-level beside appearance and stats rather than folded into `AppearanceSettings` — a printer is not an appearance.
+- **A page is F-27's lines-per-page**, the same number that draws the on-screen rule, so the page that prints is the page the writer just watched a rule appear under.
+- **The safety property is that a page never prints twice.** Paper is physical and a runaway trigger is expensive, so `autoPrint.ts` tracks the *highest* page ever completed and fires strictly above it. Deleting text lowers the live count and retyping raises it back through boundaries that already printed — those must stay silent. There is a regression test for exactly that, and it was verified to fail when the high-water mark is replaced with a live comparison.
+- **A crossing emits every page at once**: a paste can cross several boundaries in one transaction, and firing only for the last would silently drop pages from the printout.
+- **Auto-print requires a printer chosen in advance** and prints with `silent: true`. Printing silently to whatever the OS considers default is how paper appears from a machine nobody is standing at.
+- **`printPage` never throws into the editor.** It fires mid-paragraph, where there is no safe place to interrupt; an offline printer is a printer problem, not a reason to break the writing surface (house rule: a failure in one panel never takes the app down).
+- Pages are sliced from the live document and routed through the *same* `runsFromParagraph` the compile pipeline uses (`blocksFromDoc`), so an auto-printed page renders bold/italic/highlight identically to the PDF. Extracting plain text would have been simpler and silently lost every mark.
+- **Found while building:** `PrefsDialog` gained required props and two existing test files rendered it without them, crashing on `printers.map`. Fixed at both ends — the tests now pass the props, and `printers` defaults to `[]`, since a dialog hard-crashing on an absent list prop is precisely the "one panel takes down the app" failure the house rules forbid.
+
+**Not verified end-to-end:** auto-print needs a real printer, which this machine's toolchain cannot exercise. The trigger arithmetic is unit-tested and Preferences is verified in the preview, but nothing has physically printed.
 
 ### F-39 · Real fullscreen, and Windows' doubled-up title bar ✅ shipped
 

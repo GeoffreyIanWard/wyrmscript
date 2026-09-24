@@ -425,6 +425,37 @@ export const DEFAULT_STATS: StatsSettings = {
   showCounter: true
 }
 
+/* ---------- printing (F-38) ---------- */
+
+export interface PrintSettings {
+  /**
+   * Print each page as it fills, the way a sheet comes off a typewriter
+   * platen. **Off by default and deliberately so** — the writing terminal
+   * carries no interruptions unless asked (house rule), and a printer is a
+   * loud, physical, paper-consuming interruption.
+   */
+  autoPrint: boolean
+  /**
+   * Device name from `listPrinters()`. Auto-printing needs one chosen in
+   * advance: it prints silently, and "silently" with no printer selected
+   * would mean either a dialog mid-sentence or paper appearing from whatever
+   * the OS happened to consider default.
+   */
+  printerName: string
+}
+
+export const DEFAULT_PRINT: PrintSettings = {
+  autoPrint: false,
+  printerName: ''
+}
+
+/** One installed printer, as offered in Preferences. */
+export interface PrinterInfo {
+  name: string
+  displayName: string
+  isDefault: boolean
+}
+
 /* ---------- Local backup (F-01) ---------- */
 
 export interface BackupSettings {
@@ -564,7 +595,12 @@ export interface WyrmApi {
    * print engine at all (the browser preview), which is a different thing
    * and must not masquerade as a cancellation.
    */
-  printHtml(html: string): Promise<boolean>
+  printHtml(html: string, options?: { silent?: boolean; deviceName?: string }): Promise<boolean>
+  /** F-38: installed printers, for the Preferences picker. Empty off the desktop. */
+  listPrinters(): Promise<PrinterInfo[]>
+
+  getPrintSettings(): Promise<PrintSettings>
+  setPrintSettings(patch: Partial<PrintSettings>): Promise<PrintSettings>
 
   /** Appearance is app-level, not per-project — it follows the writer. */
   getAppearance(): Promise<AppearanceSettings>

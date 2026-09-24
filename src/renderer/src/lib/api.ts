@@ -18,11 +18,13 @@ import type {
   ProjectInfo,
   RecentProject,
   Relationship,
+  PrinterInfo,
+  PrintSettings,
   StatsSettings,
   VariantInfo,
   WyrmApi
 } from '../../../shared/types'
-import { DEFAULT_APPEARANCE, DEFAULT_STATS } from '../../../shared/types'
+import { DEFAULT_APPEARANCE, DEFAULT_PRINT, DEFAULT_STATS } from '../../../shared/types'
 
 /**
  * In Electron the preload script exposes the real filesystem/git API on
@@ -310,6 +312,7 @@ export function createMockApi(): WyrmApi {
   const backups = new Map<string, BackupSettings>()
   let appearance: AppearanceSettings = { ...DEFAULT_APPEARANCE }
   let statsSettings: StatsSettings = { ...DEFAULT_STATS }
+  let printSettings: PrintSettings = { ...DEFAULT_PRINT }
   const sync = new Map<string, SyncStatus>()
   let mockClientIdSet = false
   let mockLogin: string | null = null
@@ -664,6 +667,19 @@ export function createMockApi(): WyrmApi {
       // surfaces this as "PDF export needs the desktop app" rather than
       // writing a file that isn't a PDF.
       return null
+    },
+    async listPrinters(): Promise<PrinterInfo[]> {
+      // No print subsystem in a browser tab; Preferences shows its
+      // "no printers found" state rather than an empty dropdown that looks
+      // like a loading bug.
+      return []
+    },
+    async getPrintSettings(): Promise<PrintSettings> {
+      return { ...printSettings }
+    },
+    async setPrintSettings(patch: Partial<PrintSettings>): Promise<PrintSettings> {
+      printSettings = { ...printSettings, ...patch }
+      return { ...printSettings }
     },
     async printHtml(): Promise<boolean> {
       // Throws rather than returning false: false means "the writer
