@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 import git from 'isomorphic-git'
-import { backupNameFor, backupProject, restoreBackup } from '../src/main/wyrm/backup'
+import { backupNameFor, backupProject, backupToAll, restoreBackup } from '../src/main/wyrm/backup'
 import { commitAll, createVariant } from '../src/main/wyrm/git'
 import { createProject, readDoc, writeDoc } from '../src/main/wyrm/project'
 import { firstDoc } from '../src/renderer/src/lib/tree'
@@ -242,5 +242,73 @@ describe('interruption safety', () => {
       .readdir(join(backup, 'objects'))
       .then((names) => names.filter((n) => n.endsWith('.tmp')))
     expect(stray).toEqual([])
+  })
+})
+
+/**
+ * F-40: several destinations at once. The properties that matter are that the
+ * targets are independent — an unplugged card cannot stop the external drive
+ * being written, and neither can a genuinely broken one — and that what
+ * happened at each is reported rather than collapsed into one verdict.
+ */
+describe('backing up to several targets', () => {
+  it('writes every reachable target', async () => {
+    const { dir, docId } = await makeProject()
+    await write(dir, docId, 'The harbour froze over.', 'First')
+    const first = await backupPathFor(dir)
+    const second = await backupPathFor(dir)
+
+    const run = await backupToAll(dir, [
+      { id: 'a', path: first, lastBackupAt: null },
+      { id: 'b', path: second, lastBackupAt: null }
+    ])
+
+    expect(run.results.map((r) => r.status)).toEqual(['ok', 'ok'])
+    // Both really hold the manuscript, not just a repo shell.
+    for (const backup of [first, second]) {
+      expect(await readFromBackup(backup, `documents/${docId}.md`)).toContain('harbour froze')
+    }
+  })
+
+  it('skips an unplugged target without touching the others', async () => {
+    // The normal state of removable media. It must not be a failure, and it
+    // must not stop the drive that *is* connected from being written.
+    const { dir, docId } = await makeProject()
+    await write(dir, docId, 'A knock at the door.', 'First')
+    const connected = await backupPathFor(dir)
+
+    const run = await backupToAll(dir, [
+      { id: 'card', path: '/Volumes/NotMounted/novel.git', lastBackupAt: null },
+      { id: 'drive', path: connected, lastBackupAt: null }
+    ])
+
+    expect(run.results.find((r) => r.targetId === 'card')?.status).toBe('unreachable')
+    expect(run.results.find((r) => r.targetId === 'drive')?.status).toBe('ok')
+    expect(await readFromBackup(connected, `documents/${docId}.md`)).toContain('knock at the door')
+  })
+
+  it('reports a genuine failure and still writes the rest', async () => {
+    const { dir, docId } = await makeProject()
+    await write(dir, docId, 'Ashes on the tide.', 'First')
+    const good = await backupPathFor(dir)
+    // A file where the backup repository should go: reachable (its parent
+    // exists) but impossible to create as a repo.
+    const blocked = join(await tmp('wyrm-bk-bad-'), 'occupied.git')
+    await fsp.writeFile(blocked, 'not a directory')
+
+    const run = await backupToAll(dir, [
+      { id: 'bad', path: blocked, lastBackupAt: null },
+      { id: 'good', path: good, lastBackupAt: null }
+    ])
+
+    expect(run.results.find((r) => r.targetId === 'bad')?.status).toBe('failed')
+    expect(run.results.find((r) => r.targetId === 'good')?.status).toBe('ok')
+    expect(await readFromBackup(good, `documents/${docId}.md`)).toContain('Ashes on the tide')
+  })
+
+  it('reports nothing for no targets rather than failing', async () => {
+    const { dir } = await makeProject()
+
+    expect((await backupToAll(dir, [])).results).toEqual([])
   })
 })
