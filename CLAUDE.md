@@ -21,6 +21,18 @@ What's left is the backlog only. F-34 (browse by tag), F-38 (pagination + auto-p
 - Run git commands against this repo explicitly (`git -C /path/to/wyrmscript`) — the shell's working directory occasionally resets to the parent folder.
 - Before pushing: `npm run test && npm run typecheck && npm run lint`.
 
+### Cutting a release
+
+1. Bump `package.json` on a `release/vX.Y.Z` branch and open a PR against `develop` (precedent: #54, #61). The About box reads the version from `package.json` at build time, so there is nothing else to update.
+2. After it merges, tag `develop` with an **annotated** tag — `git tag -a vX.Y.Z -m "..."`.
+3. `git push origin vX.Y.Z`. The tag push is what triggers the build.
+
+**The tag annotation is the release text**: its first line becomes the release title, the rest becomes the notes. Write it the way it should read on the releases page — the house style is `vX.Y.Z — Headline feature`, matching v0.2.0 and v0.3.0. A lightweight tag has no message and falls back to GitHub's generated commit list, which is not what anyone wants to read.
+
+`create_release` makes the release once before the three builders start, and is idempotent — it will not clobber notes edited by hand afterwards. Do not collapse it back into the build matrix: three parallel builders each creating the release is a race that kills two of them on `422 already_exists`, and on v0.3.0 that shipped a release with no `latest-mac.yml`, silently breaking macOS auto-update while every installer looked fine.
+
+**Do not gate a release on `gh run watch --exit-status`** — it exited 0 on the v0.3.0 run even though the macOS job had failed. Check `gh run view <id>` and confirm the asset list matches the previous release's, name for name.
+
 ## Architecture
 
 - `src/main/wyrm/` — project format, isomorphic-git operations, IPC handlers, settings. Pure Node; keep it Electron-free where practical so it stays unit-testable (`project.ts` and `git.ts` are imported directly by tests).
