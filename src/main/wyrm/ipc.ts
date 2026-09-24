@@ -12,6 +12,7 @@ import type {
   Plotline,
   ProjectData,
   Relationship,
+  PrintSettings,
   StatsSettings,
   SyncOutcome,
   SyncStatus
@@ -37,6 +38,7 @@ import {
   readBackupSettings,
   readRecentProjects,
   readSettings,
+  readPrintSettings,
   readStatsSettings,
   readSyncProject,
   removeRecentProject,
@@ -44,6 +46,7 @@ import {
   writeAppearance,
   writeBackupSettings,
   writeSettings,
+  writePrintSettings,
   writeStatsSettings,
   writeSyncProject
 } from './settings'
@@ -451,22 +454,48 @@ export function registerIpc(): void {
    * job. Resolves once the dialog is dismissed either way; `false` means the
    * writer cancelled, which is not an error.
    */
-  ipcMain.handle('compile:print', async (_e, html: string) => {
-    const sheet = new BrowserWindow({
-      show: false,
-      webPreferences: { offscreen: true, javascript: false }
-    })
-    try {
-      await sheet.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-      return await new Promise<boolean>((resolve) => {
-        sheet.webContents.print({ silent: false, printBackground: false }, (success) =>
-          resolve(success)
-        )
+  ipcMain.handle(
+    'compile:print',
+    async (_e, html: string, options?: { silent?: boolean; deviceName?: string }) => {
+      const sheet = new BrowserWindow({
+        show: false,
+        webPreferences: { offscreen: true, javascript: false }
       })
-    } finally {
-      sheet.destroy()
+      try {
+        await sheet.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+        return await new Promise<boolean>((resolve) => {
+          sheet.webContents.print(
+            {
+              // Silent is only ever used by auto-print (F-38 part 2), which
+              // requires a printer chosen in advance — printing silently to
+              // whatever the OS considers default is how paper appears from a
+              // machine nobody is standing at.
+              silent: options?.silent ?? false,
+              deviceName: options?.deviceName || undefined,
+              printBackground: false
+            },
+            (success) => resolve(success)
+          )
+        })
+      } finally {
+        sheet.destroy()
+      }
     }
+  )
+
+  ipcMain.handle('print:printers', async () => {
+    const printers = await (focusedWindow()?.webContents.getPrintersAsync() ?? [])
+    return printers.map((p) => ({
+      name: p.name,
+      displayName: p.displayName || p.name,
+      isDefault: p.isDefault
+    }))
   })
+
+  ipcMain.handle('print:settings:get', () => readPrintSettings())
+  ipcMain.handle('print:settings:set', (_e, patch: Partial<PrintSettings>) =>
+    writePrintSettings(patch)
+  )
 
   /* ---------- window (F-39) ---------- */
 

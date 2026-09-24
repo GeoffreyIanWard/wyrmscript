@@ -23,7 +23,9 @@ import type {
   ProjectInfo,
   RecentProject,
   Relationship,
-  StatsSettings
+  StatsSettings,
+  PrintSettings,
+  CompileBlock
 } from '../../shared/types'
 import { PLOTLINE_COLOURS } from '../../shared/types'
 import { api } from './lib/api'
@@ -130,6 +132,17 @@ interface WyrmState {
   setAppearance(patch: Partial<AppearanceSettings>): Promise<void>
 
   statsSettings: StatsSettings | null
+  /** F-38: auto-print and chosen printer; null until loaded. */
+  printSettings: PrintSettings | null
+  loadPrintSettings(): Promise<void>
+  setPrintSettings(patch: Partial<PrintSettings>): Promise<void>
+  /**
+   * F-38 part 2: send one finished page to the chosen printer, silently.
+   * Never throws into the editor — a printer being offline must not take the
+   * writing surface down mid-sentence (house rule: a failure in one panel
+   * never takes down the app).
+   */
+  printPage(blocks: CompileBlock[]): Promise<void>
   dailyStats: DayStat[]
   loadStatsSettings(): Promise<void>
   setStatsSettings(patch: Partial<StatsSettings>): Promise<void>
@@ -336,6 +349,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     backupSettings: null,
     appearance: null,
     statsSettings: null,
+    printSettings: null,
     dailyStats: [],
     syncStatus: null,
     syncConflicts: null,
@@ -347,6 +361,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // and it must survive a boot that finds no project at all.
       await get().loadAppearance()
       await get().loadStatsSettings()
+      await get().loadPrintSettings()
       const last = await api.getLastProjectPath()
       if (last) {
         const info = await api.openProjectPath(last)
@@ -605,6 +620,29 @@ export const useWyrm = create<WyrmState>((set, get) => {
     /** Recomputed from git history rather than accumulated in memory, so it is
      *  correct after a restore, a sync, or anything else that rewrites what
      *  the manuscript contains. Cheap enough to call on every checkpoint. */
+    async loadPrintSettings() {
+      set({ printSettings: await api.getPrintSettings() })
+    },
+
+    async setPrintSettings(patch) {
+      set({ printSettings: await api.setPrintSettings(patch) })
+    },
+
+    async printPage(blocks) {
+      const { printSettings } = get()
+      if (!printSettings?.autoPrint || !printSettings.printerName) return
+      try {
+        await api.printHtml(renderHtml(blocks), {
+          silent: true,
+          deviceName: printSettings.printerName
+        })
+      } catch {
+        // Swallowed on purpose. This fires while the writer is mid-paragraph
+        // and there is no safe place to interrupt them; an offline printer is
+        // a printer problem, not a reason to break the page.
+      }
+    },
+
     async refreshStats() {
       const { project } = get()
       if (!project) return

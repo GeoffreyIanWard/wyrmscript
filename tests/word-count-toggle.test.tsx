@@ -70,6 +70,9 @@ describe('the Preferences switch', () => {
     const onStatsChange = vi.fn()
     render(
       <PrefsDialog
+        print={null}
+        printers={[]}
+        onPrintChange={() => {}}
         appearance={DEFAULT_APPEARANCE}
         stats={DEFAULT_STATS}
         onChange={vi.fn()}
