@@ -24,8 +24,67 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
 
-  build:
+  # Creates the GitHub release exactly once, before any builder runs.
+  #
+  # Without this the three build jobs race: each one asks electron-builder to
+  # publish, electron-builder looks for a release for the tag, does not find one,
+  # and POSTs to create it. Two of the three lose and die on
+  # `422 Validation Failed — tag_name already_exists`. That is what happened on
+  # v0.3.0, where macOS lost and the release shipped without `latest-mac.yml`,
+  # silently breaking auto-update for Mac users while every installer looked fine.
+  # Which platform loses is arbitrary, so the failure looks different every time.
+  #
+  # With the release already in place, the builders only ever upload assets.
+  create_release:
     needs: verify
+    # A workflow_dispatch re-run has no tag to create a release for; the release
+    # it is rebuilding already exists, so the builders can just upload into it.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The tag object itself, so an annotated tag's message is readable below.
+          fetch-depth: 0
+      - name: Create the release if it does not already exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # Idempotent on purpose: re-running the whole workflow after a failed
+          # build must not fail here, and must never clobber notes that were
+          # edited on the release by hand.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — leaving it and its notes alone."
+            exit 0
+          fi
+
+          # An annotated tag's message becomes the release: first line the title,
+          # the rest the notes. `git tag -a vX.Y.Z -m "..."` is therefore the one
+          # place a release is described. A lightweight tag has no message, so
+          # fall back to GitHub's generated notes rather than shipping an empty one.
+          MESSAGE="$(git tag -l --format='%(contents)' "$TAG")"
+          TITLE="$(printf '%s\n' "$MESSAGE" | head -n 1)"
+          BODY="$(printf '%s\n' "$MESSAGE" | tail -n +2)"
+
+          if [ -z "${TITLE//[[:space:]]/}" ]; then
+            echo "No annotation on $TAG — generating notes from commits."
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+          else
+            printf '%s\n' "$BODY" > /tmp/release-notes.md
+            gh release create "$TAG" --verify-tag --title "$TITLE" --notes-file /tmp/release-notes.md
+          fi
+
+  build:
+    needs: [verify, create_release]
+    # `needs` on a skipped job would skip this one too, and create_release is
+    # deliberately skipped on workflow_dispatch. So gate on results instead:
+    # run whenever verify passed and create_release did not actually fail.
+    if: ${{ !cancelled() && needs.verify.result == 'success' && needs.create_release.result != 'failure' }}
     strategy:
       fail-fast: false
       matrix:
