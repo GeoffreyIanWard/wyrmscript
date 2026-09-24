@@ -221,15 +221,19 @@ The title-bar close-box (`App.tsx`) was decorative — a `<span>`, no handler �
 
 Requested features, not yet scheduled. Stable IDs so they can be referenced in commits and PRs.
 
-### F-01 · Local-only version control (no GitHub required) 📋
+### F-01 · Local-only version control (no GitHub required) ✅ shipped
 
 Users who want everything on their own machine must get full version-control parity — history, diff, restore, variants, branches — with no account and no network. WyrmStar already uses **isomorphic-git** (open-source, MIT), so the entire engine is local; GitHub is only a _remote_. Work needed:
 
 - ✅ "No remote" is an explicit, first-class choice — the sync setup screen's first question, with local-only phrased as a peer of GitHub, not a fallback (PR #11).
 - ✅ **Optional local backup target** — shipped in PR #10 (see Execution order §2). Note for whoever does the rest: isomorphic-git has **no local transport**, so this was built from git plumbing rather than `push`; GitHub sync gets a real HTTP transport and cannot reuse that code path.
 - ✅ Sync surfaces degrade silently with no remote: Sync Now is disabled, the status bar shows plain `◆ LOCAL`, nothing nags (PR #11).
-- Confirm every Phase 5 sync surface degrades cleanly and silently when no remote exists (no nagging, no dead buttons).
-- Document the trade-off honestly: local-only means a disk failure is unrecoverable; recommend at least one off-machine copy.
+- ✅ **Every Phase 5 sync surface audited for the no-remote case.** Most already degraded correctly — Sync Now greyed out, the connected panel unrendered, auto-sync and the back-online retry no-ops, the status bar deliberately silent. The audit found one real fault, described below. Pinned by `tests/local-only.test.tsx`, which asserts the whole local-only state; nothing had covered it before, which is how the fault survived.
+- ✅ **The trade-off is stated at the choice point**, per the brief's §7 instruction to call trade-offs out "explicitly during onboarding rather than burying it." The local-only panel says in plain words that this computer holds the only copy and a dying disk takes the history with it, and offers **Set Up a Backup…** directly rather than naming a menu item. A writer who already has a backup is told that instead, including the honest caveat that a folder on the same disk is not protection — the app cannot tell which physical drive a path is on. It never pushes GitHub as the remedy: local-only stays a peer choice, as PR #11 established.
+
+**The fault the audit found — `mode` vs `remoteUrl` drift.** `SyncStatus.mode` is stored intent; `remoteUrl` is read live from `.git/config`. A remote removed outside the app leaves `mode: 'github'` with no URL, and the surfaces disagreed about what to do with that. The menu gated Sync Now on `mode` alone, so it stayed live and threw `This project is not connected to GitHub` as an unhandled rejection. The status bar read `mode` alone and reported `◆ SYNCED`. Only SyncDialog required both and correctly showed the reconnect form — so the app simultaneously claimed the work was safely off the machine and had no idea where to send it, which is the one lie an app promising "nothing is ever lost" must not tell. Fixed with one shared definition in `lib/syncState.ts` (`isConnected`, `isRemoteMissing`, `hasSecondCopy`) that every surface now uses; the drifted state reads as `◆ SYNC — NEEDS YOUR EYE`.
+
+**Also fixed while there:** `syncNow` threw without recording anything, and its callers all fire it with `void` (the menu item, the post-checkpoint auto-sync, the back-online retry). A failed sync was therefore either an unhandled rejection or — had the menu simply added a `.catch` — silently swallowed, leaving the writer believing their work had reached GitHub. It now raises the existing quiet needs-attention flag before rethrowing, so a failure reaches the status bar instead of vanishing.
 
 **Note:** this reorders Phase 5 slightly — local-first is the default path, GitHub sync becomes opt-in. Cheap to do now, expensive to retrofit.
 
