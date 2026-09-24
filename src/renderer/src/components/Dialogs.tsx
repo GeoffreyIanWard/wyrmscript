@@ -231,6 +231,11 @@ export function PrefsDialog({
               on={appearance.palette === 'win95'}
               onPick={() => pickPalette('win95')}
             />
+            <Radio
+              label="Manuscript — vellum, iron gall ink, illuminated capitals"
+              on={appearance.palette === 'manuscript'}
+              onPick={() => pickPalette('manuscript')}
+            />
             <div className="dialog-hint">CRT variants add scanlines and glow.</div>
           </fieldset>
           <fieldset className="fieldset">

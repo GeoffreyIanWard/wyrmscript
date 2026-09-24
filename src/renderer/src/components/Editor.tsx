@@ -11,6 +11,7 @@ import { BlockCursor } from '../lib/blockCursor'
 import { TypewriterScroll } from '../lib/typewriterScroll'
 import { LineNumbers } from '../lib/lineNumbers'
 import { PageView } from '../lib/pageView'
+import { DropCaps } from '../lib/dropCaps'
 import { AutoPrint } from '../lib/autoPrint'
 import { blocksFromDoc } from '../lib/compile'
 import { ENTITY_COLLECTIONS } from '../lib/entities'
@@ -233,6 +234,7 @@ export function Editor(): JSX.Element {
           getEnabled: () => useWyrm.getState().appearance?.pageView ?? false,
           getLinesPerPage: () => useWyrm.getState().appearance?.pageViewLines ?? 25
         }),
+        DropCaps,
         AutoPrint.configure({
           getEnabled: () => useWyrm.getState().printSettings?.autoPrint ?? false,
           // Same setting F-27's on-screen rule uses, so the page that prints

@@ -87,6 +87,15 @@ button {
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* The chrome font is re-declared here, not just on `body`, because
+     `data-palette` lives on this element. A custom property set by a palette
+     resolves where it is *used*, and inheritance passes the already-resolved
+     value down — so `body { font-family: var(--font-chrome) }` bakes in the
+     `:root` font before any palette gets a say, and every chrome element that
+     merely inherits keeps it. Manuscript (F-15) is the first palette to
+     override `--font-chrome`, which is why this only surfaced now. Re-reading
+     the variable here is a no-op for every other palette. */
+  font-family: var(--font-chrome);
 }
 
 .desktop {
@@ -2251,7 +2260,8 @@ button {
 [data-palette='blueprint'],
 [data-palette='bios'],
 [data-palette='collegiate'],
-[data-palette='win95'] {
+[data-palette='win95'],
+[data-palette='manuscript'] {
   --page-bg: var(--paper);
   --page-ink: var(--ink);
   --accent-character: var(--ink);
@@ -2376,6 +2386,55 @@ button {
   top: 0;
   transform: translateX(-50%);
   opacity: 0.65;
+}
+
+
+/* F-15 — Manuscript: vellum and iron gall ink. The one palette that changes
+   the *fonts* as well as the colours, which no palette before it did: a
+   Fraktur display face for chrome and the illuminated capital, and Cardo for
+   body prose. The request was explicit that the prose stay readable, so the
+   two are deliberately different faces — Fraktur is atmosphere, not a
+   reading face. Dithers are hand-ruled hatching rather than the shared
+   checkerboard, so the texture reads as pen strokes on skin. */
+[data-palette='manuscript'] {
+  --ink: #3a2a18;
+  --paper: #e8dcc0;
+  --dither-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpath d='M0 3h4' stroke='%233a2a18' stroke-width='0.5'/%3E%3C/svg%3E");
+  --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpath d='M0 1h4M0 3h4' stroke='%233a2a18' stroke-width='0.6'/%3E%3C/svg%3E");
+  --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpath d='M0 1h4M0 3h4M1 0v4M3 0v4' stroke='%233a2a18' stroke-width='0.6'/%3E%3C/svg%3E");
+  --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%233a2a18'/%3E%3C/svg%3E");
+  --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%233a2a18'/%3E%3C/svg%3E");
+  --font-chrome: 'UnifrakturMaguntia', 'Courier New', serif;
+  --font-prose: 'Cardo', Georgia, serif;
+}
+
+/* Chrome in Fraktur is atmospheric but tight at 13px, so the bar gets a
+   little more room and letter-spacing to stay readable. */
+[data-palette='manuscript'] .menu-bar,
+[data-palette='manuscript'] .status-bar {
+  font-size: 15px;
+  letter-spacing: 0.5px;
+}
+
+/* F-15: the illuminated capital. The paragraphs that get one are chosen by
+   `lib/dropCaps.ts` (the first, plus any following a deliberate blank line);
+   this only paints them, and only here — the decoration itself runs under
+   every palette so switching one never rebuilds the editor. */
+[data-palette='manuscript'] .page p.drop-cap::first-letter {
+  font-family: 'UnifrakturMaguntia', serif;
+  font-size: 3.4em;
+  line-height: 0.78;
+  float: left;
+  padding: 0.08em 0.1em 0 0;
+  color: #7a2318;
+}
+
+/* An indent under a floated capital reads as a dent in the block, so the
+   first line of an illuminated paragraph starts flush even when F-06's
+   first-line indent is on. */
+[data-indent='on'] [data-palette='manuscript'] .page p.drop-cap,
+[data-palette='manuscript'] .page p.drop-cap {
+  text-indent: 0;
 }
 
 /* Drafting table: navy ground, icy cyan-white ink, dithers as grid-paper
