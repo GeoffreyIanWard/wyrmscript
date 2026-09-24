@@ -586,6 +586,23 @@ Reported 2026-08-12, built the same day: on Windows, making the app "fullscreen"
 - **F11 is deliberately not intercepted outside Electron** — the browser preview's own F11 already fullscreens, and swallowing it would remove a working shortcut for nothing. There's a regression test for exactly that, since it's the kind of thing a later refactor "tidies" away.
 - **Not verified on Windows.** Built and tested on macOS: the suite covers the wiring (F11 reaching the API, the not-swallowed-in-browser rule, the menu item being reachable with no project open), and the browser preview confirms the menu renders — but the actual Windows chrome and taskbar behaviour can only be confirmed by running a Windows build. Worth a look before assuming the caption-button padding (138px) is right at non-100% display scaling.
 
+
+### F-40 · Back up to several locations at once ✅ shipped
+
+Requested 2026-09-24: "select multiple backup locations (say, GitHub AND a storage card) and sync to all." Backup settings were a single `path`; they are now a list of targets, and every checkpoint writes to all of them.
+
+**GitHub stayed a separate axis, deliberately.** The obvious reading of the request is one unified "destinations" list with GitHub as a row in it, and that was considered and rejected: GitHub is genuinely a different thing — auth, conflicts, merges, and a *pull* rather than only a push. Flattening it into a folder-shaped row would hide that a conflict needs a decision from the writer. Local targets are a list; GitHub sync is still GitHub sync. The two are presented together in the Sync dialog's local-only panel, which is where the question "where does my work actually live" gets answered.
+
+**An unreachable target is a skip, not a failure.** A storage card is usually not plugged in — that is the normal state of removable media, not a fault, and treating it as an error would raise the needs-attention flag most days and train the writer to ignore the one signal that matters. `isReachable` asks a narrow question (does the folder exist, or for a first backup does its parent), because an unmounted volume takes its whole mount point with it. A target that exists but cannot be written *is* reported as a failure, because that is a real one.
+
+**Targets are independent.** One unplugged card cannot stop the external drive being written, and neither can one genuinely broken target: every target is attempted and every result reported, rather than the run stopping at the first problem. Each target carries its own `lastBackupAt` — the whole point of several is that they fall out of date separately — so the panel shows which copies are current and which have been out of the building since Tuesday. That per-target staleness is the honest answer to "am I covered", and it is visible on demand rather than announced.
+
+Runs are sequential on purpose: these are large object copies to often-slow media, and `backupProject` begins by committing the working tree, so running them concurrently would have several mirrors racing the same `commitAll` against one repo.
+
+**Migration was the risk.** A writer with a drive already configured must not silently lose it — that would leave a project with no second copy while the status bar still read `◆ LOCAL + BACKUP`, exactly the class of lie F-01 had just finished removing. The legacy `{ path, auto, lastBackupAt }` shape is upgraded on read, keeping the path *and* its last-backup time, and the upgrade also runs before any patch is applied so toggling automatic backup cannot drop the drive. Migration happens on read rather than in a one-shot pass because there is no moment we control when every project's settings are loaded — a project may go untouched for months.
+
+**Found while testing:** `tests/backup-store.test.tsx` was only isolated by accident. The mock api keeps backup settings in a module-level map that outlives a test, and the suite happened to pass because whichever test ran last cleared the location. Adding a test that deliberately left automatic backup on exposed it. The teardown now resets that map explicitly.
+
 ### CRT family: found in review 📋 — glow ✅ fixed, see I-09 for the rename
 
 Two notes from reviewing PR #16, both affecting the whole CRT palette group (`green`/`amber`/`vaporwave`/`virtualwyrm`, formerly named `nes` — see I-09):

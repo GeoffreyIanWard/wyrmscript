@@ -130,7 +130,8 @@ export function SyncDialog({
   const project = useWyrm((s) => s.project)
   const syncStatus = useWyrm((s) => s.syncStatus)
   const backupSettings = useWyrm((s) => s.backupSettings)
-  const backedUp = backupSettings?.path != null
+  const backupCount = backupSettings?.targets.length ?? 0
+  const backedUp = backupCount > 0
   const loadSyncStatus = useWyrm((s) => s.loadSyncStatus)
   const setSyncClientId = useWyrm((s) => s.setSyncClientId)
   const signInStart = useWyrm((s) => s.signInStart)
@@ -363,10 +364,10 @@ export function SyncDialog({
               {backedUp ? (
                 <div className="dialog-hint" style={{ marginTop: 0 }}>
                   “{project?.data.title ?? 'This project'}” stays on this machine, and is copied to
-                  your backup location. If that location is on a different drive, or somewhere that
-                  leaves this building, you are covered for a disk failure. If it is a folder on
-                  this same disk, it is not — nothing here can tell which, so it is worth knowing
-                  yourself.
+                  your backup {backupCount === 1 ? 'location' : 'locations'}. If a copy is on a
+                  different drive, or somewhere that leaves this building, you are covered for a
+                  disk failure. If it is a folder on this same disk, it is not — nothing here can
+                  tell which, so it is worth knowing yourself.
                 </div>
               ) : (
                 <div className="dialog-hint" style={{ marginTop: 0 }}>

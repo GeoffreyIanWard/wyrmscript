@@ -458,12 +458,46 @@ export interface PrinterInfo {
 
 /* ---------- Local backup (F-01) ---------- */
 
-export interface BackupSettings {
-  /** Absolute path of the backup repository, or null when none is configured. */
-  path: string | null
-  /** Mirror automatically after every checkpoint. */
-  auto: boolean
+/**
+ * One place a project is mirrored to. A writer can have several — an external
+ * drive, a storage card, a folder that some other tool syncs offsite — and
+ * every checkpoint writes to all of them (F-40).
+ */
+export interface BackupTarget {
+  /** Stable across renames and reordering, so settings key off this, not path. */
+  id: string
+  /** Absolute path of the backup repository. */
+  path: string
+  /**
+   * When this particular target last received a successful mirror. Per-target
+   * on purpose: the whole point of several targets is that they fall out of
+   * date independently — a card that is only occasionally plugged in is the
+   * normal case, not a fault.
+   */
   lastBackupAt: number | null
+}
+
+export interface BackupSettings {
+  targets: BackupTarget[]
+  /** Mirror to every reachable target automatically after each checkpoint. */
+  auto: boolean
+}
+
+/** What happened at one target during a backup run. */
+export type TargetResult =
+  | { targetId: string; status: 'ok'; outcome: BackupOutcome }
+  /**
+   * The target's volume is not mounted — an unplugged card, a drive that is
+   * not connected. Emphatically not a failure: it is the expected state of
+   * removable media, and is never surfaced as an error (F-40).
+   */
+  | { targetId: string; status: 'unreachable' }
+  | { targetId: string; status: 'failed'; message: string }
+
+/** One backup run across every configured target. */
+export interface BackupRun {
+  at: number
+  results: TargetResult[]
 }
 
 export type BackupOutcome =
@@ -614,12 +648,12 @@ export interface WyrmApi {
   getDailyStats(path: string): Promise<DayStat[]>
 
   getBackupSettings(path: string): Promise<BackupSettings>
-  /** Pick a backup location for this project. Null if cancelled. */
+  /** Pick an additional backup location for this project. Null if cancelled. */
   chooseBackupLocation(path: string): Promise<BackupSettings | null>
   setBackupAuto(path: string, auto: boolean): Promise<BackupSettings>
-  clearBackupLocation(path: string): Promise<BackupSettings>
-  /** Checkpoint, then mirror this project into its backup repository. */
-  backupNow(path: string): Promise<BackupOutcome>
+  removeBackupTarget(path: string, targetId: string): Promise<BackupSettings>
+  /** Checkpoint, then mirror this project into every reachable target (F-40). */
+  backupNow(path: string): Promise<BackupRun>
   /** Pick a backup and a destination, then open the restored project. Null if cancelled. */
   restoreFromBackup(): Promise<ProjectInfo | null>
 

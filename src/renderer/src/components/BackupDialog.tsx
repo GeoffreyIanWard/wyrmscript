@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
-import type { BackupOutcome } from '../../../shared/types'
+import type { BackupOutcome, BackupRun, BackupTarget, TargetResult } from '../../../shared/types'
 import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
 import { useFocusTrap } from '../lib/useFocusTrap'
@@ -66,6 +66,53 @@ function OutcomeView({ outcome }: { outcome: BackupOutcome }): JSX.Element {
   )
 }
 
+/** What happened at one target during the last run, in the writer's words. */
+function ResultLine({ result }: { result: TargetResult }): JSX.Element {
+  if (result.status === 'unreachable') {
+    // Deliberately not styled as an error. An unplugged card is the normal
+    // state of removable media, and the row already shows how long it has
+    // been since this target was written (F-40).
+    return <div className="dialog-hint">Not connected — skipped.</div>
+  }
+  if (result.status === 'failed') {
+    return <div className="error-text">{result.message}</div>
+  }
+  return <OutcomeView outcome={result.outcome} />
+}
+
+/** One configured destination, with how stale it is and how to remove it. */
+function TargetRow({
+  target,
+  result,
+  busy,
+  onForget
+}: {
+  target: BackupTarget
+  result: TargetResult | undefined
+  busy: boolean
+  onForget: () => void
+}): JSX.Element {
+  return (
+    <div className="backup-target">
+      <div className="dialog-hint" style={{ marginTop: 0 }}>
+        {target.path}
+      </div>
+      <div className="control-row">
+        <span>
+          {target.lastBackupAt != null
+            ? `Last backup ${timeAgo(target.lastBackupAt)}.`
+            : 'Never backed up.'}
+        </span>
+        <span className="spacer" />
+        <button type="button" className="btn" disabled={busy} onClick={onForget}>
+          Forget
+        </button>
+      </div>
+      {result != null && <ResultLine result={result} />}
+    </div>
+  )
+}
+
 export function BackupDialog({ onClose }: { onClose: () => void }): JSX.Element {
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const project = useWyrm((s) => s.project)
@@ -73,12 +120,12 @@ export function BackupDialog({ onClose }: { onClose: () => void }): JSX.Element 
   const loadBackupSettings = useWyrm((s) => s.loadBackupSettings)
   const chooseBackupLocation = useWyrm((s) => s.chooseBackupLocation)
   const setBackupAuto = useWyrm((s) => s.setBackupAuto)
-  const clearBackupLocation = useWyrm((s) => s.clearBackupLocation)
+  const removeBackupTarget = useWyrm((s) => s.removeBackupTarget)
   const backupNow = useWyrm((s) => s.backupNow)
   const restoreFromBackup = useWyrm((s) => s.restoreFromBackup)
 
   const [busy, setBusy] = useState<'location' | 'forget' | 'backup' | 'restore' | null>(null)
-  const [outcome, setOutcome] = useState<BackupOutcome | null>(null)
+  const [run, setRun] = useState<BackupRun | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -93,11 +140,11 @@ export function BackupDialog({ onClose }: { onClose: () => void }): JSX.Element 
       .finally(() => setBusy(null))
   }
 
-  const forget = (): void => {
+  const forget = (targetId: string): void => {
     setBusy('forget')
     setError(null)
-    setOutcome(null)
-    void clearBackupLocation()
+    setRun(null)
+    void removeBackupTarget(targetId)
       .catch((e: unknown) => setError(errorMessage(e)))
       .finally(() => setBusy(null))
   }
@@ -109,9 +156,9 @@ export function BackupDialog({ onClose }: { onClose: () => void }): JSX.Element 
   const runBackup = (): void => {
     setBusy('backup')
     setError(null)
-    setOutcome(null)
+    setRun(null)
     void backupNow()
-      .then(setOutcome)
+      .then(setRun)
       .catch((e: unknown) => setError(errorMessage(e)))
       .finally(() => setBusy(null))
   }
@@ -141,7 +188,7 @@ export function BackupDialog({ onClose }: { onClose: () => void }): JSX.Element 
 
           {backupSettings == null ? (
             <div className="dialog-hint">Reading backup settings…</div>
-          ) : backupSettings.path == null ? (
+          ) : backupSettings.targets.length === 0 ? (
             <>
               <div className="dialog-hint">
                 Local version history protects {project?.data.title ?? 'this project'} against
@@ -162,16 +209,21 @@ export function BackupDialog({ onClose }: { onClose: () => void }): JSX.Element 
             </>
           ) : (
             <fieldset className="fieldset">
-              <legend>BACKUP LOCATION</legend>
-              <div className="dialog-hint" style={{ marginTop: 0 }}>
-                {backupSettings.path}
-              </div>
+              <legend>
+                {backupSettings.targets.length === 1 ? 'BACKUP LOCATION' : 'BACKUP LOCATIONS'}
+              </legend>
+              {backupSettings.targets.map((target) => (
+                <TargetRow
+                  key={target.id}
+                  target={target}
+                  result={run?.results.find((r) => r.targetId === target.id)}
+                  busy={busy != null}
+                  onForget={() => forget(target.id)}
+                />
+              ))}
               <div className="control-row">
                 <button type="button" className="btn" disabled={busy != null} onClick={choose}>
-                  {busy === 'location' ? 'Choosing…' : 'Change…'}
-                </button>
-                <button type="button" className="btn" disabled={busy != null} onClick={forget}>
-                  {busy === 'forget' ? 'Forgetting…' : 'Forget'}
+                  {busy === 'location' ? 'Choosing…' : 'Add Another Location…'}
                 </button>
               </div>
               <Check
@@ -189,13 +241,13 @@ export function BackupDialog({ onClose }: { onClose: () => void }): JSX.Element 
                 >
                   {busy === 'backup' ? 'Backing Up…' : 'Back Up Now'}
                 </button>
-                <span>
-                  {backupSettings.lastBackupAt != null
-                    ? `Last backup ${timeAgo(backupSettings.lastBackupAt)}.`
-                    : 'Never backed up.'}
-                </span>
               </div>
-              {outcome != null && <OutcomeView outcome={outcome} />}
+              {backupSettings.targets.length > 1 && (
+                <div className="dialog-hint">
+                  Every location is written on each backup. One that is not connected is skipped,
+                  not an error — the times above are how you tell which copies are current.
+                </div>
+              )}
             </fieldset>
           )}
 

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
 import type {
   AppearanceSettings,
-  BackupOutcome,
+  BackupRun,
   BackupSettings,
   BinderNode,
   CompileOptions,
@@ -174,8 +174,8 @@ interface WyrmState {
   loadBackupSettings(): Promise<void>
   chooseBackupLocation(): Promise<void>
   setBackupAuto(auto: boolean): Promise<void>
-  clearBackupLocation(): Promise<void>
-  backupNow(): Promise<BackupOutcome>
+  removeBackupTarget(targetId: string): Promise<void>
+  backupNow(): Promise<BackupRun>
   /** Restore a backup into a new project and open it. True if one was opened. */
   restoreFromBackup(): Promise<boolean>
 
@@ -494,7 +494,9 @@ export const useWyrm = create<WyrmState>((set, get) => {
       }
       // Auto-backup runs after the checkpoint and never blocks it: a missing
       // external drive must not be able to stop the writer saving their work.
-      if (committed && get().backupSettings?.auto) {
+      // An unreachable target is a skip, not a failure (F-40), so a run where
+      // every card is unplugged is still a success as far as this is concerned.
+      if (committed && get().backupSettings?.auto && get().backupSettings?.targets.length) {
         void get()
           .backupNow()
           .catch(() => {})
@@ -769,19 +771,19 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({ backupSettings: await api.setBackupAuto(project.path, auto) })
     },
 
-    async clearBackupLocation() {
+    async removeBackupTarget(targetId) {
       const { project } = get()
       if (!project) return
-      set({ backupSettings: await api.clearBackupLocation(project.path) })
+      set({ backupSettings: await api.removeBackupTarget(project.path, targetId) })
     },
 
     async backupNow() {
       const { project } = get()
       if (!project) throw new Error('No project is open')
       await get().flushSave()
-      const outcome = await api.backupNow(project.path)
+      const run = await api.backupNow(project.path)
       await get().loadBackupSettings()
-      return outcome
+      return run
     },
 
     async restoreFromBackup() {

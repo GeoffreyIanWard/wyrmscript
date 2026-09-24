@@ -1944,6 +1944,20 @@ button {
   max-width: 720px;
 }
 
+/* F-40: one backup destination in the list. Several targets stack, each with
+   its own staleness line, so they need a visible boundary — without one the
+   paths and their "last backup" times run together and it stops being obvious
+   which time belongs to which drive. A hairline rule rather than a box: these
+   are rows in a list, not nested panels. */
+.backup-target {
+  padding: 4px 0;
+}
+
+.backup-target + .backup-target {
+  border-top: 1px solid var(--ink);
+  margin-top: 4px;
+}
+
 .dialog-hint {
   font-size: 10px;
   line-height: 1.8;
