@@ -247,16 +247,92 @@ interface WyrmState {
 /** F-14: how many doc↔entity hops Esc can unwind. */
 const VIEW_HISTORY_LIMIT = 20
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-let commitTimer: ReturnType<typeof setInterval> | null = null
-let commitDirty = false
+/**
+ * Background work belonging to one open project (F-41).
+ *
+ * These three were module-level singletons, which was correct only for as long
+ * as exactly one project could be open. With a second one they become silent
+ * data loss: B's keystroke would clear A's pending 800ms save, so A's flush
+ * never fires and its draft sits unwritten; opening B would `clearInterval`
+ * A's auto-commit, so A quietly stops checkpointing; and one shared dirty flag
+ * means a commit in A marks B's unsaved work as already checkpointed. That
+ * last one is the same class of bug `git.ts`'s blob-hash comparison exists to
+ * prevent — work that looks saved and is not.
+ *
+ * Keyed by project path, which is the identity the main process already uses
+ * for everything (every IPC handler takes it as its first argument).
+ */
+interface ProjectRuntime {
+  /** Debounced write of the open document. */
+  saveTimer: ReturnType<typeof setTimeout> | null
+  /** The five-minute Autosave checkpoint. */
+  commitTimer: ReturnType<typeof setInterval> | null
+  /** Written to disk since the last checkpoint. */
+  commitDirty: boolean
+}
+
+const runtimes = new Map<string, ProjectRuntime>()
+
+function runtimeFor(path: string): ProjectRuntime {
+  let runtime = runtimes.get(path)
+  if (!runtime) {
+    runtime = { saveTimer: null, commitTimer: null, commitDirty: false }
+    runtimes.set(path, runtime)
+  }
+  return runtime
+}
+
+/**
+ * Stops a project's background work and forgets it. Every exit path has to
+ * call this — a surviving interval would keep committing a project nobody has
+ * open, and a surviving entry would leak one object per project ever opened.
+ */
+function disposeRuntime(path: string): void {
+  const runtime = runtimes.get(path)
+  if (!runtime) return
+  if (runtime.saveTimer) clearTimeout(runtime.saveTimer)
+  if (runtime.commitTimer) clearInterval(runtime.commitTimer)
+  runtimes.delete(path)
+}
+
+/* Test seams. Multiple projects cannot be opened through the UI yet, so the
+ * only way to prove that one project's background work is independent of
+ * another's is to stand a second runtime up directly. */
+
+export function __runtimeCount(): number {
+  return runtimes.size
+}
+
+export function __runtimeFor(path: string): ProjectRuntime | undefined {
+  return runtimes.get(path)
+}
+
+export function __ensureRuntime(path: string): ProjectRuntime {
+  return runtimeFor(path)
+}
+
+export function __disposeAll(): void {
+  for (const path of [...runtimes.keys()]) disposeRuntime(path)
+}
 
 export const useWyrm = create<WyrmState>((set, get) => {
+  /** Marks the open project as having work not yet checkpointed. Resolves the
+   *  project itself so the ~20 call sites stay one-liners. */
+  function markDirty(): void {
+    const path = get().project?.path
+    if (path) runtimeFor(path).commitDirty = true
+  }
+
+  function clearDirty(): void {
+    const path = get().project?.path
+    if (path) runtimeFor(path).commitDirty = false
+  }
+
   async function persistProject(): Promise<void> {
     const { project } = get()
     if (!project) return
     await api.saveProject(project.path, project.data)
-    commitDirty = true
+    markDirty()
   }
 
   function setProject(project: ProjectInfo | null): void {
@@ -308,10 +384,17 @@ export const useWyrm = create<WyrmState>((set, get) => {
       syncConflicts: null,
       syncNeedsAttention: false
     })
-    if (commitTimer) clearInterval(commitTimer)
-    commitTimer = setInterval(
+    const runtime = runtimeFor(info.path)
+    if (runtime.commitTimer) clearInterval(runtime.commitTimer)
+    runtime.commitTimer = setInterval(
       () => {
-        if (commitDirty) void get().commitNow('Autosave')
+        if (!runtime.commitDirty) return
+        // Routing point for F-41's next step. Today only one project can be
+        // open, so this is always the project that owns the interval; once
+        // state is per-project, `commitNow` gains a path and this passes
+        // `info.path` instead of relying on "the" open project.
+        if (get().project?.path !== info.path) return
+        void get().commitNow('Autosave')
       },
       5 * 60 * 1000
     )
@@ -379,13 +462,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async closeProject() {
+      const closing = get().project?.path
       await get().flushSave()
       await api.closeProject()
-      if (commitTimer) {
-        clearInterval(commitTimer)
-        commitTimer = null
-      }
-      commitDirty = false
+      // Only this project's work stops. A surviving interval would keep
+      // checkpointing a project nobody has open.
+      if (closing) disposeRuntime(closing)
       set({
         project: null,
         activeId: null,
@@ -462,22 +544,30 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { editor } = get()
       if (!editor) return
       set({ saveState: 'dirty', wordCount: countWords(editor.getText()) })
-      if (saveTimer) clearTimeout(saveTimer)
-      saveTimer = setTimeout(() => void get().flushSave(), 800)
+      const path = get().project?.path
+      if (!path) return
+      const runtime = runtimeFor(path)
+      if (runtime.saveTimer) clearTimeout(runtime.saveTimer)
+      runtime.saveTimer = setTimeout(() => void get().flushSave(), 800)
     },
 
     async flushSave() {
-      if (saveTimer) {
-        clearTimeout(saveTimer)
-        saveTimer = null
-      }
       const { project, activeDoc, editor, saveState } = get()
+      // Clearing the pending save belongs to *this* project's runtime; a
+      // shared timer meant a flush in one project cancelled another's.
+      if (project) {
+        const runtime = runtimeFor(project.path)
+        if (runtime.saveTimer) {
+          clearTimeout(runtime.saveTimer)
+          runtime.saveTimer = null
+        }
+      }
       if (!project || !activeDoc || !editor || saveState === 'saved') return
       set({ saveState: 'saving' })
       const body = docToMarkdown(editor.getJSON())
       const doc: DocFile = { ...activeDoc, body }
       await api.writeDoc(project.path, doc)
-      commitDirty = true
+      markDirty()
       set({ saveState: 'saved', activeDoc: doc })
     },
 
@@ -486,7 +576,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) return
       await get().flushSave()
       const committed = await api.commit(project.path, message)
-      commitDirty = false
+      clearDirty()
       if (committed) {
         set({ lastCommitAt: Date.now() })
         // The checkpoint just became history, which is where the stats live.
@@ -543,7 +633,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const doc: DocFile = { ...activeDoc, meta }
       await api.writeDoc(project.path, doc)
       set({ activeDoc: doc })
-      commitDirty = true
+      markDirty()
     },
 
     async setTimelineOrder(docId, order) {
@@ -554,7 +644,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const updated: DocFile = { ...doc, meta: { ...doc.meta, timelineOrder: order } }
       await api.writeDoc(project.path, updated)
       if (docId === activeId) set({ activeDoc: updated })
-      commitDirty = true
+      markDirty()
     },
 
     async setTimelineDate(docId, date) {
@@ -570,7 +660,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const updated: DocFile = { ...doc, meta }
       await api.writeDoc(project.path, updated)
       if (docId === activeId) set({ activeDoc: updated })
-      commitDirty = true
+      markDirty()
     },
 
     async setTension(docId, tension) {
@@ -581,7 +671,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const updated: DocFile = { ...doc, meta: { ...doc.meta, tension } }
       await api.writeDoc(project.path, updated)
       if (docId === activeId) set({ activeDoc: updated })
-      commitDirty = true
+      markDirty()
     },
 
     async createVariant(name) {
@@ -589,7 +679,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project || !activeId) return
       await get().flushSave()
       await api.createVariant(project.path, activeId, name)
-      commitDirty = false
+      clearDirty()
       set({ lastCommitAt: Date.now() })
     },
 
@@ -809,7 +899,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // output is exactly what was committed rather than a stale editor buffer.
       await get().flushSave()
       const committed = await api.commit(project.path, 'Auto: before compile')
-      commitDirty = false
+      clearDirty()
       if (committed) set({ lastCommitAt: Date.now() })
 
       const docs = await get().loadAllDocs()
@@ -835,7 +925,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // off the printer must correspond to a state that can be returned to.
       await get().flushSave()
       const committed = await api.commit(project.path, 'Auto: before print')
-      commitDirty = false
+      clearDirty()
       if (committed) set({ lastCommitAt: Date.now() })
 
       const docs = await get().loadAllDocs()
@@ -985,7 +1075,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       }
       await api.writeEntity(project.path, entity)
       setEntities([...get().entities, entity])
-      commitDirty = true
+      markDirty()
       return entity
     },
 
@@ -995,7 +1085,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const updated: Entity = { ...entity, modified: new Date().toISOString() }
       await api.writeEntity(project.path, updated)
       setEntities(get().entities.map((e) => (e.id === updated.id ? updated : e)))
-      commitDirty = true
+      markDirty()
     },
 
     async deleteEntity(entity) {
@@ -1003,7 +1093,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) return
       await api.deleteEntity(project.path, entity.type, entity.id)
       setEntities(get().entities.filter((e) => e.id !== entity.id))
-      commitDirty = true
+      markDirty()
       if (panelEntityId === entity.id) set({ panelEntityId: null })
       if (mainView.kind === 'entity' && mainView.id === entity.id)
         set({ mainView: { kind: 'doc' } })
@@ -1108,7 +1198,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       }
       await api.writePlotline(project.path, plotline)
       set({ plotlines: [...get().plotlines, plotline] })
-      commitDirty = true
+      markDirty()
       return plotline
     },
 
@@ -1118,7 +1208,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const updated: Plotline = { ...plotline, modified: new Date().toISOString() }
       await api.writePlotline(project.path, updated)
       set({ plotlines: get().plotlines.map((p) => (p.id === updated.id ? updated : p)) })
-      commitDirty = true
+      markDirty()
     },
 
     async deletePlotline(plotline) {
@@ -1126,7 +1216,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) return
       await api.deletePlotline(project.path, plotline.id)
       set({ plotlines: get().plotlines.filter((p) => p.id !== plotline.id) })
-      commitDirty = true
+      markDirty()
     },
 
     /* ---------- character graph (F-11) ---------- */
@@ -1151,7 +1241,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       }
       await api.writeRelationship(project.path, relationship)
       set({ relationships: [...get().relationships, relationship] })
-      commitDirty = true
+      markDirty()
       return relationship
     },
 
@@ -1163,7 +1253,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({
         relationships: get().relationships.map((r) => (r.id === updated.id ? updated : r))
       })
-      commitDirty = true
+      markDirty()
     },
 
     async deleteRelationship(relationship) {
@@ -1171,7 +1261,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) return
       await api.deleteRelationship(project.path, relationship.id)
       set({ relationships: get().relationships.filter((r) => r.id !== relationship.id) })
-      commitDirty = true
+      markDirty()
     },
 
     /* ---------- world map (F-12) ---------- */
@@ -1196,7 +1286,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
           ? get().mapPins.map((p) => (p.id === pin.id ? pin : p))
           : [...get().mapPins, pin]
       })
-      commitDirty = true
+      markDirty()
     },
 
     async removeMapPin(pin) {
@@ -1204,7 +1294,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) return
       await api.deleteMapPin(project.path, pin.id)
       set({ mapPins: get().mapPins.filter((p) => p.id !== pin.id) })
-      commitDirty = true
+      markDirty()
     }
   }
 })
