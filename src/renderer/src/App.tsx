@@ -25,6 +25,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { SearchDialog } from './components/SearchDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useWyrm } from './store'
+import type { ProjectSlice } from './store'
 import { api, isElectron } from './lib/api'
 import { summarize } from './lib/stats'
 import { errorMessage } from './lib/errors'
@@ -127,6 +128,82 @@ function StatusBar(): JSX.Element {
 }
 
 /** The writing terminal, or a bible entry or folder listing in its place. */
+/**
+ * The cascade offset for one window (F-41). Every window is the same size,
+ * stepped down and right by its position, the way a Mac cascades windows —
+ * so each title bar stays visible and clickable behind the one in front.
+ */
+function windowGeometry(index: number, count: number): CSSProperties | undefined {
+  // A lone project keeps the full-bleed layout it has always had; cascading a
+  // single window would shrink the page for no reason.
+  if (count <= 1) return undefined
+  const step = 28
+  const back = count - 1 - index
+  return {
+    top: 14 + index * step,
+    left: 14 + index * step,
+    right: 14 + back * step,
+    bottom: 14 + back * step
+  }
+}
+
+/**
+ * A project that is open but not in front.
+ *
+ * It renders from that project's parked state, which is a snapshot rather
+ * than a live editor — the TipTap instance belongs to the focused window (see
+ * `store.ts`'s slice notes). So this deliberately shows the manuscript as a
+ * page of text with no caret and no selection: it reads as the document it
+ * is, while never inviting keystrokes that would go somewhere else. Clicking
+ * anywhere brings it forward, at which point it becomes the real thing.
+ */
+function InactiveProjectWindow({
+  slice,
+  style,
+  onFocus,
+  onClose
+}: {
+  slice: ProjectSlice
+  style: CSSProperties | undefined
+  onFocus: () => void
+  onClose: () => void
+}): JSX.Element {
+  const title = slice.project?.data.title ?? 'Untitled'
+  return (
+    <div
+      className="mac-window project-window inactive"
+      style={style}
+      // A window is brought forward by clicking anywhere in it, not just its
+      // title bar — that is what every desktop does, and hunting for the bar
+      // would be a small cruelty in a cascade.
+      onMouseDown={onFocus}
+    >
+      <div className="title-bar">
+        <button
+          type="button"
+          aria-label={`Close ${title}`}
+          className="close-box"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            onClose()
+          }}
+        />
+        <span className="title">{title}</span>
+      </div>
+      <div className="inactive-page">{slice.activeDoc?.body ?? ''}</div>
+      {/* Names the project, not just the document: in a cascade this strip is
+          often the only part of the window not covered, and the title bar
+          above it may be behind the window in front. */}
+      <div className="inactive-hint">
+        {title}
+        {slice.activeDoc?.meta.title ? ` — ${slice.activeDoc.meta.title}` : ''} — click to bring
+        forward
+      </div>
+    </div>
+  )
+}
+
 function MainPane(): JSX.Element {
   const mainView = useWyrm((s) => s.mainView)
   if (mainView.kind === 'entity') return <EntityEditor key={mainView.id} entityId={mainView.id} />
@@ -180,6 +257,8 @@ function App(): JSX.Element {
 
   const project = useWyrm((s) => s.project)
   const booted = useWyrm((s) => s.booted)
+  const parked = useWyrm((s) => s.parked)
+  const openPaths = useWyrm((s) => s.openPaths)
   const boot = useWyrm((s) => s.boot)
 
   useEffect(() => {
@@ -253,6 +332,16 @@ function App(): JSX.Element {
         // ⇧⌘S — Writing Stats page (F-26).
         e.preventDefault()
         state.showStats()
+      } else if (e.key === 'o' && !e.shiftKey) {
+        // ⌘O — the menu has advertised this since Phase 2 but nothing was ever
+        // bound to it, so it silently did nothing. Fixed here rather than
+        // adding a second decorative shortcut beside it.
+        e.preventDefault()
+        void state.openProject()
+      } else if ((e.key === 'O' || (e.key === 'o' && e.shiftKey)) && state.project) {
+        // ⇧⌘O — open alongside, in its own window (F-41).
+        e.preventDefault()
+        void state.openAnotherProject()
       } else if (e.key === 'y' && state.activeDoc) {
         e.preventDefault()
         void state.flushSave().then(() => setVersionDialog('history'))
@@ -370,38 +459,62 @@ function App(): JSX.Element {
         }}
       />
       <div className="desktop">
-        {project ? (
-          <div className="mac-window main-window">
-            <div className="title-bar">
-              <button
-                type="button"
-                aria-label="Close Project"
-                className="close-box"
-                onClick={() => void useWyrm.getState().closeProject()}
-              />
-              <span className="title">{project.data.title}</span>
-              {/* The zoom box is the period-correct glyph for "fill the
+        {openPaths.length > 0
+          ? openPaths.map((path, index) => {
+              const style = windowGeometry(index, openPaths.length)
+              if (path !== project?.path) {
+                const slice = parked[path]
+                return slice == null ? null : (
+                  <InactiveProjectWindow
+                    key={path}
+                    slice={slice}
+                    // Behind the focused window, but ordered among themselves so
+                    // the cascade reads front-to-back.
+                    style={{ ...style, zIndex: 1 + index }}
+                    onFocus={() => void useWyrm.getState().focusProject(path)}
+                    onClose={() => void useWyrm.getState().closeProject(path)}
+                  />
+                )
+              }
+              return (
+                <div
+                  key={path}
+                  className={`mac-window ${openPaths.length === 1 ? 'main-window' : 'project-window'}`}
+                  style={openPaths.length === 1 ? undefined : { ...style, zIndex: 50 }}
+                >
+                  <div className="title-bar">
+                    <button
+                      type="button"
+                      aria-label="Close Project"
+                      className="close-box"
+                      onClick={() => void useWyrm.getState().closeProject()}
+                    />
+                    <span className="title">{project.data.title}</span>
+                    {/* The zoom box is the period-correct glyph for "fill the
                   screen" — reusing it beats inventing a modern expand icon. */}
-              <button
-                type="button"
-                className="zoom-box"
-                aria-label={focusMode ? 'Exit Focus Mode' : 'Enter Focus Mode'}
-                aria-pressed={focusMode}
-                onClick={() => setFocusMode((v) => !v)}
-              />
-            </div>
-            <div className="window-body">
-              {!focusMode && <Binder />}
-              <ErrorBoundary label="Story bible" onDismiss={() => useWyrm.getState().showDoc()}>
-                <MainPane />
-              </ErrorBoundary>
-              {!focusMode && <EntityPanel />}
-            </div>
-            {!focusMode && <StatusBar />}
-          </div>
-        ) : (
-          booted && <Welcome />
-        )}
+                    <button
+                      type="button"
+                      className="zoom-box"
+                      aria-label={focusMode ? 'Exit Focus Mode' : 'Enter Focus Mode'}
+                      aria-pressed={focusMode}
+                      onClick={() => setFocusMode((v) => !v)}
+                    />
+                  </div>
+                  <div className="window-body">
+                    {!focusMode && <Binder />}
+                    <ErrorBoundary
+                      label="Story bible"
+                      onDismiss={() => useWyrm.getState().showDoc()}
+                    >
+                      <MainPane />
+                    </ErrorBoundary>
+                    {!focusMode && <EntityPanel />}
+                  </div>
+                  {!focusMode && <StatusBar />}
+                </div>
+              )
+            })
+          : booted && <Welcome />}
         {prefsOpen && statsSettings && (
           <PrefsDialog
             appearance={appearance}

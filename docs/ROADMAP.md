@@ -644,6 +644,22 @@ Each open project's state is now its own. **No pixels move** and no user-visible
 
 **Still to come:** `openAdditionalProject` is implemented and tested but wired to nothing — opening a second project with no way to see or reach it would be worse than not offering it. Step 3 gives it a window.
 
+#### Step 3 — a window per project ✅ shipped
+
+The first visible step. **File → Open in New Window… (⇧⌘O)** opens a project alongside the current one, and the desktop draws one `.mac-window` per open project, cascaded 28px down-and-right so each frame stays reachable. A lone project keeps the full-bleed layout it has always had — cascading one window would shrink the page for nothing.
+
+**The front window is the app; the others are snapshots.** Only the focused project has live state (step 2), so a background window renders from its parked slice: its manuscript as a page of text, with no caret and no selection. That is deliberate rather than a limitation to apologise for — it reads as the document it is while never inviting keystrokes that would land in a different novel. Clicking anywhere in it brings it forward, at which point it becomes the real thing, editor and all. Classic Mac drops the title-bar pinstripes on inactive windows for the same reason, and that styling is restored here: two identical frames otherwise give the writer no way to tell where their typing will go.
+
+**Each window's close box closes its own project**, not whichever is focused — with a cascade of identical frames, closing the wrong novel would be silent and would look unrecoverable. The box stops its own mouse events so it cannot focus the window on the way to closing it, which would also route the close through a different code path than the one intended.
+
+**Stacking stays inside the documented z-index budget.** Project windows sit far below `.menu-drop` (90), so a menu is never trapped behind a window, and nowhere near `.dialog-overlay` (300) — which is what keeps dialogs app-modal across every window, as settled up front.
+
+**Fixed in passing:** ⌘O has been printed beside *Open Project…* since Phase 2 with nothing bound to it — it silently did nothing. Implemented rather than adding a second decorative shortcut beside it.
+
+**The honest edge:** in a cascade, which part of a background window is exposed depends on where it sits. A window earlier in the stack shows its title bar; a later one shows the strip along its bottom. Both are clickable, and the strip names its project for exactly that reason — but it is a fixed-geometry compromise, and step 4's dragging is what properly resolves it.
+
+**Not done here:** dragging, resizing, minimize-to-icon, and background backup/sync for parked projects.
+
 
 **Testing note.** None of this is reachable through the UI yet, so each test stands a second project's runtime up directly. Two of the four guards were initially vacuous and were caught by injecting the old singletons back: comparing a stored timer handle before and after cannot detect cancellation, because `clearInterval` stops a timer without changing its handle, and `expect(undefined).not.toBeNull()` passes — so a test asserting `__runtimeFor(OTHER)?.commitTimer` survives the entry being disposed entirely. Both now assert behaviourally with fake timers: does the other project still tick?
 
