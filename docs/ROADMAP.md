@@ -622,9 +622,28 @@ The debounced save, the five-minute Autosave interval and the dirty flag were mo
 
 All three now live in a `ProjectRuntime` keyed by project path, which is the identity the main process already uses everywhere. Behaviour with one project is unchanged by construction, and `disposeRuntime` runs on close so neither an interval nor a map entry outlives its project.
 
-The auto-commit callback carries an explicit routing guard (`if (get().project?.path !== info.path) return`). Today that is always true, because only one project can be open; it is the seam where step 2 will pass a path to `commitNow` instead of relying on "the" open project.
+The auto-commit callback carries an explicit routing guard: today it is always true, because only one project can be open, and it is the seam step 2 builds on.
 
-**State was deliberately left flat.** The tempting middle path — reshape into `projects: Record<path, slice>` while mirroring the focused project's fields at the top level — was rejected: the mirror needs all ~40 `set({…})` sites converted to write through a helper anyway, which is the same blast radius as the full reshape, plus a silent-divergence mode whenever a site forgets. Step 2 does it wholesale, with the 259 test call sites budgeted rather than discovered.
+**State was deliberately left flat in this step.** The tempting middle path — reshape into `projects: Record<path, slice>` while mirroring the focused project's fields at the top level — was rejected: the mirror needs all ~40 `set({…})` sites converted to write through a helper anyway, which is the same blast radius as the full reshape, plus a silent-divergence mode whenever a site forgets. Step 2 found a shape with neither cost.
+
+#### Step 2 — per-project state ✅ shipped
+
+Each open project's state is now its own. **No pixels move** and no user-visible behaviour changes: nothing yet opens a second project, because there is nowhere to show it. What exists is the state machine the windows will sit on.
+
+**The focused project's state stays in the flat fields; the others are parked by path** (`parked: Record<string, ProjectSlice>`, plus `openPaths` in window order). Focusing swaps — the current fields are parked under their path and the target's are lifted out. This was chosen over the more obvious `projects: Record<path, slice>` with everything addressed by id because there is exactly **one home for each project's data and nothing is mirrored**, so no two copies can drift; because every action keeps acting on "the" project, which is the focused one, matching the settled decision that dialogs are app-modal and act on the focused window; and because it left all ~40 store call sites and all 259 test pokes working unchanged, so the diff is the state machine rather than a rename across the codebase.
+
+`SLICE_KEYS` is the single declaration of what belongs to a project — `ProjectSlice` is `Pick`ed from it, so the type and the code that copies state in and out of focus cannot disagree. Everything absent from it is app-level: appearance, stats and print settings, typewriter mode, recents, `booted`.
+
+**`editor` is never parked.** It is in the slice, but always stored as `null`: the TipTap instance belongs to the component that mounted it, and by the time a project is focused again that component has unmounted and destroyed it. Restoring the handle would hand back a corpse. Per-window editor registration is step 3.
+
+**Closing gained cases.** `closeProject(path?)` closes the named project or the focused one. Closing a background project leaves the focused one untouched. Closing the focused project brings the most recently opened of the rest forward, rather than dropping the writer to the home screen while they still have projects open. Only when the last project closes does `api.closeProject()` run — turning off auto-reopen once, not every time a window shuts.
+
+**Fixed in passing:** `tagFilter` and `dailyStats` were never reset when a project closed, so they leaked into the next project opened. They are in the slice now, which fixes it by construction.
+
+**A background project still checkpoints.** Its interval fires, but `commitNow` acts on the focused project, so routing it there would have meant an open-but-unfocused project silently never writing history. `commitParked` handles it: nothing to flush (a project's pending save is flushed as it loses focus, and it has no window of its own yet), the commit is already path-addressed in the main process, and the bookkeeping lands on the parked slice rather than on the flat fields, which hold a different project entirely. Background *backup* and *sync* for parked projects are not wired up yet — they follow in step 3, where a window makes a project properly present.
+
+**Still to come:** `openAdditionalProject` is implemented and tested but wired to nothing — opening a second project with no way to see or reach it would be worse than not offering it. Step 3 gives it a window.
+
 
 **Testing note.** None of this is reachable through the UI yet, so each test stands a second project's runtime up directly. Two of the four guards were initially vacuous and were caught by injecting the old singletons back: comparing a stored timer handle before and after cannot detect cancellation, because `clearInterval` stops a timer without changing its handle, and `expect(undefined).not.toBeNull()` passes — so a test asserting `__runtimeFor(OTHER)?.commitTimer` survives the entry being disposed entirely. Both now assert behaviourally with fake timers: does the other project still tick?
 
