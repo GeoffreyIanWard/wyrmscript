@@ -51,9 +51,67 @@ function newId(): string {
   return Math.random().toString(36).slice(2, 10)
 }
 
+/**
+ * F-41: the fields that belong to one open project, as opposed to the app.
+ *
+ * This list is the single declaration — `ProjectSlice` is derived from it, so
+ * the type and the code that copies a project in and out of focus can never
+ * disagree. Everything *not* here is app-level and shared across projects:
+ * appearance, stats settings, print settings, typewriter mode, the recents
+ * list, `booted`.
+ *
+ * `editor` is in the slice but is always parked as `null` — the TipTap
+ * instance belongs to the mounted component, not to the state, and restoring
+ * a destroyed one would be worse than rebuilding it. Per-window editor
+ * registration is step 3.
+ */
+const SLICE_KEYS = [
+  'project',
+  'activeId',
+  'activeDoc',
+  'editor',
+  'saveState',
+  'wordCount',
+  'lastCommitAt',
+  'renamingId',
+  'entities',
+  'entityIndex',
+  'panelEntityId',
+  'mainView',
+  'viewHistory',
+  'tagFilter',
+  'plotlines',
+  'relationships',
+  'mapPins',
+  'backupSettings',
+  'dailyStats',
+  'syncStatus',
+  'syncConflicts',
+  'syncNeedsAttention'
+] as const
+
+export type ProjectSlice = Pick<WyrmState, (typeof SLICE_KEYS)[number]>
+
 interface WyrmState {
   project: ProjectInfo | null
   booted: boolean
+  /**
+   * F-41: projects that are open but not focused, by path.
+   *
+   * The focused project's state is the flat fields on this object — there is
+   * exactly one home for each project's data and nothing is mirrored, so no
+   * two copies can drift. Focusing swaps: the current flat fields are parked
+   * under their path and the target's are lifted out. Every action therefore
+   * continues to act on "the" project, which is the focused one, matching the
+   * decision that dialogs are app-modal and act on the focused window.
+   */
+  parked: Record<string, ProjectSlice>
+  /** Every open project in window order, the focused one included. */
+  openPaths: string[]
+  /** Bring an already-open project to the front, parking the current one. */
+  focusProject(path: string): Promise<void>
+  /** Open a project *alongside* the current one rather than replacing it. */
+  openAdditionalProject(path: string): Promise<void>
   activeId: string | null
   activeDoc: DocFile | null
   editor: Editor | null
@@ -71,8 +129,12 @@ interface WyrmState {
   /** F-24: the Welcome/home screen's recents list; loaded whenever no project is open. */
   recentProjects: RecentProject[]
   loadRecentProjects(): Promise<void>
-  /** F-24: flush, forget the project, and turn off auto-reopen for next launch. */
-  closeProject(): Promise<void>
+  /**
+   * F-24: flush, forget the project, and turn off auto-reopen for next launch.
+   * F-41: with a path, closes that project; without, the focused one. Closing
+   * the focused project brings another open one forward if there is one.
+   */
+  closeProject(path?: string): Promise<void>
 
   /** Story bible (brief §5). */
   entities: Entity[]
@@ -315,6 +377,46 @@ export function __disposeAll(): void {
   for (const path of [...runtimes.keys()]) disposeRuntime(path)
 }
 
+/** The per-project fields of a freshly-closed app: no project, nothing open. */
+function emptySlice(): ProjectSlice {
+  return {
+    project: null,
+    activeId: null,
+    activeDoc: null,
+    editor: null,
+    saveState: 'saved',
+    wordCount: 0,
+    lastCommitAt: null,
+    renamingId: null,
+    entities: [],
+    entityIndex: buildEntityIndex([]),
+    panelEntityId: null,
+    mainView: { kind: 'doc' },
+    viewHistory: [],
+    tagFilter: null,
+    plotlines: [],
+    relationships: [],
+    mapPins: [],
+    backupSettings: null,
+    dailyStats: [],
+    syncStatus: null,
+    syncConflicts: null,
+    syncNeedsAttention: false
+  }
+}
+
+/** Lifts one project's fields out of the flat state, to be parked. */
+function takeSlice(state: WyrmState): ProjectSlice {
+  const slice = {} as Record<string, unknown>
+  for (const key of SLICE_KEYS) slice[key] = state[key]
+  // Never park a live editor: the instance belongs to the component that
+  // mounted it, and by the time this project is focused again that component
+  // has unmounted and destroyed it. Restoring the corpse would be worse than
+  // rebuilding from `activeDoc`.
+  slice.editor = null
+  return slice as ProjectSlice
+}
+
 export const useWyrm = create<WyrmState>((set, get) => {
   /** Marks the open project as having work not yet checkpointed. Resolves the
    *  project itself so the ~20 call sites stay one-liners. */
@@ -369,9 +471,58 @@ export const useWyrm = create<WyrmState>((set, get) => {
     }
   }
 
-  async function loadProject(info: ProjectInfo): Promise<void> {
+  /**
+   * Parks the focused project so another can take the flat fields. Returns
+   * the parked map to fold into the same `set` as the incoming project, so
+   * there is never a render where one project has left and the next has not
+   * arrived.
+   */
+  function parkFocused(): Record<string, ProjectSlice> {
+    const state = get()
+    const path = state.project?.path
+    if (!path) return state.parked
+    return { ...state.parked, [path]: takeSlice(state) }
+  }
+
+  /**
+   * Checkpoints a project that is open but not focused.
+   *
+   * Nothing to flush: a project's pending save is flushed as it loses focus,
+   * and with no window of its own yet it has no editor to have dirtied since.
+   * The commit itself is already path-addressed in the main process, so only
+   * the bookkeeping needs care — it belongs to the parked slice, not to the
+   * flat fields, which hold a different project entirely.
+   */
+  async function commitParked(path: string): Promise<void> {
+    const committed = await api.commit(path, 'Autosave').catch(() => false)
+    runtimeFor(path).commitDirty = false
+    if (!committed) return
+    const parked = get().parked
+    const slice = parked[path]
+    // It may have been focused or closed while the commit was in flight.
+    if (!slice) return
+    set({ parked: { ...parked, [path]: { ...slice, lastCommitAt: Date.now() } } })
+  }
+
+  async function loadProject(info: ProjectInfo, keepOthersOpen = false): Promise<void> {
+    // Saving before the state is swapped away, or the pending edit is lost
+    // with the fields it lived in.
+    if (keepOthersOpen) await get().flushSave()
+    if (!keepOthersOpen) {
+      // Replacing rather than adding: everything else really closes, so its
+      // background work must stop rather than be silently orphaned.
+      for (const path of get().openPaths) {
+        if (path !== info.path) disposeRuntime(path)
+      }
+    }
+    const parked = keepOthersOpen ? parkFocused() : {}
+    const openPaths = keepOthersOpen
+      ? [...get().openPaths.filter((p) => p !== info.path), info.path]
+      : [info.path]
     setProject(info)
     set({
+      parked,
+      openPaths,
       booted: true,
       activeId: null,
       activeDoc: null,
@@ -389,12 +540,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
     runtime.commitTimer = setInterval(
       () => {
         if (!runtime.commitDirty) return
-        // Routing point for F-41's next step. Today only one project can be
-        // open, so this is always the project that owns the interval; once
-        // state is per-project, `commitNow` gains a path and this passes
-        // `info.path` instead of relying on "the" open project.
-        if (get().project?.path !== info.path) return
-        void get().commitNow('Autosave')
+        // A project that is open but not focused still has to checkpoint. Its
+        // state is parked rather than in the flat fields, so `commitNow` —
+        // which acts on the focused project — cannot do it, and skipping it
+        // would mean a background project silently never writing history.
+        if (get().project?.path === info.path) void get().commitNow('Autosave')
+        else void commitParked(info.path)
       },
       5 * 60 * 1000
     )
@@ -411,6 +562,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
   return {
     project: null,
     booted: false,
+    parked: {},
+    openPaths: [],
     activeId: null,
     activeDoc: null,
     editor: null,
@@ -461,36 +614,74 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({ recentProjects: await api.getRecentProjects() })
     },
 
-    async closeProject() {
-      const closing = get().project?.path
-      await get().flushSave()
-      await api.closeProject()
+    async closeProject(path) {
+      const state = get()
+      const focused = state.project?.path
+      const closing = path ?? focused
+      if (!closing) return
+
+      // A project that is merely parked has no unsaved editor state — its
+      // pending save was flushed when it lost focus — so only the focused one
+      // needs flushing, and only when it is the one going away.
+      if (closing === focused) await get().flushSave()
+
       // Only this project's work stops. A surviving interval would keep
       // checkpointing a project nobody has open.
-      if (closing) disposeRuntime(closing)
-      set({
-        project: null,
-        activeId: null,
-        activeDoc: null,
-        editor: null,
-        saveState: 'saved',
-        wordCount: 0,
-        lastCommitAt: null,
-        renamingId: null,
-        entities: [],
-        entityIndex: buildEntityIndex([]),
-        panelEntityId: null,
-        mainView: { kind: 'doc' },
-        viewHistory: [],
-        plotlines: [],
-        relationships: [],
-        mapPins: [],
-        backupSettings: null,
-        syncStatus: null,
-        syncConflicts: null,
-        syncNeedsAttention: false
-      })
+      disposeRuntime(closing)
+
+      const parked = { ...get().parked }
+      delete parked[closing]
+      const openPaths = get().openPaths.filter((p) => p !== closing)
+
+      if (closing !== focused) {
+        // Closing a background project leaves the focused one untouched.
+        set({ parked, openPaths })
+        return
+      }
+
+      // The focused project is going. Bring the most recently opened of the
+      // rest forward rather than dropping the writer to the home screen while
+      // they still have projects open.
+      const next = openPaths[openPaths.length - 1]
+      const incoming = next != null ? parked[next] : undefined
+      if (incoming) {
+        delete parked[next]
+        set({ ...incoming, parked, openPaths })
+        await get().loadRecentProjects()
+        return
+      }
+
+      // Nothing left: this is the last project, so the app really has no
+      // project open and next launch should not auto-reopen one.
+      await api.closeProject()
+      set({ ...emptySlice(), parked, openPaths })
       await get().loadRecentProjects()
+    },
+
+    async focusProject(path) {
+      const state = get()
+      if (state.project?.path === path) return
+      const target = state.parked[path]
+      if (!target) return
+      // Flush first: the pending edit belongs to the project about to be
+      // parked, and `takeSlice` would otherwise carry a stale `activeDoc`.
+      await get().flushSave()
+      const parked = parkFocused()
+      delete parked[path]
+      set({ ...target, parked })
+    },
+
+    async openAdditionalProject(path) {
+      // Opening a project that is already open raises it instead of opening a
+      // second copy. Two editors on one documents/<id>.md would race autosave
+      // and git against the same repository, and nothing serializes that.
+      if (get().project?.path === path) return
+      if (get().parked[path]) {
+        await get().focusProject(path)
+        return
+      }
+      const info = await api.openProjectPath(path)
+      if (info) await loadProject(info, true)
     },
 
     async newProject(title) {
