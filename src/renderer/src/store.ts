@@ -112,6 +112,8 @@ interface WyrmState {
   focusProject(path: string): Promise<void>
   /** Open a project *alongside* the current one rather than replacing it. */
   openAdditionalProject(path: string): Promise<void>
+  /** Ask for a project with the native picker and open it in its own window. */
+  openAnotherProject(): Promise<void>
   activeId: string | null
   activeDoc: DocFile | null
   editor: Editor | null
@@ -669,6 +671,19 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const parked = parkFocused()
       delete parked[path]
       set({ ...target, parked })
+    },
+
+    async openAnotherProject() {
+      // Uses the info the picker already returned rather than re-opening by
+      // path, which would read the project off disk a second time.
+      const info = await api.openProject()
+      if (!info) return
+      if (get().project?.path === info.path) return
+      if (get().parked[info.path]) {
+        await get().focusProject(info.path)
+        return
+      }
+      await loadProject(info, true)
     },
 
     async openAdditionalProject(path) {

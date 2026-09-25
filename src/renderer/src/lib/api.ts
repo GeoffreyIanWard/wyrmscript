@@ -325,6 +325,8 @@ export function createMockApi(): WyrmApi {
   // auto-reopen pointer plus a most-recent-first recents list, seeded with
   // the demo project so the preview's Welcome screen has something to show.
   let lastProjectPath: string | null = demo.info.path
+  /** See openProject: the preview needs a way to reach a second project. */
+  let openedOnce = false
   let recentProjects: RecentProject[] = [
     { path: demo.info.path, title: demo.info.data.title, openedAt: new Date().toISOString() }
   ]
@@ -368,11 +370,27 @@ export function createMockApi(): WyrmApi {
       return project.info
     },
     async openProject(): Promise<ProjectInfo> {
-      lastProjectPath = demo.info.path
-      touchRecent(demo.info.path, demo.info.data.title)
-      return demo.info
+      // There is no native picker in the browser preview, so "which project?"
+      // has to be answered for us. The demo is handed back only if it has not
+      // been opened yet; since boot auto-opens it, in practice this invents a
+      // new novel each time — which is what makes opening a *second* project,
+      // and therefore several windows, explorable here rather than only in
+      // Electron (F-41).
+      if (!openedOnce) {
+        openedOnce = true
+        lastProjectPath = demo.info.path
+        touchRecent(demo.info.path, demo.info.data.title)
+        return demo.info
+      }
+      const invented = starterProject(`Novel ${projects.size}`)
+      projects.set(invented.info.path, invented)
+      lastProjectPath = invented.info.path
+      touchRecent(invented.info.path, invented.info.data.title)
+      return invented.info
     },
     async openProjectPath(path: string): Promise<ProjectInfo | null> {
+      // Boot comes through here, so the demo counts as already handed out.
+      openedOnce = true
       const info = projects.get(path)?.info ?? null
       if (info) {
         lastProjectPath = path

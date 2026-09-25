@@ -150,6 +150,16 @@ export function MenuBar({
           shortcut: '⌘O',
           action: () => void useWyrm.getState().openProject()
         },
+        {
+          // F-41: opens alongside rather than replacing. Only offered when
+          // there is something to open it alongside of — with no project open
+          // it would be an identical second copy of the item above.
+          kind: 'item',
+          label: 'Open in New Window…',
+          shortcut: '⇧⌘O',
+          disabled: !hasProject,
+          action: () => void useWyrm.getState().openAnotherProject()
+        },
         { kind: 'sep' },
         {
           kind: 'item',
