@@ -241,9 +241,58 @@ button {
   outline: 1px solid var(--paper); /* white keyline so windows separate from the dither desktop */
 }
 
+/* One project open: the window fills the desktop, exactly as it always has. */
 .main-window {
   position: absolute;
   inset: 14px;
+}
+
+/* Several projects open (F-41): the same frame, cascaded. Geometry is set
+   inline per window — offsets depend on how many are open, which CSS cannot
+   see. Stacking stays inside the documented z-index budget above: project
+   windows sit far below `.menu-drop` (90) so a menu is never trapped behind a
+   window, and nowhere near `.dialog-overlay` (300), which is what keeps
+   dialogs app-modal across every window. */
+.project-window {
+  position: absolute;
+}
+
+/* An unfocused window. Classic Mac drops the title-bar pinstripes on inactive
+   windows, which is the whole signal for "this one is not listening to the
+   keyboard" — without it two identical frames give the writer no way to tell
+   where their typing will land. */
+.project-window.inactive > .title-bar {
+  background: none;
+}
+
+.project-window.inactive > .title-bar .title {
+  opacity: 0.7;
+}
+
+/* Inactive contents read as a page, but plainly: no caret, no selection, and
+   nothing that invites typing into a window that will not receive it. */
+.inactive-page {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 18px 22px;
+  background: var(--page-bg, var(--paper));
+  color: var(--page-ink, var(--ink));
+  font-family: var(--font-prose);
+  font-size: calc(var(--prose-size) * 0.9);
+  line-height: var(--prose-leading);
+  white-space: pre-wrap;
+  opacity: 0.75;
+  user-select: none;
+  /* Fades out rather than cutting a line in half at the frame edge. */
+  mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+}
+
+.inactive-hint {
+  padding: 6px 22px 10px;
+  font-family: var(--font-chrome);
+  font-size: 11px;
+  opacity: 0.6;
 }
 
 .title-bar {
