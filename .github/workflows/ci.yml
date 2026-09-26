@@ -1,0 +1,42 @@
+name: CI
+
+# Until now the suite only ran on a release tag, which meant a pull request
+# could be merged with nothing verified — fine while the repository was private
+# and had one contributor, not fine once anyone can open a PR.
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+# Read-only by default. A test run has no reason to be able to write to the
+# repository, and on a public repo this token is what a malicious PR would try
+# to reach. The release workflow grants itself `contents: write` where it
+# actually needs it.
+permissions:
+  contents: read
+
+concurrency:
+  # A new push to a branch makes the previous run's answer irrelevant.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Never build the merge commit of an untrusted PR with anything
+          # privileged; this workflow has no secrets, but keeping the checkout
+          # explicit makes that visible rather than incidental.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # `npm ci` rather than `npm install`: a lockfile that does not match
+      # package.json should fail the build, not be silently resolved.
+      - run: npm ci
+      - run: npm run test
+      - run: npm run typecheck
+      - run: npm run lint
