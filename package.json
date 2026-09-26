@@ -1,7 +1,7 @@
 {
   "name": "wyrmstar",
   "version": "0.3.0",
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "description": "A retro word processor for novel writing",
   "main": "./out/main/index.js",
   "author": "Geoffrey Ward",
