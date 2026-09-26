@@ -5,12 +5,21 @@ change.
 
 ## The licence, and what contributing means
 
-WyrmStar is MIT-licensed. Contributions are accepted under the same licence.
+WyrmStar is GPL-3.0-or-later. Contributions are accepted under the same
+licence, which means anyone who distributes a modified WyrmStar has to publish
+their source too.
 
-**The maintainer may also distribute WyrmStar commercially.** MIT permits that
-for everyone, including for contributed code, so there is no contributor
-agreement to sign here — but it is worth knowing that is where the project is
-headed before you spend an evening on a feature.
+**The maintainer may also distribute WyrmStar commercially, including under
+different terms.** That is possible because he holds the copyright — but only
+to the code he wrote. So contributors are asked to state in their pull request
+that the change is their own work and that the maintainer may relicense it.
+
+This is not a formality. Without it, a single contributed line makes a paid
+build under other terms impossible to ship, and the only remedies are tracking
+the contributor down years later or rewriting their work. If you would rather
+not agree to that, please open an issue describing the change instead — a
+well-described bug is genuinely useful and carries no licensing question at
+all.
 
 ## Before you build something
 
