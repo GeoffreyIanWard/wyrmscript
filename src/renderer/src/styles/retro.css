@@ -255,6 +255,46 @@ button {
    dialogs app-modal across every window. */
 .project-window {
   position: absolute;
+  /* Positioning context for the grow box pinned to its corner. */
+  overflow: hidden;
+}
+
+/* F-41 step 4: the title bar is the drag handle. `touch-action: none` is what
+   makes pointer events usable — without it the browser claims the gesture for
+   scrolling and the drag simply never fires on a touch device. */
+.project-window > .title-bar {
+  cursor: default;
+  touch-action: none;
+  /* The OS-window drag region is on the menu bar (see `-webkit-app-region` up
+     top). A project window's bar must NOT inherit it, or dragging a window
+     inside the app would drag the whole Electron window instead. */
+  -webkit-app-region: no-drag;
+}
+
+/* The classic bottom-right grow box: a corner you can grab, drawn as two
+   nested squares the way System 6 did. */
+.grow-box {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 15px;
+  height: 15px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: var(--paper);
+  border-top: 1px solid var(--ink);
+  border-left: 1px solid var(--ink);
+}
+
+.grow-box::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
 }
 
 /* An unfocused window. Classic Mac drops the title-bar pinstripes on inactive

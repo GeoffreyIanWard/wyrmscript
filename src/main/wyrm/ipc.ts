@@ -4,6 +4,7 @@ import { join, basename } from 'node:path'
 import http from 'isomorphic-git/http/node'
 import type {
   AppearanceSettings,
+  WindowGeometry,
   ConflictResolution,
   DocFile,
   Entity,
@@ -37,6 +38,8 @@ import {
   readAppearance,
   addBackupTarget,
   readBackupSettings,
+  readWindowGeometry,
+  writeWindowGeometry,
   removeBackupTarget,
   updateBackupTarget,
   readRecentProjects,
@@ -207,6 +210,13 @@ export function registerIpc(): void {
     await commitAll(path, 'Autosave').catch(() => false)
     return dailyStats(path)
   })
+
+  /* ---------- project windows (F-41) ---------- */
+
+  ipcMain.handle('window:geometry:get', (_e, path: string) => readWindowGeometry(path))
+  ipcMain.handle('window:geometry:set', (_e, path: string, geometry: WindowGeometry) =>
+    writeWindowGeometry(path, geometry)
+  )
 
   /* ---------- local backup (F-01) ---------- */
 

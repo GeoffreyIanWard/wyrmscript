@@ -11,6 +11,7 @@ import type {
   SignInPoll,
   SyncConflict,
   SyncOutcome,
+  WindowGeometry,
   SyncStatus,
   CompileResult,
   DayStat,
@@ -106,8 +107,25 @@ interface WyrmState {
    * decision that dialogs are app-modal and act on the focused window.
    */
   parked: Record<string, ProjectSlice>
-  /** Every open project in window order, the focused one included. */
+  /**
+   * Every open project in **stacking** order, the focused one last and so in
+   * front. Position is explicit now (see `windowGeometry`), so reordering
+   * this no longer moves any window — which is what lets focusing raise a
+   * window without shuffling the others around the desktop.
+   */
   openPaths: string[]
+  /**
+   * F-41 step 4: where each window sits, by project path.
+   *
+   * Outside the parked slice on purpose. Every open window is rendered at
+   * once, so its position has to be readable whether or not it is focused —
+   * and a slice is only readable after it has been swapped in.
+   */
+  windowGeometry: Record<string, WindowGeometry>
+  /** Live update while dragging or resizing; does not touch disk. */
+  moveWindow(path: string, geometry: WindowGeometry): void
+  /** Called once when a drag or resize ends, to remember the position. */
+  persistWindow(path: string): Promise<void>
   /** Bring an already-open project to the front, parking the current one. */
   focusProject(path: string): Promise<void>
   /** Open a project *alongside* the current one rather than replacing it. */
@@ -551,6 +569,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
       },
       5 * 60 * 1000
     )
+    // A remembered position, if this project has one. Windows with none are
+    // given a default by App, which is the only place that knows how big the
+    // desktop currently is.
+    const saved = await api.getWindowGeometry(info.path).catch(() => null)
+    if (saved) set({ windowGeometry: { ...get().windowGeometry, [info.path]: saved } })
     const first = firstDoc(info.data.binder)
     if (first) await get().selectDoc(first.id)
     await get().loadEntities()
@@ -566,6 +589,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     booted: false,
     parked: {},
     openPaths: [],
+    windowGeometry: {},
     activeId: null,
     activeDoc: null,
     editor: null,
@@ -660,6 +684,15 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await get().loadRecentProjects()
     },
 
+    moveWindow(path, geometry) {
+      set({ windowGeometry: { ...get().windowGeometry, [path]: geometry } })
+    },
+
+    async persistWindow(path) {
+      const geometry = get().windowGeometry[path]
+      if (geometry) await api.setWindowGeometry(path, geometry)
+    },
+
     async focusProject(path) {
       const state = get()
       if (state.project?.path === path) return
@@ -670,7 +703,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await get().flushSave()
       const parked = parkFocused()
       delete parked[path]
-      set({ ...target, parked })
+      // Raising is a stacking change, not a move: the focused window goes to
+      // the end of openPaths and therefore renders in front, while every
+      // window stays exactly where the writer put it.
+      const openPaths = [...get().openPaths.filter((p) => p !== path), path]
+      set({ ...target, parked, openPaths })
     },
 
     async openAnotherProject() {

@@ -456,6 +456,20 @@ export interface PrinterInfo {
   isDefault: boolean
 }
 
+/* ---------- Project windows (F-41) ---------- */
+
+/**
+ * Where a project's window sits on the desktop, in pixels relative to it.
+ * Persisted per project path, so reopening a novel puts its window back where
+ * the writer left it.
+ */
+export interface WindowGeometry {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 /* ---------- Local backup (F-01) ---------- */
 
 /**
@@ -646,6 +660,10 @@ export interface WyrmApi {
   /** Per-day writing history for a project, oldest first, derived from its
    *  git history. Checkpoints first so uncommitted work is included. */
   getDailyStats(path: string): Promise<DayStat[]>
+
+  /** F-41: remembered window position, or null if this project has none yet. */
+  getWindowGeometry(path: string): Promise<WindowGeometry | null>
+  setWindowGeometry(path: string, geometry: WindowGeometry): Promise<void>
 
   getBackupSettings(path: string): Promise<BackupSettings>
   /** Pick an additional backup location for this project. Null if cancelled. */

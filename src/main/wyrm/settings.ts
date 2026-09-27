@@ -10,7 +10,7 @@ import type {
 } from '../../shared/types'
 import { DEFAULT_APPEARANCE, DEFAULT_PRINT, DEFAULT_STATS } from '../../shared/types'
 import { randomUUID } from 'node:crypto'
-import type { BackupSettings, BackupTarget } from '../../shared/types'
+import type { BackupSettings, BackupTarget, WindowGeometry } from '../../shared/types'
 
 /** F-24: how many recently-opened projects the home screen offers. */
 const RECENT_PROJECTS_LIMIT = 8
@@ -26,6 +26,8 @@ interface AppSettings {
   lastProjectPath?: string
   /** Backup configuration per project path — different novels, different drives. */
   backups?: Record<string, BackupSettings>
+  /** F-41: where each project's window was last left, by project path. */
+  windows?: Record<string, WindowGeometry>
   /** GitHub OAuth app client id — public identifier, one-time app setup. */
   syncClientId?: string
   /** OAuth token, safeStorage-encrypted when the OS keychain is available. */
@@ -207,6 +209,19 @@ export async function removeBackupTarget(
   return writeBackupSettings(projectPath, {
     targets: current.targets.filter((t) => t.id !== targetId)
   })
+}
+
+export async function readWindowGeometry(projectPath: string): Promise<WindowGeometry | null> {
+  const settings = await readSettings()
+  return settings.windows?.[projectPath] ?? null
+}
+
+export async function writeWindowGeometry(
+  projectPath: string,
+  geometry: WindowGeometry
+): Promise<void> {
+  const settings = await readSettings()
+  await writeSettings({ windows: { ...settings.windows, [projectPath]: geometry } })
 }
 
 export async function readRecentProjects(): Promise<RecentProject[]> {

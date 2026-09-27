@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties, JSX } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { CSSProperties, JSX, PointerEvent as ReactPointerEvent } from 'react'
 import { MenuBar } from './components/MenuBar'
 import { Binder } from './components/Binder'
 import { Editor } from './components/Editor'
@@ -18,6 +18,18 @@ import { WorldMapDialog } from './components/WorldMapDialog'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { CompileDialog } from './components/CompileDialog'
 import { isConnected, isRemoteMissing } from './lib/syncState'
+import {
+  MIN_WIDTH,
+  cascadeFor,
+  clampToDesktop,
+  fullBleed,
+  moveBy,
+  resizeBy,
+  sameGeometry
+} from './lib/windowGeometry'
+import type { Size } from './lib/windowGeometry'
+import { useWindowDrag } from './lib/useWindowDrag'
+import type { WindowGeometry } from '../../shared/types'
 import { BackupDialog } from './components/BackupDialog'
 import { SyncDialog } from './components/SyncDialog'
 import { ConflictDialog } from './components/ConflictDialog'
@@ -129,22 +141,169 @@ function StatusBar(): JSX.Element {
 
 /** The writing terminal, or a bible entry or folder listing in its place. */
 /**
- * The cascade offset for one window (F-41). Every window is the same size,
- * stepped down and right by its position, the way a Mac cascades windows —
- * so each title bar stays visible and clickable behind the one in front.
+ * The desktop's usable size in pixels.
+ *
+ * Measured rather than assumed: window clamping has to know the real bounds,
+ * and they change with the OS window, Focus Mode, and the menu bar's height.
+ * Falls back to the viewport before the first measurement lands, and in jsdom,
+ * which reports zero for everything.
  */
-function windowGeometry(index: number, count: number): CSSProperties | undefined {
-  // A lone project keeps the full-bleed layout it has always had; cascading a
-  // single window would shrink the page for no reason.
-  if (count <= 1) return undefined
-  const step = 28
-  const back = count - 1 - index
+function useDesktopSize(): Size {
+  const [size, setSize] = useState<Size>({ width: 0, height: 0 })
+  useEffect(() => {
+    const read = (): void => {
+      const el = document.querySelector('.desktop')
+      const rect = el?.getBoundingClientRect()
+      // A degenerate measurement is worse than none. Before the first project
+      // renders, `.desktop` is empty and measures exactly its own padding —
+      // 28x28 — and a window sized from that is a 28-pixel square the writer
+      // cannot read, click, or resize back. Anything narrower than a window's
+      // own minimum is not a desktop.
+      if (rect && rect.width >= MIN_WIDTH) setSize({ width: rect.width, height: rect.height })
+    }
+    read()
+    const observer = new ResizeObserver(read)
+    const el = document.querySelector('.desktop')
+    if (el) observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return size.width > 0 ? size : { width: window.innerWidth, height: window.innerHeight }
+}
+
+/**
+ * Everything a project window needs to be dragged, resized and stacked
+ * (F-41 step 4).
+ *
+ * A hook rather than props because both window kinds — the live one in front
+ * and the snapshots behind it — need identical behaviour, and hooks cannot be
+ * called from inside the `.map` that renders them. Each window is therefore a
+ * component, and this is what they share.
+ */
+function useWindowChrome(path: string): {
+  style: CSSProperties
+  onTitlePointerDown: (e: ReactPointerEvent) => void
+  onGrowPointerDown: (e: ReactPointerEvent) => void
+} {
+  const geometry = useWyrm((s) => s.windowGeometry[path])
+  const desktop = useDesktopSize()
+
+  // Read through getters rather than closing over the value: a drag lasts
+  // many frames, and capturing a stale geometry would make the window jump
+  // back to where it was when the drag began.
+  const getGeometry = useCallback(
+    () => useWyrm.getState().windowGeometry[path] ?? fullBleed(desktop),
+    [path, desktop]
+  )
+  const getDesktop = useCallback(() => desktop, [desktop])
+  const commit = useCallback(
+    (next: WindowGeometry, done: boolean) => {
+      useWyrm.getState().moveWindow(path, next)
+      // Only the end of a gesture reaches disk; a pointermove-rate write would
+      // hit the settings file a hundred times per drag.
+      if (done) void useWyrm.getState().persistWindow(path)
+    },
+    [path]
+  )
+
+  const onTitlePointerDown = useWindowDrag({
+    getGeometry,
+    getDesktop,
+    apply: moveBy,
+    onCommit: commit
+  })
+  const onGrowPointerDown = useWindowDrag({
+    getGeometry,
+    getDesktop,
+    apply: resizeBy,
+    onCommit: commit
+  })
+
+  const g = geometry ?? fullBleed(desktop)
   return {
-    top: 14 + index * step,
-    left: 14 + index * step,
-    right: 14 + back * step,
-    bottom: 14 + back * step
+    style: { left: g.x, top: g.y, width: g.width, height: g.height },
+    onTitlePointerDown,
+    onGrowPointerDown
   }
+}
+
+/** The classic bottom-right grow box. Sized and styled in retro.css. */
+function GrowBox({
+  onPointerDown
+}: {
+  onPointerDown: (e: ReactPointerEvent) => void
+}): JSX.Element {
+  return (
+    <div
+      className="grow-box"
+      role="separator"
+      aria-label="Resize window"
+      // Stops propagation before resizing: the window's click-to-focus surface
+      // is on pointerdown, and raising a background window swaps the store's
+      // focused slice, which unmounts this component mid-gesture and kills the
+      // drag. So a corner grab resizes in place. The title bar deliberately
+      // does the opposite — clicking it raises, because that is the main way
+      // to bring a window forward.
+      onPointerDown={(e) => {
+        e.stopPropagation()
+        onPointerDown(e)
+      }}
+    />
+  )
+}
+
+/**
+ * The project in front: the live application, with a real editor.
+ *
+ * A component rather than inline JSX because it needs `useWindowChrome`, and
+ * a hook cannot be called from inside the `.map` that renders the windows.
+ */
+function FocusedProjectWindow({
+  path,
+  title,
+  alone,
+  focusMode,
+  onToggleFocusMode,
+  children
+}: {
+  path: string
+  title: string
+  /** The only project open, which keeps the full-bleed layout it always had. */
+  alone: boolean
+  focusMode: boolean
+  onToggleFocusMode: () => void
+  children: React.ReactNode
+}): JSX.Element {
+  const { style, onTitlePointerDown, onGrowPointerDown } = useWindowChrome(path)
+  return (
+    <div
+      className={`mac-window ${alone ? 'main-window' : 'project-window'}`}
+      style={alone ? undefined : { ...style, zIndex: 50 }}
+    >
+      <div className="title-bar" onPointerDown={alone ? undefined : onTitlePointerDown}>
+        <button
+          type="button"
+          aria-label="Close Project"
+          className="close-box"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => void useWyrm.getState().closeProject(path)}
+        />
+        <span className="title">{title}</span>
+        {/* The zoom box is the period-correct glyph for "fill the screen" —
+            reusing it beats inventing a modern expand icon. */}
+        <button
+          type="button"
+          className="zoom-box"
+          aria-label={focusMode ? 'Exit Focus Mode' : 'Enter Focus Mode'}
+          aria-pressed={focusMode}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={onToggleFocusMode}
+        />
+      </div>
+      {children}
+      {/* A lone window fills the desktop, so there is nothing to resize it to. */}
+      {!alone && <GrowBox onPointerDown={onGrowPointerDown} />}
+    </div>
+  )
 }
 
 /**
@@ -158,32 +317,41 @@ function windowGeometry(index: number, count: number): CSSProperties | undefined
  * anywhere brings it forward, at which point it becomes the real thing.
  */
 function InactiveProjectWindow({
+  path,
   slice,
-  style,
+  zIndex,
   onFocus,
   onClose
 }: {
+  path: string
   slice: ProjectSlice
-  style: CSSProperties | undefined
+  zIndex: number
   onFocus: () => void
   onClose: () => void
 }): JSX.Element {
   const title = slice.project?.data.title ?? 'Untitled'
+  const { style, onTitlePointerDown, onGrowPointerDown } = useWindowChrome(path)
   return (
     <div
       className="mac-window project-window inactive"
-      style={style}
+      style={{ ...style, zIndex }}
       // A window is brought forward by clicking anywhere in it, not just its
       // title bar — that is what every desktop does, and hunting for the bar
       // would be a small cruelty in a cascade.
-      onMouseDown={onFocus}
+      //
+      // Deliberately `onPointerDown`, not `onMouseDown`: the drag handler on
+      // the title bar calls `preventDefault`, which suppresses the
+      // compatibility mouse events entirely. Listening for mousedown meant
+      // clicking a background window's title bar silently failed to raise it.
+      onPointerDown={onFocus}
     >
-      <div className="title-bar">
+      <div className="title-bar" onPointerDown={onTitlePointerDown}>
         <button
           type="button"
           aria-label={`Close ${title}`}
           className="close-box"
           onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation()
             onClose()
@@ -200,6 +368,7 @@ function InactiveProjectWindow({
         {slice.activeDoc?.meta.title ? ` — ${slice.activeDoc.meta.title}` : ''} — click to bring
         forward
       </div>
+      <GrowBox onPointerDown={onGrowPointerDown} />
     </div>
   )
 }
@@ -260,6 +429,35 @@ function App(): JSX.Element {
   const parked = useWyrm((s) => s.parked)
   const openPaths = useWyrm((s) => s.openPaths)
   const boot = useWyrm((s) => s.boot)
+
+  // F-41: a window with no remembered position gets one. Done here rather than
+  // in the store because only the view knows how big the desktop is, and the
+  // answer changes with the OS window and Focus Mode.
+  const desktopSize = useDesktopSize()
+  useEffect(() => {
+    // Wait for a believable desktop before placing anything; see useDesktopSize.
+    if (desktopSize.width < MIN_WIDTH) return
+    const state = useWyrm.getState()
+    state.openPaths.forEach((openPath, index) => {
+      if (state.windowGeometry[openPath]) return
+      state.moveWindow(
+        openPath,
+        state.openPaths.length === 1 ? fullBleed(desktopSize) : cascadeFor(index, desktopSize)
+      )
+    })
+  }, [openPaths, desktopSize])
+
+  // Shrinking the app window must not strand a project window outside it, with
+  // no title bar left to drag it back by. Re-clamping on every desktop change
+  // also heals any geometry that was stored from a bad measurement.
+  useEffect(() => {
+    if (desktopSize.width < MIN_WIDTH) return
+    const state = useWyrm.getState()
+    for (const [openPath, geometry] of Object.entries(state.windowGeometry)) {
+      const clamped = clampToDesktop(geometry, desktopSize)
+      if (!sameGeometry(geometry, clamped)) state.moveWindow(openPath, clamped)
+    }
+  }, [desktopSize])
 
   useEffect(() => {
     void boot()
@@ -461,45 +659,30 @@ function App(): JSX.Element {
       <div className="desktop">
         {openPaths.length > 0
           ? openPaths.map((path, index) => {
-              const style = windowGeometry(index, openPaths.length)
               if (path !== project?.path) {
                 const slice = parked[path]
                 return slice == null ? null : (
                   <InactiveProjectWindow
                     key={path}
+                    path={path}
                     slice={slice}
-                    // Behind the focused window, but ordered among themselves so
-                    // the cascade reads front-to-back.
-                    style={{ ...style, zIndex: 1 + index }}
+                    // Stacking follows openPaths order, and focusing moves a
+                    // path to the end — so raising a window never moves it.
+                    zIndex={1 + index}
                     onFocus={() => void useWyrm.getState().focusProject(path)}
                     onClose={() => void useWyrm.getState().closeProject(path)}
                   />
                 )
               }
               return (
-                <div
+                <FocusedProjectWindow
                   key={path}
-                  className={`mac-window ${openPaths.length === 1 ? 'main-window' : 'project-window'}`}
-                  style={openPaths.length === 1 ? undefined : { ...style, zIndex: 50 }}
+                  path={path}
+                  title={project.data.title}
+                  alone={openPaths.length === 1}
+                  focusMode={focusMode}
+                  onToggleFocusMode={() => setFocusMode((v) => !v)}
                 >
-                  <div className="title-bar">
-                    <button
-                      type="button"
-                      aria-label="Close Project"
-                      className="close-box"
-                      onClick={() => void useWyrm.getState().closeProject()}
-                    />
-                    <span className="title">{project.data.title}</span>
-                    {/* The zoom box is the period-correct glyph for "fill the
-                  screen" — reusing it beats inventing a modern expand icon. */}
-                    <button
-                      type="button"
-                      className="zoom-box"
-                      aria-label={focusMode ? 'Exit Focus Mode' : 'Enter Focus Mode'}
-                      aria-pressed={focusMode}
-                      onClick={() => setFocusMode((v) => !v)}
-                    />
-                  </div>
                   <div className="window-body">
                     {!focusMode && <Binder />}
                     <ErrorBoundary
@@ -511,7 +694,7 @@ function App(): JSX.Element {
                     {!focusMode && <EntityPanel />}
                   </div>
                   {!focusMode && <StatusBar />}
-                </div>
+                </FocusedProjectWindow>
               )
             })
           : booted && <Welcome />}

@@ -66,7 +66,11 @@ describe('opening a second project', () => {
 
     const state = useWyrm.getState()
     expect(state.project?.path).toBe(first)
-    expect(state.openPaths).toEqual([first, second])
+    // openPaths is *stacking* order, not the order projects were opened, so
+    // raising one moves it to the end — in front. Since step 4 gave every
+    // window an explicit position, reordering this no longer moves anything
+    // on the desktop; it only changes which window is drawn on top.
+    expect(state.openPaths).toEqual([second, first])
     expect(Object.keys(state.parked)).toEqual([second])
   })
 
