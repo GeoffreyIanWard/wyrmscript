@@ -149,7 +149,15 @@ function StatusBar(): JSX.Element {
  * which reports zero for everything.
  */
 function useDesktopSize(): Size {
-  const [size, setSize] = useState<Size>({ width: 0, height: 0 })
+  // Seeded from the viewport rather than zero, and returned as-is, so the
+  // identity is stable. Returning a freshly-built fallback object on every
+  // render would make every effect depending on this re-run constantly —
+  // which is not just wasteful, it hides real dependency bugs by papering
+  // over them.
+  const [size, setSize] = useState<Size>(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight
+  }))
   useEffect(() => {
     const read = (): void => {
       const el = document.querySelector('.desktop')
@@ -159,7 +167,12 @@ function useDesktopSize(): Size {
       // 28x28 — and a window sized from that is a 28-pixel square the writer
       // cannot read, click, or resize back. Anything narrower than a window's
       // own minimum is not a desktop.
-      if (rect && rect.width >= MIN_WIDTH) setSize({ width: rect.width, height: rect.height })
+      if (!rect || rect.width < MIN_WIDTH) return
+      setSize((current) =>
+        current.width === rect.width && current.height === rect.height
+          ? current
+          : { width: rect.width, height: rect.height }
+      )
     }
     read()
     const observer = new ResizeObserver(read)
@@ -167,7 +180,7 @@ function useDesktopSize(): Size {
     if (el) observer.observe(el)
     return () => observer.disconnect()
   }, [])
-  return size.width > 0 ? size : { width: window.innerWidth, height: window.innerHeight }
+  return size
 }
 
 /**
@@ -428,6 +441,7 @@ function App(): JSX.Element {
   const booted = useWyrm((s) => s.booted)
   const parked = useWyrm((s) => s.parked)
   const openPaths = useWyrm((s) => s.openPaths)
+  const windowGeometry = useWyrm((s) => s.windowGeometry)
   const boot = useWyrm((s) => s.boot)
 
   // F-41: a window with no remembered position gets one. Done here rather than
@@ -445,11 +459,20 @@ function App(): JSX.Element {
         state.openPaths.length === 1 ? fullBleed(desktopSize) : cascadeFor(index, desktopSize)
       )
     })
-  }, [openPaths, desktopSize])
+    // Watches the geometry too: Clean Up Windows empties it, and without this
+    // the windows would be forgotten and never laid out again — leaving the
+    // writer with no windows at all, which is worse than the problem it was
+    // meant to solve.
+  }, [openPaths, desktopSize, windowGeometry])
 
-  // Shrinking the app window must not strand a project window outside it, with
-  // no title bar left to drag it back by. Re-clamping on every desktop change
-  // also heals any geometry that was stored from a bad measurement.
+  // Nothing may leave a window somewhere the writer cannot reach.
+  //
+  // Depends on the geometry as well as the desktop, because the dangerous case
+  // is a *restored* position: reopening a project on a smaller screen than the
+  // one it was last arranged on puts its window outside the frame, and a
+  // desktop-only dependency would never re-check it — the desktop has not
+  // changed since the app started. `sameGeometry` makes this idempotent, so
+  // depending on the value it writes cannot loop.
   useEffect(() => {
     if (desktopSize.width < MIN_WIDTH) return
     const state = useWyrm.getState()
@@ -457,7 +480,7 @@ function App(): JSX.Element {
       const clamped = clampToDesktop(geometry, desktopSize)
       if (!sameGeometry(geometry, clamped)) state.moveWindow(openPath, clamped)
     }
-  }, [desktopSize])
+  }, [desktopSize, windowGeometry])
 
   useEffect(() => {
     void boot()

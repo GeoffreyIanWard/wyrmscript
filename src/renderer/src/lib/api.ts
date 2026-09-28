@@ -650,6 +650,9 @@ export function createMockApi(): WyrmApi {
     async setWindowGeometry(path: string, geometry: WindowGeometry): Promise<void> {
       windows.set(path, geometry)
     },
+    async clearWindowGeometry(path: string): Promise<void> {
+      windows.delete(path)
+    },
 
     async getBackupSettings(path: string): Promise<BackupSettings> {
       return { ...(backups.get(path) ?? demoBackup()) }

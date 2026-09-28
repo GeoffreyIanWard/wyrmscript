@@ -664,6 +664,8 @@ export interface WyrmApi {
   /** F-41: remembered window position, or null if this project has none yet. */
   getWindowGeometry(path: string): Promise<WindowGeometry | null>
   setWindowGeometry(path: string, geometry: WindowGeometry): Promise<void>
+  /** Forget a remembered position, so the window is laid out fresh next time. */
+  clearWindowGeometry(path: string): Promise<void>
 
   getBackupSettings(path: string): Promise<BackupSettings>
   /** Pick an additional backup location for this project. Null if cancelled. */

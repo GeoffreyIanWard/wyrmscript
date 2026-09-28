@@ -162,6 +162,67 @@ describe('persistence', () => {
   })
 })
 
+describe('a window can always be reached', () => {
+  it('clamps a position restored from a bigger screen', async () => {
+    // The dangerous case: a project arranged on a large display, reopened on
+    // a small one. Its stored position is outside the frame, and nothing about
+    // the desktop has changed since the app started — so a clamp that only
+    // watched the desktop size would never re-check it, and the window would
+    // sit where no click can reach.
+    vi.spyOn(api, 'getWindowGeometry').mockResolvedValue({
+      x: 99999,
+      y: 99999,
+      width: 4000,
+      height: 3000
+    })
+    await renderApp()
+
+    await act(async () => {
+      await useWyrm.getState().openRecentProject(demoPath!)
+    })
+
+    const g = useWyrm.getState().windowGeometry[demoPath!]
+    await waitFor(() => {
+      const now = useWyrm.getState().windowGeometry[demoPath!]
+      expect(now.y).toBeLessThan(99999)
+    })
+    expect(g).toBeDefined()
+    expect(useWyrm.getState().windowGeometry[demoPath!].y).toBeGreaterThanOrEqual(0)
+  })
+
+  it('Clean Up Windows forgets every position, on disk as well', async () => {
+    // Recovery that needs no diagnosis of how a window got out of reach.
+    await renderApp()
+    const { first, second } = await openTwo()
+    await waitFor(() => expect(useWyrm.getState().windowGeometry[second]).toBeDefined())
+    const forget = vi.spyOn(api, 'clearWindowGeometry').mockResolvedValue()
+
+    await act(async () => {
+      await useWyrm.getState().cleanUpWindows()
+    })
+
+    // Cleared on disk too, or reopening would restore the arrangement the
+    // writer just asked to be rid of.
+    expect(forget).toHaveBeenCalledWith(first)
+    expect(forget).toHaveBeenCalledWith(second)
+  })
+
+  it('lays the windows out again after a clean up', async () => {
+    await renderApp()
+    const { second } = await openTwo()
+    await waitFor(() => expect(useWyrm.getState().windowGeometry[second]).toBeDefined())
+    vi.spyOn(api, 'clearWindowGeometry').mockResolvedValue()
+
+    await act(async () => {
+      await useWyrm.getState().cleanUpWindows()
+    })
+
+    // Forgetting the positions is only half of it — App must place them again,
+    // or Clean Up would leave the writer with no windows at all.
+    await waitFor(() => expect(useWyrm.getState().windowGeometry[second]).toBeDefined())
+  })
+})
+
 describe('resizing', () => {
   it('grows from the corner without moving the window', async () => {
     await renderApp()

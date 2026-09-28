@@ -678,6 +678,12 @@ Windows can be dragged by their title bar and resized from a classic bottom-righ
 
 **Two tests were vacuous on the first pass** and only admitted it under injected regressions: one stubbed `setPointerCapture` on the button rather than the element the drag handler actually runs on, so the drag died on a missing method instead of being blocked; the other asserted synchronously against an async `focusProject`, checking before the thing it forbade could have happened.
 
+**Reported after the first build, and fixed: a window could end up unreachable.** Dragging and frame-resizing both clamp correctly — that was verified — but a *restored* position was not. Reopening a project on a smaller screen than the one it was last arranged on put its window outside the frame, and the clamp only watched the desktop size, which has not changed since the app started. It now watches the geometry as well, so any position entering state is checked wherever it came from.
+
+Two further bugs fell out of fixing that. `useDesktopSize` returned a freshly-built object on every render while falling back to the viewport, so every effect depending on it re-ran constantly — wasteful, but worse, it hid the dependency bug above by papering over it, and the test for the fix passed against the broken code until the identity was made stable. And **Clean Up Windows forgot the positions without laying the windows out again**, because the placement effect did not watch the geometry either — recovery would have left the writer with no windows at all.
+
+**`View → Clean Up Windows`** is the guaranteed way back, independent of cause. Clamping is meant to make a stranded window impossible, but "meant to" is not good enough when the failure mode is a novel you can see and cannot click, so there is a recovery that needs no diagnosis. It clears the remembered positions on disk too, or reopening would restore the very arrangement the writer just asked to be rid of.
+
 **Not verified live:** persistence across a restart. The preview's mock keeps geometry in memory only, so the round trip is covered by tests and by the settings layer rather than by hand.
 
 **Still to come:** dialogs owned by the focused window (step 5), minimize to desktop icons (step 6), and background backup/sync for parked projects.

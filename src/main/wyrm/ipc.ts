@@ -38,6 +38,7 @@ import {
   readAppearance,
   addBackupTarget,
   readBackupSettings,
+  clearWindowGeometry,
   readWindowGeometry,
   writeWindowGeometry,
   removeBackupTarget,
@@ -217,6 +218,7 @@ export function registerIpc(): void {
   ipcMain.handle('window:geometry:set', (_e, path: string, geometry: WindowGeometry) =>
     writeWindowGeometry(path, geometry)
   )
+  ipcMain.handle('window:geometry:clear', (_e, path: string) => clearWindowGeometry(path))
 
   /* ---------- local backup (F-01) ---------- */
 

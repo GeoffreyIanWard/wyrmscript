@@ -63,6 +63,7 @@ const api: WyrmApi = {
 
   getWindowGeometry: (path) => ipcRenderer.invoke('window:geometry:get', path),
   setWindowGeometry: (path, geometry) => ipcRenderer.invoke('window:geometry:set', path, geometry),
+  clearWindowGeometry: (path) => ipcRenderer.invoke('window:geometry:clear', path),
   getBackupSettings: (path) => ipcRenderer.invoke('backup:get', path),
   chooseBackupLocation: (path) => ipcRenderer.invoke('backup:choose', path),
   setBackupAuto: (path, auto) => ipcRenderer.invoke('backup:auto', path, auto),

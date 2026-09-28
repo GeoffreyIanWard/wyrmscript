@@ -124,6 +124,15 @@ interface WyrmState {
   windowGeometry: Record<string, WindowGeometry>
   /** Live update while dragging or resizing; does not touch disk. */
   moveWindow(path: string, geometry: WindowGeometry): void
+  /**
+   * Forgets every window position, so App lays them out fresh.
+   *
+   * The guaranteed way back from a window the writer cannot reach. Clamping
+   * should prevent that, but "should" is not good enough when the failure
+   * mode is a novel you can see and cannot click — this needs no diagnosis of
+   * how the window got there.
+   */
+  cleanUpWindows(): Promise<void>
   /** Called once when a drag or resize ends, to remember the position. */
   persistWindow(path: string): Promise<void>
   /** Bring an already-open project to the front, parking the current one. */
@@ -682,6 +691,15 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await api.closeProject()
       set({ ...emptySlice(), parked, openPaths })
       await get().loadRecentProjects()
+    },
+
+    async cleanUpWindows() {
+      set({ windowGeometry: {} })
+      // Clear the remembered positions too, or reopening would restore the
+      // very arrangement the writer just asked to be rid of.
+      for (const path of get().openPaths) {
+        await api.clearWindowGeometry(path).catch(() => {})
+      }
     },
 
     moveWindow(path, geometry) {

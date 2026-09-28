@@ -224,6 +224,13 @@ export async function writeWindowGeometry(
   await writeSettings({ windows: { ...settings.windows, [projectPath]: geometry } })
 }
 
+export async function clearWindowGeometry(projectPath: string): Promise<void> {
+  const settings = await readSettings()
+  const windows = { ...settings.windows }
+  delete windows[projectPath]
+  await writeSettings({ windows })
+}
+
 export async function readRecentProjects(): Promise<RecentProject[]> {
   const settings = await readSettings()
   return settings.recentProjects ?? []
