@@ -248,6 +248,17 @@ export function MenuBar({
         },
         { kind: 'sep' },
         { kind: 'item', label: 'Corkboard', disabled: true },
+        { kind: 'sep' },
+        {
+          // F-41: the way back from a window that has ended up somewhere
+          // unreachable. Clamping is meant to prevent that, but the failure
+          // mode is a novel you can see and cannot click, so there has to be a
+          // recovery that needs no diagnosis.
+          kind: 'item',
+          label: 'Clean Up Windows',
+          disabled: !hasProject,
+          action: () => void useWyrm.getState().cleanUpWindows()
+        },
         {
           kind: 'item',
           label: 'Command Palette…',

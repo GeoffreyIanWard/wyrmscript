@@ -660,6 +660,34 @@ The first visible step. **File → Open in New Window… (⇧⌘O)** opens a pro
 
 **Not done here:** dragging, resizing, minimize-to-icon, and background backup/sync for parked projects.
 
+#### Step 4 — dragging, resizing, stacking and focus ✅ shipped
+
+Windows can be dragged by their title bar and resized from a classic bottom-right grow box, and **positions persist** — per project path in settings, so reopening a novel puts its window back where it was left.
+
+**The arithmetic is pure and lives in `lib/windowGeometry.ts`.** Dragging and resizing are exactly where a sign error strands a window somewhere the writer cannot click — above the top edge there is no title bar left to grab, far enough sideways there is nothing to grab either, small enough and the close box stops existing — and none of those are recoverable from inside the app. jsdom has no layout engine, so a test going through real elements could check none of it. The pointer handlers feed deltas into pure functions instead, and `tests/window-geometry.test.ts` exercises the rules directly.
+
+**`openPaths` became stacking order.** Position is explicit now, so moving a path to the end raises that window without moving anything on the desktop. That resolves step 3's compromise, where which part of a background window you could click depended on where it sat in the cascade.
+
+**Three bugs found while building it, all in the same family — trusting a measurement or an event that was not there:**
+
+- **A window sized from an empty desktop.** `.desktop` has 14px of padding, so before any project renders it measures exactly 28×28, and the first window was placed from that: a 28-pixel square that cannot be read, clicked or resized back. Measurements narrower than a window's own minimum are now rejected, placement waits for a believable one, and a re-clamp on every desktop change heals anything already stored — which also means shrinking the app window can no longer strand a window outside it.
+- **`preventDefault()` on pointerdown suppresses the compatibility mouse events.** The drag handler calls it, so clicking a background window's title bar silently failed to raise the window, because focus was listening for `mousedown`. Focus moved to `pointerdown`.
+- **The grow box had to pick a side.** Raising a window swaps the store's focused slice, which unmounts the component mid-gesture and kills the drag. So a corner grab now stops propagation and resizes in place, while the title bar deliberately does the opposite and raises — that being the main way to bring a window forward.
+
+**Resizing never shrinks a window to satisfy the desktop edge.** A window dragged mostly off the right is a position clamping allows, so its width already extends past the edge; capping growth at the edge would have yanked it narrower the moment its corner was grabbed. Found by a test, not by inspection.
+
+**Two tests were vacuous on the first pass** and only admitted it under injected regressions: one stubbed `setPointerCapture` on the button rather than the element the drag handler actually runs on, so the drag died on a missing method instead of being blocked; the other asserted synchronously against an async `focusProject`, checking before the thing it forbade could have happened.
+
+**Reported after the first build, and fixed: a window could end up unreachable.** Dragging and frame-resizing both clamp correctly — that was verified — but a *restored* position was not. Reopening a project on a smaller screen than the one it was last arranged on put its window outside the frame, and the clamp only watched the desktop size, which has not changed since the app started. It now watches the geometry as well, so any position entering state is checked wherever it came from.
+
+Two further bugs fell out of fixing that. `useDesktopSize` returned a freshly-built object on every render while falling back to the viewport, so every effect depending on it re-ran constantly — wasteful, but worse, it hid the dependency bug above by papering over it, and the test for the fix passed against the broken code until the identity was made stable. And **Clean Up Windows forgot the positions without laying the windows out again**, because the placement effect did not watch the geometry either — recovery would have left the writer with no windows at all.
+
+**`View → Clean Up Windows`** is the guaranteed way back, independent of cause. Clamping is meant to make a stranded window impossible, but "meant to" is not good enough when the failure mode is a novel you can see and cannot click, so there is a recovery that needs no diagnosis. It clears the remembered positions on disk too, or reopening would restore the very arrangement the writer just asked to be rid of.
+
+**Not verified live:** persistence across a restart. The preview's mock keeps geometry in memory only, so the round trip is covered by tests and by the settings layer rather than by hand.
+
+**Still to come:** dialogs owned by the focused window (step 5), minimize to desktop icons (step 6), and background backup/sync for parked projects.
+
 
 **Testing note.** None of this is reachable through the UI yet, so each test stands a second project's runtime up directly. Two of the four guards were initially vacuous and were caught by injecting the old singletons back: comparing a stored timer handle before and after cannot detect cancellation, because `clearInterval` stops a timer without changing its handle, and `expect(undefined).not.toBeNull()` passes — so a test asserting `__runtimeFor(OTHER)?.commitTimer` survives the entry being disposed entirely. Both now assert behaviourally with fake timers: does the other project still tick?
 

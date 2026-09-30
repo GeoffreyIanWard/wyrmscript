@@ -1,6 +1,7 @@
 import type {
   AppearanceSettings,
   BackupRun,
+  WindowGeometry,
   BackupSettings,
   BinderNode,
   CommitInfo,
@@ -324,6 +325,8 @@ export function createMockApi(): WyrmApi {
   // F-24: mirrors the main process's settings.json bookkeeping in memory —
   // auto-reopen pointer plus a most-recent-first recents list, seeded with
   // the demo project so the preview's Welcome screen has something to show.
+  /** F-41: window positions, remembered for as long as the preview lives. */
+  const windows = new Map<string, WindowGeometry>()
   let lastProjectPath: string | null = demo.info.path
   /** See openProject: the preview needs a way to reach a second project. */
   let openedOnce = false
@@ -639,6 +642,16 @@ export function createMockApi(): WyrmApi {
     },
     async getDailyStats(): Promise<DayStat[]> {
       return demoDailyStats()
+    },
+
+    async getWindowGeometry(path: string): Promise<WindowGeometry | null> {
+      return windows.get(path) ?? null
+    },
+    async setWindowGeometry(path: string, geometry: WindowGeometry): Promise<void> {
+      windows.set(path, geometry)
+    },
+    async clearWindowGeometry(path: string): Promise<void> {
+      windows.delete(path)
     },
 
     async getBackupSettings(path: string): Promise<BackupSettings> {

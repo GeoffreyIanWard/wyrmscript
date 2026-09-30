@@ -122,7 +122,9 @@ describe('two projects', () => {
 
     const inactive = windows().find((w) => w.classList.contains('inactive'))!
     await act(async () => {
-      fireEvent.mouseDown(inactive)
+      // pointerDown, not mouseDown: the title bar's drag handler calls
+      // preventDefault, which suppresses the compatibility mouse events.
+      fireEvent.pointerDown(inactive, { button: 0, pointerId: 1 })
     })
 
     expect(useWyrm.getState().project?.path).toBe(first)
@@ -157,7 +159,10 @@ describe('the close box', () => {
     await waitFor(() => expect(windows()).toHaveLength(2))
 
     await act(async () => {
-      fireEvent.mouseDown(screen.getByLabelText('Close The Wyrm of Winter'))
+      fireEvent.pointerDown(screen.getByLabelText('Close The Wyrm of Winter'), {
+        button: 0,
+        pointerId: 1
+      })
     })
 
     expect(useWyrm.getState().project?.path).toBe(second)
