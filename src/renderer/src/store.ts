@@ -30,6 +30,7 @@ import type {
 } from '../../shared/types'
 import { PLOTLINE_COLOURS } from '../../shared/types'
 import { api } from './lib/api'
+import { isConnected } from './lib/syncState'
 import { compile, compileFileName, renderHtml } from './lib/compile'
 import { docToMarkdown, markdownToDoc, countWords } from './lib/markdown'
 import { buildEntityIndex, type EntityIndex } from './lib/entities'
@@ -88,7 +89,8 @@ const SLICE_KEYS = [
   'dailyStats',
   'syncStatus',
   'syncConflicts',
-  'syncNeedsAttention'
+  'syncNeedsAttention',
+  'stale'
 ] as const
 
 export type ProjectSlice = Pick<WyrmState, (typeof SLICE_KEYS)[number]>
@@ -245,6 +247,17 @@ interface WyrmState {
   syncConflicts: SyncConflict[] | null
   /** A background sync found conflicts; surfaced quietly, never as a popup. */
   syncNeedsAttention: boolean
+  /**
+   * F-41: this project's files changed on disk under a background sync, so
+   * the state held for it no longer matches them.
+   *
+   * Only ever true for a parked project. A background sync can *pull*, and a
+   * parked slice still holds the binder and open document from before that —
+   * so focusing it and typing would write stale text over work that had just
+   * arrived from another device. Cleared by re-reading from disk when the
+   * project comes forward, which is the one moment it matters.
+   */
+  stale: boolean
   loadSyncStatus(): Promise<void>
   setSyncClientId(clientId: string): Promise<void>
   signInStart(): Promise<DeviceCodeInfo>
@@ -430,7 +443,8 @@ function emptySlice(): ProjectSlice {
     dailyStats: [],
     syncStatus: null,
     syncConflicts: null,
-    syncNeedsAttention: false
+    syncNeedsAttention: false,
+    stale: false
   }
 }
 
@@ -531,6 +545,49 @@ export const useWyrm = create<WyrmState>((set, get) => {
     // It may have been focused or closed while the commit was in flight.
     if (!slice) return
     set({ parked: { ...parked, [path]: { ...slice, lastCommitAt: Date.now() } } })
+
+    // A project open in a background window has to reach its drives and its
+    // remote too. Without this it checkpoints locally and nothing else — two
+    // novels open all day and only the focused one leaving the machine.
+    // Both are fire-and-forget, exactly as they are for the focused project:
+    // a missing drive or a dead network must never block a checkpoint.
+    if (slice.backupSettings?.auto && slice.backupSettings.targets.length) {
+      void api.backupNow(path).catch(() => {})
+    }
+    if (isConnected(slice.syncStatus)) {
+      void syncParked(path)
+    }
+  }
+
+  /**
+   * Syncs a project that is open but not focused.
+   *
+   * The store's `syncNow` acts on the focused project, so this cannot use it.
+   * What it must not do is let a *pull* go unnoticed: syncing is
+   * bidirectional, so the files on disk can change while this project's slice
+   * still holds the binder and open document from before. Focusing it then
+   * and typing would write stale text over work that had just arrived from
+   * another device — so the slice is marked stale and re-read when the
+   * project comes forward.
+   */
+  async function syncParked(path: string): Promise<void> {
+    const outcome = await api.syncNow(path).catch(() => null)
+    if (!outcome) return
+    const parked = get().parked
+    const slice = parked[path]
+    // Focused or closed while the sync was in flight; whoever owns it now has
+    // its own, better-informed handling.
+    if (!slice) return
+    const patch: Partial<ProjectSlice> =
+      outcome.status === 'conflicts'
+        ? // The page is sacred: a background sync never puts a dialog on
+          // screen. The quiet flag shows in the status bar once focused.
+          { syncNeedsAttention: true }
+        : outcome.status === 'pulled' || outcome.status === 'merged'
+          ? { stale: true }
+          : {}
+    if (Object.keys(patch).length === 0) return
+    set({ parked: { ...parked, [path]: { ...slice, ...patch } } })
   }
 
   async function loadProject(info: ProjectInfo, keepOthersOpen = false): Promise<void> {
@@ -599,6 +656,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     parked: {},
     openPaths: [],
     windowGeometry: {},
+    stale: false,
     activeId: null,
     activeDoc: null,
     editor: null,
@@ -726,6 +784,15 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // window stays exactly where the writer put it.
       const openPaths = [...get().openPaths.filter((p) => p !== path), path]
       set({ ...target, parked, openPaths })
+      if (target.stale) {
+        // Its files changed under a background sync while it sat parked, so
+        // the state just swapped in describes the project as it was before
+        // that. Re-read before the writer can touch it — `reloadAfterRemoteChange`
+        // is exactly this job, and keeps the open document rather than
+        // dropping them back to the first scene.
+        set({ stale: false })
+        await reloadAfterRemoteChange()
+      }
     },
 
     async openAnotherProject() {

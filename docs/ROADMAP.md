@@ -686,7 +686,19 @@ Two further bugs fell out of fixing that. `useDesktopSize` returned a freshly-bu
 
 **Not verified live:** persistence across a restart. The preview's mock keeps geometry in memory only, so the round trip is covered by tests and by the settings layer rather than by hand.
 
-**Still to come:** dialogs owned by the focused window (step 5), minimize to desktop icons (step 6), and background backup/sync for parked projects.
+**Still to come:** dialogs owned by the focused window (step 5), and minimize to desktop icons (step 6).
+
+#### Background backup and sync for parked projects ✅ shipped
+
+Step 2 gave a parked project its own checkpoint but not its own backup or sync, so two novels could sit open all day and only the focused one would ever leave the machine. Both now follow a parked checkpoint, read from that project's own slice, and are fire-and-forget exactly as they are for the focused project — a missing drive or a dead network must never block a checkpoint.
+
+**Syncing a background project introduced a second hazard, and it is the more dangerous one.** Sync is bidirectional: a background sync can *pull*, changing the files on disk while the parked slice still holds the binder and open document from before. Focusing that project and typing would write stale text over work that had just arrived from another device — silent loss of exactly the kind the app exists to prevent, and newly possible only because background sync now exists.
+
+So a pull or a merge marks the slice `stale`, and `focusProject` re-reads from disk before the writer can touch it, via the `reloadAfterRemoteChange` that already existed for this job — which keeps the open document rather than dropping them back to the first scene. A push changes nothing on disk and is left alone.
+
+Conflicts from a background sync raise the quiet needs-attention flag on that project's slice and never put a dialog on screen: the page is sacred, and only a sync the writer asked for may interrupt.
+
+**Deliberately not done:** a push-only mode for background projects, which would have side-stepped the staleness question entirely. `syncProject` has no such mode, and adding one would mean a background project that pushes for hours and never learns what another device has been doing — the staleness would still be there, just unacknowledged.
 
 
 **Testing note.** None of this is reachable through the UI yet, so each test stands a second project's runtime up directly. Two of the four guards were initially vacuous and were caught by injecting the old singletons back: comparing a stored timer handle before and after cannot detect cancellation, because `clearInterval` stops a timer without changing its handle, and `expect(undefined).not.toBeNull()` passes — so a test asserting `__runtimeFor(OTHER)?.commitTimer` survives the entry being disposed entirely. Both now assert behaviourally with fake timers: does the other project still tick?
