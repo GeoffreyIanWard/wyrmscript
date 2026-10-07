@@ -117,6 +117,20 @@ interface WyrmState {
    */
   openPaths: string[]
   /**
+   * F-41 step 6: projects collapsed to an icon on the desktop, by path.
+   *
+   * Still open — their state is parked and their background work still runs —
+   * just not drawn as a window. Deliberately **not persisted**, unlike window
+   * positions: minimising is a "get this out of my way for now" gesture, and
+   * reopening the app to find a novel reduced to an icon would be a surprise
+   * rather than a convenience.
+   */
+  minimized: string[]
+  /** Collapse a project to a desktop icon. */
+  minimizeProject(path: string): Promise<void>
+  /** Bring a minimised project back as the focused window. */
+  restoreProject(path: string): Promise<void>
+  /**
    * F-41 step 4: where each window sits, by project path.
    *
    * Outside the parked slice on purpose. Every open window is rendered at
@@ -655,6 +669,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     booted: false,
     parked: {},
     openPaths: [],
+    minimized: [],
     windowGeometry: {},
     stale: false,
     activeId: null,
@@ -758,6 +773,44 @@ export const useWyrm = create<WyrmState>((set, get) => {
       for (const path of get().openPaths) {
         await api.clearWindowGeometry(path).catch(() => {})
       }
+    },
+
+    async minimizeProject(path) {
+      const state = get()
+      if (state.minimized.includes(path)) return
+      if (!state.openPaths.includes(path)) return
+      const minimized = [...state.minimized, path]
+
+      if (state.project?.path !== path) {
+        // A background window was already parked, so only its drawing changes.
+        set({ minimized })
+        return
+      }
+
+      // The focused project is going to an icon, so something else has to take
+      // the front — or nothing, if everything else is an icon too.
+      await get().flushSave()
+      const parked = parkFocused()
+      const next = [...get().openPaths].reverse().find((p) => p !== path && !minimized.includes(p))
+      const incoming = next != null ? parked[next] : undefined
+      if (next != null && incoming) {
+        delete parked[next]
+        set({ ...incoming, parked, minimized })
+        return
+      }
+      // Every window is an icon now. The flat fields are emptied so nothing
+      // stale renders, but the project stays open and parked — this is not a
+      // close, so `api.closeProject` is deliberately not called and next
+      // launch still reopens it.
+      set({ ...emptySlice(), parked, minimized })
+    },
+
+    async restoreProject(path) {
+      if (!get().minimized.includes(path)) return
+      set({ minimized: get().minimized.filter((p) => p !== path) })
+      // focusProject unparks and raises it, including the stale re-read if a
+      // background sync pulled while it sat as an icon.
+      await get().focusProject(path)
     },
 
     moveWindow(path, geometry) {

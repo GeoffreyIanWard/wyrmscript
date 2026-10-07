@@ -101,12 +101,26 @@ button {
 .desktop {
   flex: 1;
   min-height: 0;
-  position: relative;
-  padding: 14px;
+  /* A column: the windows area, then the minimised-project strip beneath it.
+     The strip is layout rather than an overlay, so a window can never sit
+     under an icon (F-41 step 6). Padding moved onto the children, because an
+     absolutely positioned window measures from the padding box and would
+     ignore it. */
+  display: flex;
+  flex-direction: column;
   background-color: var(--paper);
   background-image: var(--dither-50);
   background-size: 4px 4px;
   image-rendering: pixelated;
+}
+
+/* Where the project windows live. Positioning context for their absolute
+   geometry, and the thing `useDesktopSize` measures. */
+.desktop-windows {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
 }
 
 /* ---------- menu bar ---------- */
@@ -269,6 +283,66 @@ button {
      top). A project window's bar must NOT inherit it, or dragging a window
      inside the app would drag the whole Electron window instead. */
   -webkit-app-region: no-drag;
+}
+
+/* F-41 step 6: the minimise box, a third title-bar control beside zoom.
+   Drawn as a box with a single bar across it — the window collapsing to a
+   line — which reads at 11px where a more literal glyph would not. */
+.minimize-box {
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  position: relative;
+  margin-right: 4px;
+}
+
+.minimize-box::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  height: 2px;
+  background: var(--ink);
+}
+
+/* Minimised projects, auto-arranged along the bottom of the desktop. Pinned
+   there rather than placed freely: a draggable icon can be lost, and the one
+   thing windowing must never do is put something where the writer cannot
+   find it. Above the windows so an icon is never buried. */
+.desktop-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 14px 14px;
+  flex: none;
+}
+
+.desktop-icon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  max-width: 220px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  outline: 1px solid var(--paper);
+  font-family: var(--font-chrome);
+  font-size: 11px;
+  color: var(--ink);
+  cursor: default;
+}
+
+.desktop-icon:active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.desktop-icon-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The classic bottom-right grow box: a corner you can grab, drawn as two
