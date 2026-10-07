@@ -432,6 +432,45 @@ function App(): JSX.Element {
   // Deliberately not persisted — a fresh launch always starts in the normal
   // view.
   const [focusMode, setFocusMode] = useState(false)
+
+  /**
+   * F-41 step 5: a dialog belongs to the project that was in front when it
+   * was opened.
+   *
+   * Dialogs are app-modal and read the focused project live, which is the
+   * settled design — but the menu bar sits above the dialog overlay, so the
+   * project underneath a dialog *can* change while it is open (File → Open in
+   * New Window, or ⇧⌘O). The dialog would then silently retarget: Compile
+   * opened for one novel, exporting another. Closing on a focus change is the
+   * honest resolution — the writer re-opens it against the project they can
+   * now see, rather than acting on one they cannot.
+   */
+  const closeAllDialogs = useCallback((): void => {
+    setPrefsOpen(false)
+    setTimelineOpen(false)
+    setPlotGraphOpen(false)
+    setPlotlinesOpen(false)
+    setCharacterGraphOpen(false)
+    setWorldMapOpen(false)
+    setVersionDialog(null)
+    setCompileOpen(false)
+    setBackupOpen(false)
+    setSyncOpen(false)
+    setPaletteOpen(false)
+    setSearchOpen(false)
+    // Deliberately not About: it belongs to the application, not a project,
+    // and dismissing it on a window change would just be rude.
+  }, [])
+
+  const focusedPath = useWyrm((s) => s.project?.path)
+  const previousFocused = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    // Not on the first project opening — there was nothing to retarget from.
+    if (previousFocused.current !== undefined && previousFocused.current !== focusedPath) {
+      closeAllDialogs()
+    }
+    previousFocused.current = focusedPath
+  }, [focusedPath, closeAllDialogs])
   // Set by MenuBar so ⌥F / F10 can move focus into the bar without App
   // reaching into its DOM (F-07).
   const focusMenusRef = useRef<(() => void) | null>(null)

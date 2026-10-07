@@ -686,7 +686,19 @@ Two further bugs fell out of fixing that. `useDesktopSize` returned a freshly-bu
 
 **Not verified live:** persistence across a restart. The preview's mock keeps geometry in memory only, so the round trip is covered by tests and by the settings layer rather than by hand.
 
-**Still to come:** dialogs owned by the focused window (step 5), and minimize to desktop icons (step 6).
+**Still to come:** minimize to desktop icons (step 6).
+
+#### Step 5 — dialogs and the project under them ✅ shipped
+
+The settled design holds: dialogs stay app-modal and act on the focused project. What needed fixing was the gap that opens once several projects can be focused.
+
+**The menu bar sits above the dialog overlay** in the documented z-index budget — 310 against 300 — which is deliberate and predates this work. The consequence with several projects is that the project *underneath* an open dialog can change while it is open, via `File → Open in New Window` or ⇧⌘O. Dialogs read the focused project live, so the dialog silently retargets. Confirmed by hand before fixing: with Compile open for "Novel 1", opening a third project left the dialog on screen, now pointed at "Novel 2" — and compiling would have exported the wrong novel with nothing on screen to say so.
+
+**A dialog now belongs to the project that was in front when it was opened**, and a focus change closes it. The writer re-opens it against the project they can actually see, rather than acting on one they cannot. The alternative — pinning each dialog to a project and letting it outlive a focus change — would mean a dialog acting on a window that is no longer in front, which is the same confusion wearing a different hat.
+
+**About is deliberately exempt.** Nothing about it is project-scoped, so dismissing it when a window changes would just be rude.
+
+**Noted, not fixed:** the menu bar remaining live over a dialog means project-scoped menu items still act on the project behind it — `New Document` while Compile is open, for instance. That is pre-existing and equally true with one project open, so it is a separate question from this step rather than part of it.
 
 #### Background backup and sync for parked projects ✅ shipped
 
