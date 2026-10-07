@@ -604,7 +604,7 @@ Runs are sequential on purpose: these are large object copies to often-slow medi
 **Found while testing:** `tests/backup-store.test.tsx` was only isolated by accident. The mock api keeps backup settings in a module-level map that outlives a test, and the suite happened to pass because whichever test ran last cleared the location. Adding a test that deliberately left automatic backup on exposed it. The teardown now resets that map explicitly.
 
 
-### F-41 · Several projects open at once 🔨 in progress
+### F-41 · Several projects open at once ✅ shipped
 
 Requested 2026-09-24: open a second project inside the same instance, drag the windows around the desktop, tab between them, minimize them to icons, and have the close box shut one project rather than the app.
 
@@ -686,7 +686,19 @@ Two further bugs fell out of fixing that. `useDesktopSize` returned a freshly-bu
 
 **Not verified live:** persistence across a restart. The preview's mock keeps geometry in memory only, so the round trip is covered by tests and by the settings layer rather than by hand.
 
-**Still to come:** minimize to desktop icons (step 6).
+#### Step 6 — minimise to desktop icons ✅ shipped — F-41 complete
+
+A third title-bar box collapses a project to an icon on the desktop; clicking the icon brings it back as the focused window. Classic Mac had two boxes, but Focus Mode already owns the zoom box, and changing what an existing control does would be worse than being one glyph less period-correct.
+
+**A minimised project is still open.** Its state stays parked and its background work keeps running — it simply is not drawn. That distinction is the whole point: if minimising quietly stopped a project checkpointing, backing up and syncing, a writer tidying their desktop would be switching off the safety net without being told. There is a test for it, and one asserting that minimising the last window never calls `api.closeProject` — minimising is not closing, and it must not change what reopens next launch.
+
+**Minimised state is deliberately not persisted**, unlike window positions. Minimising is a "get this out of my way for now" gesture; reopening the app to find a novel reduced to an icon would be a surprise rather than a convenience.
+
+**Icons are auto-arranged along the bottom, not draggable.** Free placement would be more faithful to a real desktop, but it introduces the one thing windowing must never do — put something where the writer cannot find it — and a row that is always in the same place costs nothing to look at. A single click restores: classic Mac wanted a double-click because the first click selected the icon, and with no selection here to compete with, a hidden second click would be a gesture nobody discovers.
+
+**The strip is layout, not an overlay**, which took two attempts. Floating it over the desktop covered the status bar — word count and save state — of any window reaching the bottom, and a lone full-bleed window ignored the measurement entirely because `.main-window` positions itself with a CSS inset. `.desktop` is now a column: a windows area that `useDesktopSize` measures, with the strip beneath it. Windows clamp above the icons by construction rather than by arithmetic.
+
+**Minimising every window leaves a bare desktop with icons**, not the home screen. The home screen would say there is no project open, which is untrue and would invite opening a second copy of one.
 
 #### Step 5 — dialogs and the project under them ✅ shipped
 
