@@ -36,6 +36,7 @@ import { ConflictDialog } from './components/ConflictDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchDialog } from './components/SearchDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { WyrmIcon } from './components/icons'
 import { useWyrm } from './store'
 import type { ProjectSlice } from './store'
 import { api, isElectron } from './lib/api'
@@ -160,7 +161,7 @@ function useDesktopSize(): Size {
   }))
   useEffect(() => {
     const read = (): void => {
-      const el = document.querySelector('.desktop')
+      const el = document.querySelector('.desktop-windows')
       const rect = el?.getBoundingClientRect()
       // A degenerate measurement is worse than none. Before the first project
       // renders, `.desktop` is empty and measures exactly its own padding —
@@ -176,7 +177,7 @@ function useDesktopSize(): Size {
     }
     read()
     const observer = new ResizeObserver(read)
-    const el = document.querySelector('.desktop')
+    const el = document.querySelector('.desktop-windows')
     if (el) observer.observe(el)
     return () => observer.disconnect()
   }, [])
@@ -265,6 +266,47 @@ function GrowBox({
 }
 
 /**
+ * A minimised project, as an icon on the desktop.
+ *
+ * Auto-arranged along the bottom rather than placed freely. Draggable icons
+ * would be more faithful to a real desktop, but they introduce the one thing
+ * windowing must never do — put something where the writer cannot find it —
+ * and a row that is always in the same place costs nothing to look at.
+ *
+ * A single click restores. Classic Mac wanted a double-click because the
+ * first click selected the icon; there is no selection here for it to
+ * compete with, so a hidden second click would be a gesture nobody discovers.
+ */
+function MinimizedIcons({
+  paths,
+  parked
+}: {
+  paths: string[]
+  parked: Record<string, ProjectSlice>
+}): JSX.Element | null {
+  if (paths.length === 0) return null
+  return (
+    <div className="desktop-icons">
+      {paths.map((path) => {
+        const title = parked[path]?.project?.data.title ?? 'Untitled'
+        return (
+          <button
+            key={path}
+            type="button"
+            className="desktop-icon"
+            aria-label={`Restore ${title}`}
+            onClick={() => void useWyrm.getState().restoreProject(path)}
+          >
+            <WyrmIcon size={22} />
+            <span className="desktop-icon-label">{title}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
  * The project in front: the live application, with a real editor.
  *
  * A component rather than inline JSX because it needs `useWindowChrome`, and
@@ -303,6 +345,16 @@ function FocusedProjectWindow({
         <span className="title">{title}</span>
         {/* The zoom box is the period-correct glyph for "fill the screen" —
             reusing it beats inventing a modern expand icon. */}
+        {/* F-41 step 6: a third box. Classic Mac had two, but Focus Mode
+            already owns the zoom box and changing what an existing control
+            does would be worse than being one glyph less period-correct. */}
+        <button
+          type="button"
+          className="minimize-box"
+          aria-label={`Minimize ${title}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => void useWyrm.getState().minimizeProject(path)}
+        />
         <button
           type="button"
           className="zoom-box"
@@ -371,6 +423,17 @@ function InactiveProjectWindow({
           }}
         />
         <span className="title">{title}</span>
+        <button
+          type="button"
+          className="minimize-box"
+          aria-label={`Minimize ${title}`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            void useWyrm.getState().minimizeProject(path)
+          }}
+        />
       </div>
       <div className="inactive-page">{slice.activeDoc?.body ?? ''}</div>
       {/* Names the project, not just the document: in a cascade this strip is
@@ -481,6 +544,7 @@ function App(): JSX.Element {
   const parked = useWyrm((s) => s.parked)
   const openPaths = useWyrm((s) => s.openPaths)
   const windowGeometry = useWyrm((s) => s.windowGeometry)
+  const minimized = useWyrm((s) => s.minimized)
   const boot = useWyrm((s) => s.boot)
 
   // F-41: a window with no remembered position gets one. Done here rather than
@@ -719,47 +783,58 @@ function App(): JSX.Element {
         }}
       />
       <div className="desktop">
-        {openPaths.length > 0
-          ? openPaths.map((path, index) => {
-              if (path !== project?.path) {
-                const slice = parked[path]
-                return slice == null ? null : (
-                  <InactiveProjectWindow
+        {/* The windows get their own box so the minimised-project strip below
+            is real layout rather than an overlay. A strip floating on top
+            would cover the status bar of any window reaching the bottom —
+            word count and save state — and `.main-window`'s full-bleed inset
+            would ignore it entirely. */}
+        <div className="desktop-windows">
+          {openPaths.length > 0
+            ? openPaths.map((path, index) => {
+                // A minimised project is still open — it just draws as an icon
+                // below instead of a window.
+                if (minimized.includes(path)) return null
+                if (path !== project?.path) {
+                  const slice = parked[path]
+                  return slice == null ? null : (
+                    <InactiveProjectWindow
+                      key={path}
+                      path={path}
+                      slice={slice}
+                      // Stacking follows openPaths order, and focusing moves a
+                      // path to the end — so raising a window never moves it.
+                      zIndex={1 + index}
+                      onFocus={() => void useWyrm.getState().focusProject(path)}
+                      onClose={() => void useWyrm.getState().closeProject(path)}
+                    />
+                  )
+                }
+                return (
+                  <FocusedProjectWindow
                     key={path}
                     path={path}
-                    slice={slice}
-                    // Stacking follows openPaths order, and focusing moves a
-                    // path to the end — so raising a window never moves it.
-                    zIndex={1 + index}
-                    onFocus={() => void useWyrm.getState().focusProject(path)}
-                    onClose={() => void useWyrm.getState().closeProject(path)}
-                  />
+                    title={project.data.title}
+                    alone={openPaths.length === 1}
+                    focusMode={focusMode}
+                    onToggleFocusMode={() => setFocusMode((v) => !v)}
+                  >
+                    <div className="window-body">
+                      {!focusMode && <Binder />}
+                      <ErrorBoundary
+                        label="Story bible"
+                        onDismiss={() => useWyrm.getState().showDoc()}
+                      >
+                        <MainPane />
+                      </ErrorBoundary>
+                      {!focusMode && <EntityPanel />}
+                    </div>
+                    {!focusMode && <StatusBar />}
+                  </FocusedProjectWindow>
                 )
-              }
-              return (
-                <FocusedProjectWindow
-                  key={path}
-                  path={path}
-                  title={project.data.title}
-                  alone={openPaths.length === 1}
-                  focusMode={focusMode}
-                  onToggleFocusMode={() => setFocusMode((v) => !v)}
-                >
-                  <div className="window-body">
-                    {!focusMode && <Binder />}
-                    <ErrorBoundary
-                      label="Story bible"
-                      onDismiss={() => useWyrm.getState().showDoc()}
-                    >
-                      <MainPane />
-                    </ErrorBoundary>
-                    {!focusMode && <EntityPanel />}
-                  </div>
-                  {!focusMode && <StatusBar />}
-                </FocusedProjectWindow>
-              )
-            })
-          : booted && <Welcome />}
+              })
+            : booted && <Welcome />}
+        </div>
+        <MinimizedIcons paths={minimized} parked={parked} />
         {prefsOpen && statsSettings && (
           <PrefsDialog
             appearance={appearance}
