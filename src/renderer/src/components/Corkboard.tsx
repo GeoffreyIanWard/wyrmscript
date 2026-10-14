@@ -112,13 +112,26 @@ export function Corkboard({
               over?.id === card.id ? (over.after ? ' drop-after' : ' drop-before') : ''
             }`}
             draggable
-            onDragStart={() => setDragging(card.id)}
+            onDragStart={(e: DragEvent<HTMLDivElement>) => {
+              setDragging(card.id)
+              // Chromium treats a drag with no transfer data as invalid: the
+              // card follows the pointer and then snaps back, because `drop`
+              // never fires. The binder's own drag sets a type for the same
+              // reason; this uses its own so the two cannot be dropped into
+              // each other.
+              e.dataTransfer?.setData('text/wyrm-scene', card.id)
+              if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+            }}
             onDragEnd={() => {
               setDragging(null)
               setOver(null)
             }}
             onDragOver={(e: DragEvent<HTMLDivElement>) => {
+              // Only our own cards; a binder row dragged onto the board should
+              // not look droppable here.
+              if (e.dataTransfer && !e.dataTransfer.types.includes('text/wyrm-scene')) return
               e.preventDefault()
+              if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
               // Which half of the card the pointer is over decides whether the
               // dragged scene lands before or after it — the same before/after
               // vocabulary the binder's own drop already speaks.

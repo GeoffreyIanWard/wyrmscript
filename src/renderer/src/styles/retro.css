@@ -296,21 +296,15 @@ button {
 /* F-41 step 6: the minimise box, a third title-bar control beside zoom.
    Drawn as a box with a single bar across it — the window collapsing to a
    line — which reads at 11px where a more literal glyph would not. */
-.minimize-box {
-  width: 11px;
-  height: 11px;
-  border: 1px solid var(--ink);
-  background: var(--paper);
-  position: relative;
-  margin-right: 4px;
-}
+/* Sizing and the pinstripe gap come from the shared `.title-bar` rule above,
+   so the three boxes match; this only draws the glyph. */
 
-.minimize-box::after {
+.title-bar .minimize-box::after {
   content: '';
   position: absolute;
-  left: 1px;
-  right: 1px;
-  bottom: 1px;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
   height: 2px;
   background: var(--ink);
 }
@@ -437,6 +431,7 @@ button {
 }
 
 .title-bar .close-box,
+.title-bar .minimize-box,
 .title-bar .zoom-box {
   width: 13px;
   height: 13px;
@@ -447,8 +442,23 @@ button {
 }
 
 .title-bar .close-box:active,
+.title-bar .minimize-box:active,
 .title-bar .zoom-box:active {
   background: var(--ink);
+}
+
+/* The title has `margin: 0 auto`, so it eats the free space on both sides;
+   whichever control comes first on the right needs the auto margin to be
+   pushed out to the edge. With a minimise box present that is minimise, and
+   zoom then sits beside it — otherwise minimise lands mid-bar against the
+   title, which is where it first appeared. */
+.title-bar .minimize-box {
+  margin-left: auto;
+  position: relative;
+}
+
+.title-bar .minimize-box + .zoom-box {
+  margin-left: 5px;
 }
 
 .title-bar .zoom-box {

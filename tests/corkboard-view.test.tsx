@@ -169,6 +169,58 @@ describe('a card is a way into the scene', () => {
   })
 })
 
+/** A stand-in for the real DataTransfer, which jsdom does not provide. */
+function fakeTransfer(types: string[] = []): {
+  data: Record<string, string>
+  types: string[]
+  effectAllowed: string
+  dropEffect: string
+  setData: (t: string, v: string) => void
+} {
+  return {
+    data: {},
+    types: [...types],
+    effectAllowed: '',
+    dropEffect: '',
+    setData(t: string, v: string) {
+      this.data[t] = v
+      if (!this.types.includes(t)) this.types.push(t)
+    }
+  }
+}
+
+describe('the drag carries data', () => {
+  beforeEach(async () => {
+    const path = await openDemo()
+    await tagScenes(path)
+    await renderBoard()
+    await waitFor(() => expect(titles().length).toBe(3))
+  })
+
+  it('sets a transfer type, without which Chromium rejects the drop', () => {
+    // The bug this exists for: with no data set, the card follows the pointer
+    // and snaps back, because the browser never fires `drop`. jsdom's
+    // synthetic events have no dataTransfer at all, so a test that does not
+    // supply one cannot see this — which is how it shipped.
+    const transfer = fakeTransfer()
+    const cards = [...document.querySelectorAll('.scene-card')] as HTMLElement[]
+    fireEvent.dragStart(cards[0], { dataTransfer: transfer })
+
+    expect(transfer.types).toContain('text/wyrm-scene')
+    expect(transfer.effectAllowed).toBe('move')
+  })
+
+  it('ignores a drag that is not one of its cards', async () => {
+    // A binder row dragged onto the board should not look droppable.
+    const cards = [...document.querySelectorAll('.scene-card')] as HTMLElement[]
+    await act(async () => {
+      fireEvent.dragOver(cards[1], { dataTransfer: fakeTransfer(['text/wyrm-node']) })
+    })
+
+    expect(cards[1].className).not.toContain('drop-')
+  })
+})
+
 describe('dragging a card', () => {
   it('reorders the manuscript through the binder, not a second mechanism', async () => {
     const path = await openDemo()
