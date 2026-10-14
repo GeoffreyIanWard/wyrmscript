@@ -746,9 +746,13 @@ Every scene in the project as an index card, pinned to a cork desktop. Clicking 
 
 **Scenes are scene-tagged documents**, identified exactly as every other view identifies them. Deciding that a second way here is how views drift apart.
 
+**The board replaces the manuscript view rather than sitting beside it.** The binder is the manuscript as a list and the board is the same scenes as cards, so showing both at once is the same information twice. With the binder hidden, the timeline, plot graph and world map are pinned to the board as notes of their own — which is the unification F-42 is after, made literal: the same scenes seen as a line, a curve and a map, reachable from where they live rather than from a menu.
+
 **It is a `mainView`, not a dialog** — a place to work from, like the folder view and stats page, rather than something glanced at mid-sentence. Opening it clears the view history the way `showFolder` does, and clicking a card is an arrival like picking a scene in the binder. Whether the board→scene→board loop deserves its own Esc path is left until outline mode exists and the loop actually matters; inventing one now would mean Esc behaving differently depending on how a scene was opened.
 
-**Skeuomorphism, per palette.** Cork is a `--cork` speckle declared alongside the dithers and scrollbar arrows, so a theme restates it with its own ink; a pin is a round ink head with a shaft, sitting over the card's top edge so it reads as holding the card on rather than printed on it. A speckle rather than a checkerboard because cork is granular and the existing dithers read as weave. This keeps the board inside the two-colour discipline instead of importing a brown that would fight every palette.
+**Skeuomorphism, per palette.** Cork is a `--cork` grain declared alongside the dithers and scrollbar arrows, and **all sixteen palettes restate it with their own ink** — it was first declared only at `:root`, which meant every theme drew black grain regardless of its colours, exactly the drift the restate-every-data-URI rule exists to prevent. `tests/palette-fonts.test.ts` now fails, naming the palette, if one is missing or drawn in the wrong ink.
+
+The grain took two passes. A fine, evenly spaced speckle read as a dither; scaling that up read as polka dots, because uniform flecks on a regular lattice are a different material entirely. The tile is now 32px with mixed 1–3px flecks at unaligned positions, scaled to 56px. A pin is a round ink head with a shaft, sitting over the card's top edge so it reads as holding the card on rather than printed on it.
 
 **A test that was lying.** The binder-order tests used a fixture titled Alpha/Bravo/Charlie — already alphabetical, so sorting the cards by title was indistinguishable from binder order and the guard passed against code that ignored the binder entirely. The fixture is now deliberately out of alphabetical order, and the guard fails against both a title sort and a reversal.
 

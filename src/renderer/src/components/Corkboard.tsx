@@ -19,7 +19,15 @@ import type { SceneCard } from '../lib/corkboard'
  * drag uses — rather than a second implementation, so a card and a binder row
  * can never disagree about what a move means.
  */
-export function Corkboard(): JSX.Element {
+export function Corkboard({
+  onTimeline,
+  onPlotGraph,
+  onWorldMap
+}: {
+  onTimeline: () => void
+  onPlotGraph: () => void
+  onWorldMap: () => void
+}): JSX.Element {
   const project = useWyrm((s) => s.project)
   const [docs, setDocs] = useState<DocFile[] | null>(null)
   const selectDoc = useWyrm((s) => s.selectDoc)
@@ -46,12 +54,34 @@ export function Corkboard(): JSX.Element {
     [docs, project]
   )
 
-  if (!project) return <div className="main-pane" />
-  if (docs == null) return <div className="main-pane corkboard" />
+  const tools = (
+    // Pinned to the board rather than left in a menu: the timeline, the plot
+    // graph and the map are the same scenes seen other ways, and the board is
+    // where that is true. The binder is hidden in this view, so these are also
+    // what replaces it.
+    <div className="corkboard-tools">
+      <button type="button" className="board-tool" onClick={onTimeline}>
+        <span className="board-tool-pin" aria-hidden="true" />
+        <span>Timeline</span>
+      </button>
+      <button type="button" className="board-tool" onClick={onPlotGraph}>
+        <span className="board-tool-pin" aria-hidden="true" />
+        <span>Plot Graph</span>
+      </button>
+      <button type="button" className="board-tool" onClick={onWorldMap}>
+        <span className="board-tool-pin" aria-hidden="true" />
+        <span>World Map</span>
+      </button>
+    </div>
+  )
+
+  if (!project) return <div className="terminal" />
+  if (docs == null) return <div className="terminal corkboard" />
 
   if (cards.length === 0) {
     return (
-      <div className="main-pane corkboard">
+      <div className="terminal corkboard">
+        {tools}
         <div className="corkboard-empty">
           <div>No scenes yet.</div>
           <div className="dialog-hint">
@@ -72,7 +102,8 @@ export function Corkboard(): JSX.Element {
   }
 
   return (
-    <div className="main-pane corkboard">
+    <div className="terminal corkboard">
+      {tools}
       <div className="corkboard-board">
         {cards.map((card) => (
           <div

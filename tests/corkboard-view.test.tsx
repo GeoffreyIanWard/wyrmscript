@@ -49,9 +49,17 @@ async function tagScenes(path: string, howMany = 3): Promise<string[]> {
   return ids
 }
 
+const tools = { onTimeline: vi.fn(), onPlotGraph: vi.fn(), onWorldMap: vi.fn() }
+
 async function renderBoard(): Promise<void> {
   await act(async () => {
-    render(<Corkboard />)
+    render(
+      <Corkboard
+        onTimeline={tools.onTimeline}
+        onPlotGraph={tools.onPlotGraph}
+        onWorldMap={tools.onWorldMap}
+      />
+    )
   })
   await waitFor(() => expect(document.querySelector('.corkboard')).toBeTruthy())
 }
@@ -107,6 +115,41 @@ describe('the board', () => {
 
     await waitFor(() => expect(titles().length).toBe(1))
     expect(screen.getByText(/Not written yet/i)).toBeTruthy()
+  })
+})
+
+describe('the pinned tools', () => {
+  it('are on the board, since it replaces the manuscript view', async () => {
+    // The binder is hidden while the board is up, so these are also what
+    // takes its place — leaving them in a menu would strand the writer.
+    const path = await openDemo()
+    await tagScenes(path)
+    await renderBoard()
+
+    expect(screen.getByText('Timeline')).toBeTruthy()
+    expect(screen.getByText('Plot Graph')).toBeTruthy()
+    expect(screen.getByText('World Map')).toBeTruthy()
+  })
+
+  it('open the view they name', async () => {
+    const path = await openDemo()
+    await tagScenes(path)
+    await renderBoard()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Plot Graph'))
+    })
+
+    expect(tools.onPlotGraph).toHaveBeenCalled()
+    expect(tools.onTimeline).not.toHaveBeenCalled()
+  })
+
+  it('are still there with no scenes, so an empty board is not a dead end', async () => {
+    await openDemo()
+    await renderBoard()
+
+    await waitFor(() => expect(screen.getByText(/No scenes yet/i)).toBeTruthy())
+    expect(screen.getByText('Timeline')).toBeTruthy()
   })
 })
 

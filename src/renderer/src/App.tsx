@@ -450,13 +450,22 @@ function InactiveProjectWindow({
   )
 }
 
-function MainPane(): JSX.Element {
+function MainPane({
+  onTimeline,
+  onPlotGraph,
+  onWorldMap
+}: {
+  onTimeline: () => void
+  onPlotGraph: () => void
+  onWorldMap: () => void
+}): JSX.Element {
   const mainView = useWyrm((s) => s.mainView)
   if (mainView.kind === 'entity') return <EntityEditor key={mainView.id} entityId={mainView.id} />
   if (mainView.kind === 'folder') return <FolderView key={mainView.id} folderId={mainView.id} />
   if (mainView.kind === 'stats') return <StatsPage />
   if (mainView.kind === 'tags') return <TagBrowser />
-  if (mainView.kind === 'corkboard') return <Corkboard />
+  if (mainView.kind === 'corkboard')
+    return <Corkboard onTimeline={onTimeline} onPlotGraph={onPlotGraph} onWorldMap={onWorldMap} />
   return <Editor />
 }
 
@@ -547,6 +556,8 @@ function App(): JSX.Element {
   const openPaths = useWyrm((s) => s.openPaths)
   const windowGeometry = useWyrm((s) => s.windowGeometry)
   const minimized = useWyrm((s) => s.minimized)
+  /** The corkboard takes the whole window, binder included. */
+  const boardOpen = useWyrm((s) => s.mainView.kind === 'corkboard')
   const boot = useWyrm((s) => s.boot)
 
   // F-41: a window with no remembered position gets one. Done here rather than
@@ -821,12 +832,21 @@ function App(): JSX.Element {
                     onToggleFocusMode={() => setFocusMode((v) => !v)}
                   >
                     <div className="window-body">
-                      {!focusMode && <Binder />}
+                      {/* The corkboard replaces the manuscript view rather than
+                          sitting beside it: the binder is the manuscript as a
+                          list and the board is the same scenes as cards, so
+                          showing both at once is the same information twice.
+                          The tools pinned to the board take its place. */}
+                      {!focusMode && boardOpen === false && <Binder />}
                       <ErrorBoundary
                         label="Story bible"
                         onDismiss={() => useWyrm.getState().showDoc()}
                       >
-                        <MainPane />
+                        <MainPane
+                          onTimeline={() => setTimelineOpen(true)}
+                          onPlotGraph={() => setPlotGraphOpen(true)}
+                          onWorldMap={() => setWorldMapOpen(true)}
+                        />
                       </ErrorBoundary>
                       {!focusMode && <EntityPanel />}
                     </div>

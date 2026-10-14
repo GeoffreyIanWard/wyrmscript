@@ -21,7 +21,7 @@
      ink, exactly like the dithers and the scrollbar arrows — which is what
      keeps the board inside the two-colour discipline instead of importing a
      brown that fights every palette. */
-  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M1 1h1v1H1zM5 2h1v1H5zM3 4h1v1H3zM6 5h1v1H6zM0 6h1v1H0zM4 7h1v1H4z' fill='%23000'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23000'/%3E%3C/svg%3E");
 
   /* Scrollbar arrow glyphs (recolored by phosphor themes) */
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23000'/%3E%3C/svg%3E");
@@ -2468,6 +2468,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%231d2b45'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%231d2b45'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%231d2b45'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%231d2b45'/%3E%3C/svg%3E");
 }
 
 /* Lamplight: warm tan page, brown ink — no blue-white at 2am. */
@@ -2479,6 +2480,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%234a3324'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%234a3324'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%234a3324'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%234a3324'/%3E%3C/svg%3E");
 }
 
 /* The default, inverted. Not pure #fff on #000: full-contrast white on black
@@ -2491,6 +2493,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23e6e6e6'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23e6e6e6'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23e6e6e6'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23e6e6e6'/%3E%3C/svg%3E");
 }
 
 /* Newsprint: the dithers are halftone dot screens (circles growing with
@@ -2504,6 +2507,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Ccircle cx='1' cy='1' r='1.15' fill='%23101010'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23101010'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23101010'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23101010'/%3E%3C/svg%3E");
 }
 
 /* F-22: black margin bars flanking `.page`, signalling the print margin —
@@ -2589,6 +2593,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpath d='M0 1h4M0 3h4M1 0v4M3 0v4' stroke='%233a2a18' stroke-width='0.6'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%233a2a18'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%233a2a18'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%233a2a18'/%3E%3C/svg%3E");
   --font-chrome: 'UnifrakturMaguntia', 'Courier New', serif;
   --font-prose: 'Cardo', Georgia, serif;
 }
@@ -2633,6 +2638,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 0h1v2H0z' fill='%23eaf6ff'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23eaf6ff'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23eaf6ff'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23eaf6ff'/%3E%3C/svg%3E");
 }
 
 /* F-21: a sparse grid on the writing surface itself, not the tight chrome
@@ -2656,6 +2662,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23d0d0d0'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23d0d0d0'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23d0d0d0'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23d0d0d0'/%3E%3C/svg%3E");
 }
 
 /* Classic AMI/Award BIOS setup screens highlight the selected row as a solid
@@ -2680,6 +2687,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23f2c14e'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23f2c14e'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23f2c14e'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23f2c14e'/%3E%3C/svg%3E");
 }
 
 /* F-20: yard-line/notebook ruling on the writing surface — dashed, gold,
@@ -2711,6 +2719,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23000000'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23000000'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23000000'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23000000'/%3E%3C/svg%3E");
   /* A real Win95 document window (Notepad, WordPad) is white paper inside
      silver chrome, not silver throughout — the one deliberate departure from
      this palette's own ink/paper for the writing surface specifically,
@@ -2755,6 +2764,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%2333ff66'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%2333ff66'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%2333ff66'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%2333ff66'/%3E%3C/svg%3E");
 }
 
 [data-palette='amber'] {
@@ -2765,6 +2775,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23ffb000'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23ffb000'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23ffb000'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23ffb000'/%3E%3C/svg%3E");
 }
 
 /* Synthwave monitor: magenta on near-black purple, same checkerboard shape as
@@ -2777,6 +2788,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23ff2e9a'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23ff2e9a'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23ff2e9a'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23ff2e9a'/%3E%3C/svg%3E");
 }
 
 /* Virtual Wyrm: red on near-black, same checkerboard shape as the other
@@ -2791,6 +2803,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23e60012'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23e60012'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23e60012'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23e60012'/%3E%3C/svg%3E");
 }
 
 /* CRT scanlines over everything, dialogs included */
@@ -2837,6 +2850,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0.5h2v1.5H0z' fill='%231f3d2b'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%231f3d2b'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%231f3d2b'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%231f3d2b'/%3E%3C/svg%3E");
   color: var(--ink);
   background: var(--paper);
 }
@@ -2860,6 +2874,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpolygon points='0,4 4,4 4,0 0,2' fill='%23ff6a00'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23ff6a00'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23ff6a00'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23ff6a00'/%3E%3C/svg%3E");
   color: var(--ink);
   background: var(--paper);
 }
@@ -2894,6 +2909,7 @@ button {
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23fffeff'/%3E%3C/svg%3E");
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23fffeff'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23fffeff'/%3E%3C/svg%3E");
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M2 3h2v2H2zM11 6h1v1h-1zM21 2h3v2h-3zM27 9h2v2h-2zM6 12h1v1H6zM16 14h2v2h-2zM24 18h1v1h-1zM3 20h3v2H3zM12 23h2v2h-2zM29 24h1v1h-1zM8 28h2v2H8zM19 29h3v2h-3zM14 10h1v1h-1zM25 27h2v1h-2z' fill='%23fffeff'/%3E%3C/svg%3E");
   color: var(--ink);
   background: var(--paper);
 }
@@ -3117,10 +3133,66 @@ button {
 /* ---------- Corkboard (Phase 6, the home of F-42 outline mode) ---------- */
 
 .corkboard {
+  /* `.terminal` supplies flex:1, so the board fills the window rather than
+     being sized by its cards — without that the cork only painted behind the
+     cards and stopped at the last row. */
   overflow: auto;
   background-color: var(--page-bg, var(--paper));
   background-image: var(--cork);
+  /* Scaled up from the tile's own 32px: at 1:1 the grain is so fine it reads
+     as a dither rather than cork. Flecks are deliberately mixed sizes at
+     unaligned positions — evenly sized dots on a regular lattice read as
+     polka dots, which is a different material entirely. */
+  background-size: 56px 56px;
   image-rendering: pixelated;
+}
+
+/* The outlining tools, pinned along the top of the board. These are the same
+   scenes seen other ways — a line, a curve, a map — so they belong on the
+   board rather than buried in a menu, and with the binder hidden in this view
+   they are also what takes its place. */
+.corkboard-tools {
+  display: flex;
+  gap: 10px;
+  padding: 18px 20px 0;
+  flex: none;
+}
+
+.board-tool {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 9px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  outline: 1px solid var(--paper);
+  color: var(--ink);
+  font-family: var(--font-chrome);
+  font-size: 11px;
+  text-transform: uppercase;
+  cursor: default;
+}
+
+.board-tool:active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Same pin as a card's, smaller and at the corner — these are notes pinned to
+   the board too, not toolbar buttons sitting on top of it. */
+.board-tool-pin {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 1px solid var(--paper);
+  flex: none;
+}
+
+.board-tool:active .board-tool-pin {
+  background: var(--paper);
+  border-color: var(--ink);
 }
 
 .corkboard-board {
