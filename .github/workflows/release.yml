@@ -65,12 +65,30 @@ jobs:
 
           # An annotated tag's message becomes the release: first line the title,
           # the rest the notes. `git tag -a vX.Y.Z -m "..."` is therefore the one
-          # place a release is described. A lightweight tag has no message, so
-          # fall back to GitHub's generated notes rather than shipping an empty one.
-          MESSAGE="$(git tag -l --format='%(contents)' "$TAG")"
+          # place a release is described.
+          #
+          # Read through the API rather than with `git tag -l --format=...`.
+          # That is what v0.4.0 shipped with, and it silently produced the wrong
+          # release: `actions/checkout` leaves a *lightweight* tag in the
+          # workspace shadowing the real object, so `%(contents)` fell through
+          # to the commit message and the release was titled "Merge pull request
+          # #74 …". The API answers from the repository itself and cannot be
+          # confused by whatever the checkout left behind — and `object.type`
+          # distinguishes an annotated tag from a lightweight one exactly.
+          REF="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")"
+          OBJECT_TYPE="$(printf '%s' "$REF" | jq -r '.object.type')"
+          OBJECT_SHA="$(printf '%s' "$REF" | jq -r '.object.sha')"
+
+          if [ "$OBJECT_TYPE" = "tag" ]; then
+            MESSAGE="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$OBJECT_SHA" -q '.message')"
+          else
+            MESSAGE=""
+          fi
           TITLE="$(printf '%s\n' "$MESSAGE" | head -n 1)"
           BODY="$(printf '%s\n' "$MESSAGE" | tail -n +2)"
 
+          # A lightweight tag has no message, so fall back to GitHub's generated
+          # notes rather than shipping an empty release.
           if [ -z "${TITLE//[[:space:]]/}" ]; then
             echo "No annotation on $TAG — generating notes from commits."
             gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
