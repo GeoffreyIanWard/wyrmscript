@@ -736,6 +736,73 @@ Two notes from reviewing PR #16, both affecting the whole CRT palette group (`gr
 
 ---
 
+### F-42 · Outline mode 📋 designed, not started
+
+Build a story's shape before writing it: add scenes through a templated form, then work with them exactly like any other scene — on the corkboard, the timeline, the plot graph and the map — and click one to start writing it.
+
+Requested 2026-10-14. Name TBD; "outline mode" is a working title.
+
+**Why this belongs with the corkboard rather than beside it.** Everything already keys off scene documents. A scene is a document tagged `scene`, and `timelineOrder`, `timelineDate` and `tension` already live in its frontmatter; the timeline, plot graph and plotlines are all views over that one set. So the corkboard is not a new feature so much as the **missing view**, and outline mode is the thing that fills it without requiring prose first. Framed together, the existing tools stop being five separate dialogs and become one outlining toolset: the same scenes as index cards, marks on a timeline, points on a graph, pins on a map.
+
+#### What is genuinely new
+
+Two of the form's fields cross a line the app has not crossed before.
+
+**Characters-in-scene is the first *stored* link between a scene and the story bible.** Today that connection is entirely derived: `lib/entities.ts` matches names in prose and `lib/entityLinks.ts` renders decorations, never marks, never written to the file. The form needs the opposite — an explicit cast list with per-character attributes hanging off it. This is an addition to the model, not an extension of it, and it is what makes character plot views possible later: who appears where, wanting what.
+
+**Scene→location is new too.** The map pins *locations* (`MapPin` → a World Book entity); nothing records which scenes happen at one. Showing scenes on the map needs that link stated.
+
+#### Settled
+
+- **The form shows every field, and every field is optional.** Outlining is fast and loose — a six-field form plus per-character sub-forms is otherwise most of two minutes a scene, and the honest failure mode is that the writer stops outlining in the app. Fields are visible so they prompt, nothing blocks, Enter saves and opens the next.
+- **Act is an attribute, not a container.** It records which act of the story a scene falls in — traditionally three. It does **not** organise the binder and is not binding on the timeline; its job is grouping on the plot graph, so the writer can see which acts are heavy with scenes and which need developing. The binder still organises; Act annotates, the same shape as `tension`. Stored as a free label with remembered suggestions rather than a fixed 1/2/3, so five-act and other structures are not shut out.
+- **Scene Type is free text with remembered suggestions**, matching how tags already work. A closed vocabulary would style corkboard cards more reliably but imposes someone else's story vocabulary on the book, which is the wrong trade for this app.
+- **Each palette defines its own cork and pins.** Cork is a dither, a pin is a few pixels of ink — declared per palette like the existing dithers and scrollbar arrows, so Green phosphor gets a phosphor corkboard and Manuscript a vellum one. One fixed cork-and-brass look would fight every palette and read as a foreign object in BIOS or Green. This keeps the two-colour discipline intact and stays inside machinery that already exists.
+- **Outlined scenes are real documents from the moment they are added**, with empty bodies. Everything else — timeline, graph, map, corkboard — reads documents, so anything else would mean a second kind of scene and two code paths for every view.
+
+#### Proposed shape
+
+Scene frontmatter gains, all optional:
+
+```yaml
+act: 'II'
+sceneType: 'confrontation'
+location: <world entity id>
+conflict: 'Reed wants the ledger; Maren will not open the shop.'
+cast:
+  - entityId: <character entity id>
+    motivation: 'Owes money he cannot name'
+    goal: 'Leave with the ledger'
+    note: 'Lying about the fire from the first line'
+```
+
+`note` rather than a fixed third attribute: "mood" was floated but not settled, and a free line covers scene-specific traits without guessing at the right vocabulary. If a pattern emerges in use, promote it to its own field then.
+
+#### Open
+
+- **Build order.** The corkboard is already owed as the last Execution-order item, and it is the surface outline mode lives in. Building it first against today's scenes gives somewhere for the form to land and shows whether cards feel right before investing in the form.
+- Whether "outline mode" is a distinct mode or simply what the corkboard *is*. The request describes clicking a scene to open the writing interface, which is what a corkboard does anyway.
+- The map's own skeuomorphism — making a map look like a map — is noted as separate standalone work.
+
+### F-43 · Bring a project down from its remote 📋 planned
+
+Create a local project by cloning one that already exists on GitHub, as a peer of New Project, Open Project and Restore from Backup.
+
+Requested 2026-10-14, while setting a second computer up.
+
+**The gap.** Sync connects an *existing local* project to a remote; nothing brings one the other way. A writer with a novel synced from one machine has no way, inside the app, to get it onto a second — they have to copy the folder by hand or clone with `git` outside the app, which the brief's §10 decision deliberately does not require them to have. That is the whole point of GitHub sync ("pick up where you left off… falls out of this for free"), and the one direction that was never built.
+
+**It is nearly all there already.** `github-auth.ts` already calls `/user/repos`, so listing the signed-in account's projects needs no new auth. `SyncTransport.fetchMainHead` already fetches a remote into a repo. And `restoreBackup(backupPath, destPath)` is the precedent for materialising a project into a fresh folder from an existing repository — the remote case is the same job with a different source. Cloning is init-remote-fetch-checkout rather than a `clone` call, because isomorphic-git is driven directly, the same way `backup.ts` hand-rolls its mirror.
+
+**Worth settling before building:**
+
+- **Pick from a list, or paste a URL?** A list of the signed-in account's repositories is friendlier and the API call exists; a URL field also covers a repo shared by someone else, or an account the writer is not signed into. Probably both, with the list first.
+- **Validate before opening.** A repository that is not a WyrmStar project must fail clearly rather than half-open — `restoreBackup`'s "That folder is not a backup repository" error box is the precedent for the message and the moment.
+- **The clone should arrive already connected.** After cloning, the project's sync mode should be `github` with its remote set, so it syncs immediately. Otherwise the writer lands in the sync picker being asked to choose local-only or GitHub for a project that plainly came from GitHub.
+- **Where does it go on disk, and what is it called?** `Name.wyrm` derived from the project's own title rather than the repository name, since the two can differ and the title is what the writer sees everywhere else.
+
+**Today's workaround, and why it is not good enough:** clone by hand and use Open Project. It works, but the app sees `mode: 'unset'` with a `remoteUrl` present, so the writer is asked to choose a sync path for a project that already has one, then walked through connect-project to re-attach a remote that is already in `.git/config`.
+
 ## Known issues
 
 | ID   | Issue                                                                                                                                                                                                                                                                                                                      | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
