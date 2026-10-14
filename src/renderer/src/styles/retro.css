@@ -15,6 +15,14 @@
   --dither-50: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1z' fill='%23000'/%3E%3C/svg%3E");
   --dither-75: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath d='M0 0h2v1H0zM0 1h1v1H0z' fill='%23000'/%3E%3C/svg%3E");
 
+  /* Cork, for the corkboard (Phase 6 / F-42). A speckle rather than a regular
+     grid: cork is granular, and the checkerboard dithers above read as weave.
+     Declared here as a palette variable so a theme can restate it with its own
+     ink, exactly like the dithers and the scrollbar arrows — which is what
+     keeps the board inside the two-colour discipline instead of importing a
+     brown that fights every palette. */
+  --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M1 1h1v1H1zM5 2h1v1H5zM3 4h1v1H3zM6 5h1v1H6zM0 6h1v1H0zM4 7h1v1H4z' fill='%23000'/%3E%3C/svg%3E");
+
   /* Scrollbar arrow glyphs (recolored by phosphor themes) */
   --arrow-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 1 8 7H1z' fill='%23000'/%3E%3C/svg%3E");
   --arrow-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'%3E%3Cpath d='M4 8 8 2H1z' fill='%23000'/%3E%3C/svg%3E");
@@ -3103,4 +3111,138 @@ button {
 
 .binder-scroll:focus-visible {
   outline-offset: -2px;
+}
+
+
+/* ---------- Corkboard (Phase 6, the home of F-42 outline mode) ---------- */
+
+.corkboard {
+  overflow: auto;
+  background-color: var(--page-bg, var(--paper));
+  background-image: var(--cork);
+  image-rendering: pixelated;
+}
+
+.corkboard-board {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 18px;
+  padding: 20px;
+}
+
+.corkboard-empty {
+  padding: 28px;
+  font-family: var(--font-chrome);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+/* An index card. Deliberately paper-coloured against the cork so the board
+   reads as cards pinned to a surface rather than tiles in a grid. */
+.scene-card {
+  position: relative;
+  width: 210px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  outline: 1px solid var(--paper);
+  padding-top: 10px;
+}
+
+/* The pin: a head with a shaft below it, drawn in ink so it inherits whatever
+   the palette's two colours are. Sits over the card's top edge, which is what
+   makes it read as holding the card on rather than printed on it. */
+.scene-card-pin {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 9px;
+  height: 9px;
+  background: var(--ink);
+  border: 1px solid var(--paper);
+  border-radius: 50%;
+}
+
+.scene-card-pin::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  width: 1px;
+  height: 5px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+
+.scene-card-face {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 8px 10px 9px;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: default;
+  color: var(--ink);
+  font-family: var(--font-chrome);
+}
+
+.scene-card-title {
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.scene-card-folder {
+  font-size: 10px;
+  opacity: 0.65;
+}
+
+/* The scene's opening, in the prose face — the one part of a card that is the
+   writing rather than chrome. */
+.scene-card-excerpt {
+  font-family: var(--font-prose);
+  font-size: 11px;
+  line-height: 1.45;
+  min-height: 48px;
+  color: var(--page-ink, var(--ink));
+}
+
+.scene-card-foot {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  opacity: 0.75;
+  border-top: 1px solid var(--ink);
+  padding-top: 5px;
+}
+
+.scene-card-status,
+.scene-card-label {
+  text-transform: uppercase;
+}
+
+.scene-card.dragging {
+  opacity: 0.45;
+}
+
+/* Where the card would land. A rule down the side rather than a gap, so the
+   board does not reflow under the pointer mid-drag. */
+.scene-card.drop-before::before,
+.scene-card.drop-after::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  background: var(--ink);
+}
+
+.scene-card.drop-before::before {
+  left: -11px;
+}
+
+.scene-card.drop-after::after {
+  right: -11px;
 }

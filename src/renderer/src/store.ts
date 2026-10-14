@@ -48,6 +48,7 @@ export type MainView =
   | { kind: 'folder'; id: string }
   | { kind: 'stats' }
   | { kind: 'tags' }
+  | { kind: 'corkboard' }
 
 function newId(): string {
   return Math.random().toString(36).slice(2, 10)
@@ -332,6 +333,8 @@ interface WyrmState {
   showFolder(id: string): void
   /** F-26: open the writing-stats page in place of the writing terminal. */
   showStats(): void
+  /** The corkboard: every scene as an index card, in binder order. */
+  showCorkboard(): void
   /** F-34: open the browse-by-tag page in place of the writing terminal. */
   showTags(): void
   /**
@@ -1531,6 +1534,22 @@ export const useWyrm = create<WyrmState>((set, get) => {
         mainView: { kind: 'stats' },
         viewHistory: [...viewHistory, mainView].slice(-VIEW_HISTORY_LIMIT)
       })
+    },
+
+    showCorkboard() {
+      // An arrival, not a detour — unlike stats and tags, which are glanced at
+      // mid-sentence and return you to exactly where you were. The corkboard
+      // is a place to work from, so it clears the history the way showFolder
+      // does.
+      //
+      // Clicking a card is likewise an arrival: it behaves exactly like
+      // picking a scene in the binder, and Esc does not come back here. Once
+      // outline mode exists (F-42) the board→scene→board loop may be worth a
+      // dedicated path, but inventing one now would mean Esc behaving
+      // differently depending on how a scene was opened.
+      const { mainView } = get()
+      if (mainView.kind === 'corkboard') return
+      set({ mainView: { kind: 'corkboard' }, viewHistory: [] })
     },
 
     setTagFilter(tag) {

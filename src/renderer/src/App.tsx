@@ -36,6 +36,7 @@ import { ConflictDialog } from './components/ConflictDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchDialog } from './components/SearchDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { Corkboard } from './components/Corkboard'
 import { WyrmIcon } from './components/icons'
 import { useWyrm } from './store'
 import type { ProjectSlice } from './store'
@@ -455,6 +456,7 @@ function MainPane(): JSX.Element {
   if (mainView.kind === 'folder') return <FolderView key={mainView.id} folderId={mainView.id} />
   if (mainView.kind === 'stats') return <StatsPage />
   if (mainView.kind === 'tags') return <TagBrowser />
+  if (mainView.kind === 'corkboard') return <Corkboard />
   return <Editor />
 }
 

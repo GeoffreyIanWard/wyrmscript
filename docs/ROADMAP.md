@@ -18,7 +18,7 @@ The phased build order from design-brief.md §11. One PR (or small series) per p
 | 3   | Version control UI         | ✅     | Commit dialog, per-doc history, prose word-diff, restore, snapshot variants. PR #3, with the bug fixes and this roadmap following in PR #4                         |
 | 4   | Story bible                | ✅     | Entity index over glossary/characters/world, debounced auto-linking in the terminal, click-to-side-panel, add-from-selection, entry editors, backlinks. PRs #5, #6 |
 | 5   | GitHub sync                | ✅     | OAuth device flow, sync engine, offline queue, conflict resolution UI, local-only first-class. PR #11                                                              |
-| 6   | Suggested extras           | 🔨     | Compile/export (PR #8), full-project search + command palette (PR #13) and writing stats (PR #22) shipped; corkboard still to come                                 |
+| 6   | Suggested extras           | ✅     | Compile/export (PR #8), full-project search + command palette (PR #13), writing stats (PR #22) and the corkboard all shipped                                 |
 
 **Locked v1 decisions** (confirmed 2026-07-29): 1-bit default palette with entity links distinguished per type; entity click opens a side panel; character/world entries free-form; compile/export, backlinks, auto-commit safety net, and command palette all in v1; variants are frozen snapshots (not editable branches).
 
@@ -735,6 +735,22 @@ Two notes from reviewing PR #16, both affecting the whole CRT palette group (`gr
 - See I-09 for the NES/Virtual Boy mislabelling, now fixed.
 
 ---
+
+### Corkboard ✅ shipped — Phase 6's last item
+
+Every scene in the project as an index card, pinned to a cork desktop. Clicking a card opens that scene; dragging one reorders the manuscript.
+
+**Binder order, and that is the point.** F-02 settled that narrative order and chronology are different questions, and gave the timeline its own `timelineOrder`. The corkboard is the *binder* seen as cards, so moving a card moves the scene in the manuscript — which is what a writer means when they rearrange index cards — while the timeline keeps answering the other question. Reordering goes through `moveBinderNode`, the same action the binder's own drag uses, so a card and a binder row can never disagree about what a move means.
+
+**A card shows** title, the folder it lives under, the opening of the scene in the prose face, its word count and status — and says *"Not written yet."* rather than showing a blank card, which is the state every outlined scene will start in (F-42).
+
+**Scenes are scene-tagged documents**, identified exactly as every other view identifies them. Deciding that a second way here is how views drift apart.
+
+**It is a `mainView`, not a dialog** — a place to work from, like the folder view and stats page, rather than something glanced at mid-sentence. Opening it clears the view history the way `showFolder` does, and clicking a card is an arrival like picking a scene in the binder. Whether the board→scene→board loop deserves its own Esc path is left until outline mode exists and the loop actually matters; inventing one now would mean Esc behaving differently depending on how a scene was opened.
+
+**Skeuomorphism, per palette.** Cork is a `--cork` speckle declared alongside the dithers and scrollbar arrows, so a theme restates it with its own ink; a pin is a round ink head with a shaft, sitting over the card's top edge so it reads as holding the card on rather than printed on it. A speckle rather than a checkerboard because cork is granular and the existing dithers read as weave. This keeps the board inside the two-colour discipline instead of importing a brown that would fight every palette.
+
+**A test that was lying.** The binder-order tests used a fixture titled Alpha/Bravo/Charlie — already alphabetical, so sorting the cards by title was indistinguishable from binder order and the guard passed against code that ignored the binder entirely. The fixture is now deliberately out of alphabetical order, and the guard fails against both a title sort and a reversal.
 
 ### F-42 · Outline mode 📋 designed, not started
 
