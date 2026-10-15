@@ -80,8 +80,24 @@ export function gridSlot(index: number, columns: number): { x: number; y: number
   }
 }
 
+/** How many cards fit across a board of this width. */
 export function columnsFor(boardWidth: number): number {
   return Math.max(1, Math.floor((boardWidth + CARD_GAP) / (CARD_W + CARD_GAP)))
+}
+
+/**
+ * The column count a tidy board uses: as square as the cards allow, rather
+ * than as many as will fit.
+ *
+ * Filling the width first means a handful of scenes lands in a single row,
+ * which reads as cards snapped into a line rather than a board that has been
+ * arranged — the grid is there, but nothing about the result shows it. A
+ * balanced grid looks deliberate at any number of cards, and still reads
+ * left-to-right in binder order.
+ */
+export function tidyColumns(count: number, boardWidth: number): number {
+  if (count <= 1) return 1
+  return Math.max(1, Math.min(columnsFor(boardWidth), Math.ceil(Math.sqrt(count))))
 }
 
 /**
@@ -97,7 +113,7 @@ export function columnsFor(boardWidth: number): number {
  * asserted against zeroes.
  */
 export function layoutCards(cards: SceneCard[], boardWidth: number): PlacedCard[] {
-  const cols = columnsFor(boardWidth)
+  const cols = tidyColumns(cards.length, boardWidth)
   return cards.map((card, i) => {
     const placed = card.boardX != null && card.boardY != null
     const slot = gridSlot(i, cols)

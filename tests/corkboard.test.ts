@@ -8,6 +8,7 @@ import {
   CARD_W,
   columnsFor,
   countWords,
+  tidyColumns,
   excerptOf,
   layoutCards,
   sceneCards
@@ -172,14 +173,41 @@ describe('where a card sits on the board', () => {
     boardY
   })
 
-  it('puts an untouched card in its binder slot', () => {
-    // Three columns' worth of width. Binder order is still what an unplaced
-    // board shows, so a project that has never used the board is unchanged.
-    const laid = layoutCards([card('a'), card('b'), card('c')], 3 * (CARD_W + CARD_GAP))
+  it('arranges a tidy board as a grid, not a single row', () => {
+    // Three cards across a board four wide used to land in one row, which
+    // reads as cards snapped into a line rather than a board laid out.
+    const wide = 6 * (CARD_W + CARD_GAP)
+    expect(tidyColumns(3, wide)).toBe(2)
+    expect(tidyColumns(9, wide)).toBe(3)
+    expect(tidyColumns(12, wide)).toBe(4)
+    const laid = layoutCards([card('a'), card('b'), card('c')], wide)
     expect(laid.map((c) => [c.x, c.y])).toEqual([
       [0, 0],
       [CARD_W + CARD_GAP, 0],
-      [2 * (CARD_W + CARD_GAP), 0]
+      [0, CARD_H + CARD_GAP]
+    ])
+  })
+
+  it('never makes the tidy grid wider than the board', () => {
+    // Balance is a preference, not a licence to put cards off the edge.
+    expect(tidyColumns(16, 2 * (CARD_W + CARD_GAP))).toBe(2)
+    expect(tidyColumns(16, 10)).toBe(1)
+  })
+
+  it('leaves a single card alone', () => {
+    expect(tidyColumns(1, 10000)).toBe(1)
+    expect(tidyColumns(0, 10000)).toBe(1)
+  })
+
+  it('puts an untouched card in its binder slot', () => {
+    // Three columns' worth of width. Binder order is still what an unplaced
+    // board shows, so a project that has never used the board is unchanged.
+    const laid = layoutCards([card('a'), card('b'), card('c'), card('d')], 3 * (CARD_W + CARD_GAP))
+    expect(laid.map((c) => [c.x, c.y])).toEqual([
+      [0, 0],
+      [CARD_W + CARD_GAP, 0],
+      [0, CARD_H + CARD_GAP],
+      [CARD_W + CARD_GAP, CARD_H + CARD_GAP]
     ])
     expect(laid.every((c) => !c.placed)).toBe(true)
   })
