@@ -3375,3 +3375,65 @@ button {
 .shortcut-what {
   opacity: 0.8;
 }
+
+/* Guided help (F-44). The question mark lives in the status bar, inverting
+   when the mode is on so the writer can see they are still in it. */
+.help-toggle {
+  font: inherit;
+  width: 15px;
+  height: 15px;
+  line-height: 1;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+}
+
+.help-toggle.on {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Above the dialog overlay (300) and the menus (310): help explains those
+   too, so its own tip must not end up underneath what it is describing.
+   Below the context menu (400), which is nobody's question. */
+.help-banner,
+.help-tip {
+  position: fixed;
+  z-index: 350;
+}
+
+.help-banner {
+  top: 34px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 3px 10px;
+  pointer-events: none;
+}
+
+.help-tip {
+  width: 280px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  outline: 1px solid var(--paper);
+  padding: 7px 9px 8px;
+  /* Never under the pointer: a tip that can be hovered would flicker as the
+     cursor crossed from the control onto it. */
+  pointer-events: none;
+}
+
+.help-tip-title {
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 3px;
+  margin-bottom: 4px;
+}
+
+.help-tip-body {
+  font-family: var(--font-prose);
+  font-size: 13px;
+  line-height: 1.45;
+}

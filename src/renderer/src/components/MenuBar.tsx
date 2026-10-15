@@ -80,6 +80,7 @@ export function MenuBar({
   // A boolean, not the view object: the label flips between the two places a
   // writer works, so the menu has to re-render when the board opens or closes.
   const onBoard = useWyrm((s) => s.mainView.kind === 'corkboard')
+  const helpMode = useWyrm((s) => s.helpMode)
   const editor = useWyrm((s) => s.editor)
   const newProjectAction = (): void => {
     void useWyrm.getState().newProject('')
@@ -112,6 +113,11 @@ export function MenuBar({
           label: 'Keyboard Shortcuts…',
           shortcut: '⌘/',
           action: onShortcuts
+        },
+        {
+          kind: 'item',
+          label: helpMode ? 'Stop Guided Help' : 'Guided Help',
+          action: () => useWyrm.getState().setHelpMode(!helpMode)
         },
         { kind: 'item', label: 'Preferences…', shortcut: '⌘,', action: onPreferences }
       ]

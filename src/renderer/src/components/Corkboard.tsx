@@ -129,7 +129,7 @@ export function Corkboard({
     // graph and the map are the same scenes seen other ways, and the board is
     // where that is true. The binder is hidden in this view, so these are also
     // what replaces it.
-    <div className="corkboard-tools">
+    <div className="corkboard-tools" data-help="board-tools">
       <button type="button" className="board-tool" onClick={onTimeline}>
         <span className="board-tool-pin" aria-hidden="true" />
         <span>Timeline</span>
@@ -157,6 +157,7 @@ export function Corkboard({
       <button
         type="button"
         className="board-tool"
+        data-help="board-tidy"
         onClick={() => {
           // The local positions have to go too, or Tidy would clear the files
           // and the board would carry on showing the old arrangement.
@@ -248,7 +249,7 @@ export function Corkboard({
   }
 
   return (
-    <div className="terminal corkboard">
+    <div className="terminal corkboard" data-help="corkboard">
       {tools}
       <div
         className="corkboard-board"
@@ -259,6 +260,7 @@ export function Corkboard({
           <div
             key={card.id}
             className={`scene-card${dragging === card.id ? ' dragging' : ''}`}
+            data-help="scene-card"
             // Positioned on the board rather than flowed: a card sits where
             // the writer put it, and an unmoved one sits in its binder slot.
             style={{

@@ -414,7 +414,7 @@ export function Binder(): JSX.Element {
   }
 
   return (
-    <div className="binder" onContextMenu={(e) => openMenu(e, null, false)}>
+    <div className="binder" data-help="binder" onContextMenu={(e) => openMenu(e, null, false)}>
       <div
         className="binder-scroll"
         ref={scrollRef}
@@ -426,7 +426,12 @@ export function Binder(): JSX.Element {
       >
         {renderNodes(project.data.binder, 0, false)}
         <div className="binder-sep" />
-        <div className="binder-row" data-node-type="trash" onClick={() => setTrashOpen((v) => !v)}>
+        <div
+          className="binder-row"
+          data-node-type="trash"
+          data-help="trash"
+          onClick={() => setTrashOpen((v) => !v)}
+        >
           <span className={`twist${trashOpen ? ' open' : ''}`} aria-hidden>
             ▸
           </span>

@@ -8,6 +8,7 @@ import { EntityEditor } from './components/EntityEditor'
 import { FolderView } from './components/FolderView'
 import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog, ShortcutsDialog } from './components/Dialogs'
+import { HelpLayer } from './components/HelpLayer'
 import { StatsPage } from './components/StatsPage'
 import { TagBrowser } from './components/TagBrowser'
 import { TimelineDialog } from './components/TimelineDialog'
@@ -74,6 +75,7 @@ function agoLabel(timestamp: number | null, now: number): string {
 function StatusBar(): JSX.Element {
   const project = useWyrm((s) => s.project)
   const wordCount = useWyrm((s) => s.wordCount)
+  const helpMode = useWyrm((s) => s.helpMode)
   const saveState = useWyrm((s) => s.saveState)
   const activeDoc = useWyrm((s) => s.activeDoc)
   const lastCommitAt = useWyrm((s) => s.lastCommitAt)
@@ -116,9 +118,9 @@ function StatusBar(): JSX.Element {
 
   return (
     <div className="status-bar">
-      {showCounter && <span>{wordCount.toLocaleString()} WORDS</span>}
+      {showCounter && <span data-help="word-count">{wordCount.toLocaleString()} WORDS</span>}
       {activeDoc?.meta.status && <span>{activeDoc.meta.status.toUpperCase()}</span>}
-      <span>{saveLabel}</span>
+      <span data-help="save-state">{saveLabel}</span>
       {showCounter && today && (
         <span
           className={today.goalMet ? 'stat-goal met' : 'stat-goal'}
@@ -133,10 +135,26 @@ function StatusBar(): JSX.Element {
         </span>
       )}
       <span className="spacer" />
-      <span>{agoLabel(lastCommitAt, now)}</span>
-      <span title={syncStatus?.remoteUrl ?? backupSettings?.targets[0]?.path ?? project?.path}>
+      <span data-help="last-commit">{agoLabel(lastCommitAt, now)}</span>
+      <span
+        data-help="place"
+        title={syncStatus?.remoteUrl ?? backupSettings?.targets[0]?.path ?? project?.path}
+      >
         {placeLabel}
       </span>
+      {/* The way in. In the status bar because it is always there and always
+          the same size — a question mark in the chrome is the oldest
+          convention there is for "what is this?". */}
+      <button
+        type="button"
+        className={`help-toggle${helpMode ? ' on' : ''}`}
+        aria-pressed={helpMode}
+        aria-label="Guided help"
+        title="Guided help"
+        onClick={() => useWyrm.getState().setHelpMode(!helpMode)}
+      >
+        ?
+      </button>
     </div>
   )
 }
@@ -352,6 +370,7 @@ function FocusedProjectWindow({
         <button
           type="button"
           className="minimize-box"
+          data-help="minimize-box"
           aria-label={`Minimize ${title}`}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => void useWyrm.getState().minimizeProject(path)}
@@ -359,6 +378,7 @@ function FocusedProjectWindow({
         <button
           type="button"
           className="zoom-box"
+          data-help="zoom-box"
           aria-label={focusMode ? 'Exit Focus Mode' : 'Enter Focus Mode'}
           aria-pressed={focusMode}
           onPointerDown={(e) => e.stopPropagation()}
@@ -899,6 +919,7 @@ function App(): JSX.Element {
             onClose={() => setPrefsOpen(false)}
           />
         )}
+        <HelpLayer />
         {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
         {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
         {printError !== null && (
