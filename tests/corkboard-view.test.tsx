@@ -64,15 +64,6 @@ async function renderBoard(): Promise<void> {
   await waitFor(() => expect(document.querySelector('.corkboard')).toBeTruthy())
 }
 
-/** A drag event carrying a real `clientX`.
- *
- *  `fireEvent.dragOver(el, { clientX })` does not deliver one — jsdom has no
- *  DragEvent, so the coordinate is dropped and every drop reads as "before".
- *  A MouseEvent of the same type is what React's synthetic handler sees. */
-function dragOverAt(el: HTMLElement, clientX: number): void {
-  el.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX }))
-}
-
 const titles = (): string[] =>
   [...document.querySelectorAll('.scene-card-title')].map((t) => t.textContent ?? '')
 
@@ -169,27 +160,38 @@ describe('a card is a way into the scene', () => {
   })
 })
 
-/** A stand-in for the real DataTransfer, which jsdom does not provide. */
-function fakeTransfer(types: string[] = []): {
-  data: Record<string, string>
-  types: string[]
-  effectAllowed: string
-  dropEffect: string
-  setData: (t: string, v: string) => void
-} {
-  return {
-    data: {},
-    types: [...types],
-    effectAllowed: '',
-    dropEffect: '',
-    setData(t: string, v: string) {
-      this.data[t] = v
-      if (!this.types.includes(t)) this.types.push(t)
-    }
-  }
+/**
+ * Dragging is pointer-based, so these drive pointer events.
+ *
+ * The board first shipped on HTML5 drag-and-drop and cards would not drop.
+ * What made that bug survive two fixes is that **nothing available here can
+ * drive native drag-and-drop**: jsdom has no DragEvent, and the browser
+ * preview's remote-debugging mouse input does not start one either — a real
+ * drag on a *binder* row, which works in the app, moved nothing under it. So
+ * every check short of launching Electron by hand reported success. Pointer
+ * events are real input in both places.
+ */
+function pointer(el: HTMLElement, type: string, x: number, y: number): void {
+  const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y })
+  // jsdom has no PointerEvent; React reads `pointerId` off the event object.
+  Object.defineProperty(e, 'pointerId', { value: 1 })
+  el.dispatchEvent(e)
 }
 
-describe('the drag carries data', () => {
+/** jsdom has no layout engine, so the cards are given real boxes: a row of
+ *  three 200px cards with 20px gutters between them. The geometry is the
+ *  entire thing under test, so it has to be stated rather than measured. */
+function layOutCards(): HTMLElement[] {
+  const cards = [...document.querySelectorAll('.scene-card')] as HTMLElement[]
+  cards.forEach((card, i) => {
+    const left = i * 220
+    card.getBoundingClientRect = () =>
+      ({ left, width: 200, top: 0, height: 100, right: left + 200, bottom: 100 }) as DOMRect
+  })
+  return cards
+}
+
+describe('dragging a card', () => {
   beforeEach(async () => {
     const path = await openDemo()
     await tagScenes(path)
@@ -197,102 +199,143 @@ describe('the drag carries data', () => {
     await waitFor(() => expect(titles().length).toBe(3))
   })
 
-  it('sets a transfer type, without which Chromium rejects the drop', () => {
-    // The bug this exists for: with no data set, the card follows the pointer
-    // and snaps back, because the browser never fires `drop`. jsdom's
-    // synthetic events have no dataTransfer at all, so a test that does not
-    // supply one cannot see this — which is how it shipped.
-    const transfer = fakeTransfer()
-    const cards = [...document.querySelectorAll('.scene-card')] as HTMLElement[]
-    fireEvent.dragStart(cards[0], { dataTransfer: transfer })
-
-    expect(transfer.types).toContain('text/wyrm-scene')
-    expect(transfer.effectAllowed).toBe('move')
-  })
-
-  it('ignores a drag that is not one of its cards', async () => {
-    // A binder row dragged onto the board should not look droppable.
-    const cards = [...document.querySelectorAll('.scene-card')] as HTMLElement[]
-    await act(async () => {
-      fireEvent.dragOver(cards[1], { dataTransfer: fakeTransfer(['text/wyrm-node']) })
-    })
-
-    expect(cards[1].className).not.toContain('drop-')
-  })
-})
-
-describe('dragging a card', () => {
   it('reorders the manuscript through the binder, not a second mechanism', async () => {
-    const path = await openDemo()
-    await tagScenes(path)
-    await renderBoard()
-    await waitFor(() => expect(titles().length).toBe(3))
     // Asserted on the outcome rather than a spy: the component captured
     // `moveBinderNode` from the store when it rendered, so a spy installed
     // afterwards would never be the function it calls.
     const before = titles()
-    const cards = [...document.querySelectorAll('.scene-card')] as HTMLElement[]
-    cards[2].getBoundingClientRect = () =>
-      ({ left: 100, width: 200, top: 0, height: 100 }) as DOMRect
+    const cards = layOutCards()
 
     // Each event in its own act: React batches within one, so a single act
-    // would leave the drop handler's closure still seeing `dragging` as null.
-    await act(async () => {
-      fireEvent.dragStart(cards[0])
-    })
-    await act(async () => {
-      dragOverAt(cards[2], 250)
-    })
-    await act(async () => {
-      fireEvent.drop(cards[2])
-    })
+    // would leave the later handlers seeing stale state.
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
+    await act(async () => pointer(cards[0], 'pointerup', 600, 50))
 
     await waitFor(() => expect(titles()).not.toEqual(before))
-    expect(titles()[titles().length - 1]).toBe(before[0])
+    // Dropped on the right half of the last card, so it lands last.
+    expect(titles()[2]).toBe(before[0])
   })
 
-  it('drops before or after depending on which half of the card is under the pointer', async () => {
-    const path = await openDemo()
-    await tagScenes(path)
-    await renderBoard()
-    await waitFor(() => expect(titles().length).toBe(3))
-    const cards = [...document.querySelectorAll('.scene-card')] as HTMLElement[]
-    // jsdom has no layout, so the card is given a real box — the midpoint is
-    // the entire thing under test.
-    cards[2].getBoundingClientRect = () =>
-      ({ left: 100, width: 200, top: 0, height: 100 }) as DOMRect
+  it('lands before or after depending on which half of the card is under it', async () => {
+    const before = titles()
+    const cards = layOutCards()
 
-    await act(async () => {
-      fireEvent.dragStart(cards[0])
-    })
-    await act(async () => {
-      dragOverAt(cards[2], 250)
-    })
+    // 490 is the left half of the third card (440–640).
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 490, 50))
+    await act(async () => pointer(cards[0], 'pointerup', 490, 50))
+
+    await waitFor(() => expect(titles()).not.toEqual(before))
+    expect(titles()).toEqual([before[1], before[0], before[2]])
+  })
+
+  it('lands in the gutter between two cards rather than snapping back', async () => {
+    // A writer aiming at the space between two cards means to put it there.
+    const before = titles()
+    const cards = layOutCards()
+
+    await act(async () => pointer(cards[2], 'pointerdown', 500, 50))
+    await act(async () => pointer(cards[2], 'pointermove', 205, 50))
+    await act(async () => pointer(cards[2], 'pointerup', 205, 50))
+
+    await waitFor(() => expect(titles()).not.toEqual(before))
+    expect(titles()).toEqual([before[0], before[2], before[1]])
+  })
+
+  it('shows which side the card will land on while it is being carried', async () => {
+    const cards = layOutCards()
+
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
     expect(cards[2].className).toContain('drop-after')
 
-    await act(async () => {
-      dragOverAt(cards[2], 150)
-    })
+    await act(async () => pointer(cards[0], 'pointermove', 460, 50))
     expect(cards[2].className).toContain('drop-before')
   })
 
-  it('does nothing when a card is dropped on itself', async () => {
-    const path = await openDemo()
-    await tagScenes(path)
-    await renderBoard()
-    await waitFor(() => expect(titles().length).toBe(3))
+  it('does not count a press that never moved as a drag', async () => {
+    // Below the threshold the card has not been picked up at all, so the
+    // click underneath it must still reach the scene.
     const before = titles()
-    const cards = [...document.querySelectorAll('.scene-card')] as HTMLElement[]
+    const cards = layOutCards()
 
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 52, 51))
+    await act(async () => pointer(cards[0], 'pointerup', 52, 51))
+
+    expect(titles()).toEqual(before)
+    expect(document.querySelector('.scene-card.dragging')).toBeNull()
+  })
+
+  it('does not open the scene it just moved', async () => {
+    // The card's whole face is a button, so the pointerup that ends a drag is
+    // also a click on it. Without suppression, moving a card yanks the writer
+    // into that scene.
+    const cards = layOutCards()
+    const activeBefore = useWyrm.getState().activeId
+
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
+    await act(async () => pointer(cards[0], 'pointerup', 600, 50))
     await act(async () => {
-      fireEvent.dragStart(cards[0])
+      fireEvent.click(cards[0].querySelector('.scene-card-face') as HTMLElement)
     })
+
+    expect(useWyrm.getState().activeId).toBe(activeBefore)
+  })
+
+  it('does not capture the pointer until the card actually moves', async () => {
+    // jsdom cannot model pointer capture, so this asserts *when* capture is
+    // taken rather than what it does. It is worth the implementation detail:
+    // capturing on the press redirects the rest of the gesture to the card
+    // wrapper, and the card's own button then never receives pointerup or
+    // click — pressing a card did nothing at all. Only a real click in the
+    // browser showed it.
+    const taken: string[] = []
+    HTMLElement.prototype.setPointerCapture = function () {
+      taken.push('captured')
+    }
+    const cards = layOutCards()
+
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    expect(taken).toEqual([])
+
+    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
+    expect(taken).toEqual(['captured'])
+  })
+
+  it('still opens a scene on the next click after a move', async () => {
+    // The click that ends a drag lands on the nearest common ancestor of the
+    // press and the release — the board, not the button — whenever the card
+    // was dropped somewhere else. So nothing consumes the suppression, and
+    // leaving it set swallows the next real click: move a card, then click
+    // any card, and it refuses to open. Caught by clicking in the preview,
+    // not by a test.
+    const cards = layOutCards()
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
+    await act(async () => pointer(cards[0], 'pointerup', 600, 50))
+
+    const target = [...document.querySelectorAll('.scene-card')][1] as HTMLElement
+    const id = useWyrm.getState().project?.data.binder[0].children?.[0].children?.[1].id
+    await act(async () => pointer(target, 'pointerdown', 300, 50))
+    await act(async () => pointer(target, 'pointerup', 300, 50))
     await act(async () => {
-      dragOverAt(cards[0], 0)
+      fireEvent.click(target.querySelector('.scene-card-face') as HTMLElement)
     })
-    await act(async () => {
-      fireEvent.drop(cards[0])
-    })
+
+    await waitFor(() => expect(useWyrm.getState().activeId).toBeTruthy())
+    expect(useWyrm.getState().activeId).toBe(id)
+  })
+
+  it('does nothing when a card is released where it started', async () => {
+    const before = titles()
+    const cards = layOutCards()
+
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 60, 55))
+    await act(async () => pointer(cards[0], 'pointerup', 60, 55))
 
     expect(titles()).toEqual(before)
   })

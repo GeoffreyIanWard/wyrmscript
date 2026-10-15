@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { DragEvent, JSX } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { JSX, PointerEvent as ReactPointerEvent } from 'react'
 import type { DocFile } from '../../../shared/types'
 import { api } from '../lib/api'
 import { useWyrm } from '../store'
-import { sceneCards } from '../lib/corkboard'
-import type { SceneCard } from '../lib/corkboard'
+import { dropTargetAt, sceneCards } from '../lib/corkboard'
+import type { CardBox, SceneCard } from '../lib/corkboard'
 
 /**
  * The corkboard: every scene in the project as an index card (Phase 6).
@@ -34,6 +34,31 @@ export function Corkboard({
   const moveBinderNode = useWyrm((s) => s.moveBinderNode)
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<{ id: string; after: boolean } | null>(null)
+
+  /**
+   * Dragging is **pointer events, not HTML5 drag-and-drop.**
+   *
+   * The board shipped on `draggable` + `dataTransfer` and cards would not drop
+   * — picked up, then snapped back. Two rounds of fixing it failed because
+   * native drag-and-drop cannot be driven by synthetic events *or* by the
+   * remote-debugging mouse input the browser preview uses, so every check
+   * short of launching Electron by hand reported success against a view that
+   * did not work. Pointer events are the mechanism the project windows
+   * already drag with (`windowGeometry.ts`), they are real input in the
+   * preview, and they survive the card's inner `<button>`.
+   */
+  const drag = useRef<{
+    id: string
+    pointerId: number
+    startX: number
+    startY: number
+    moved: boolean
+  } | null>(null)
+  // Set on the pointerup that ends a real drag, so releasing a card does not
+  // also count as a click and open the scene that was just moved.
+  const suppressClick = useRef(false)
+  const cardEls = useRef(new Map<string, HTMLDivElement>())
+  const [offset, setOffset] = useState<{ x: number; y: number } | null>(null)
 
   // Documents are read on demand rather than held in the store, the same as
   // the timeline and plot graph do. Re-reads when the binder changes, so a
@@ -93,12 +118,77 @@ export function Corkboard({
     )
   }
 
-  const onDrop = (target: SceneCard, after: boolean): void => {
-    setOver(null)
-    const dragId = dragging
+  /** Past this many pixels a press becomes a drag rather than a click. */
+  const DRAG_THRESHOLD = 4
+
+  /**
+   * The other cards' boxes, measured now.
+   *
+   * The dragged card is **excluded**, and that is load-bearing: it is drawn
+   * translated under the pointer, so its own rect travels with the pointer and
+   * would win every hit test against itself — leaving no target and no move,
+   * which is the snap-back all over again.
+   */
+  const boxesNow = (exceptId: string): CardBox[] =>
+    cards.flatMap((c) => {
+      if (c.id === exceptId) return []
+      const el = cardEls.current.get(c.id)
+      if (!el) return []
+      const b = el.getBoundingClientRect()
+      return [{ id: c.id, left: b.left, top: b.top, width: b.width, height: b.height }]
+    })
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>, card: SceneCard): void => {
+    if (e.button !== 0) return
+    // Cleared on every fresh press, not left standing. A drag that ends over
+    // a *different* card has no click to consume it — the browser fires that
+    // click on the nearest common ancestor, the board — so a flag left set
+    // would swallow the next real click instead, and the card after a move
+    // would refuse to open.
+    suppressClick.current = false
+    drag.current = {
+      id: card.id,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false
+    }
+    // Capture is taken when the drag *starts*, not here. Capturing on the
+    // press redirects the rest of the gesture to this wrapper, so a plain
+    // click never reaches the card's own button and the scene will not open —
+    // the press arrives and nothing else does.
+  }
+
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    const d = drag.current
+    if (!d || d.pointerId !== e.pointerId) return
+    const dx = e.clientX - d.startX
+    const dy = e.clientY - d.startY
+    if (!d.moved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return
+    if (!d.moved) {
+      d.moved = true
+      setDragging(d.id)
+      // Now that this is a drag, follow the pointer even when it leaves the
+      // card — which it does immediately, since the card moves with it.
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+    }
+    setOffset({ x: dx, y: dy })
+    setOver(dropTargetAt(boxesNow(d.id), e.clientX, e.clientY))
+  }
+
+  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    const d = drag.current
+    if (!d || d.pointerId !== e.pointerId) return
+    drag.current = null
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
     setDragging(null)
-    if (!dragId || dragId === target.id) return
-    void moveBinderNode(dragId, target.id, after ? 'after' : 'before')
+    setOffset(null)
+    setOver(null)
+    if (!d.moved) return
+    suppressClick.current = true
+    const target = dropTargetAt(boxesNow(d.id), e.clientX, e.clientY)
+    if (!target) return
+    void moveBinderNode(d.id, target.id, target.after ? 'after' : 'before')
   }
 
   return (
@@ -111,35 +201,21 @@ export function Corkboard({
             className={`scene-card${dragging === card.id ? ' dragging' : ''}${
               over?.id === card.id ? (over.after ? ' drop-after' : ' drop-before') : ''
             }`}
-            draggable
-            onDragStart={(e: DragEvent<HTMLDivElement>) => {
-              setDragging(card.id)
-              // Chromium treats a drag with no transfer data as invalid: the
-              // card follows the pointer and then snaps back, because `drop`
-              // never fires. The binder's own drag sets a type for the same
-              // reason; this uses its own so the two cannot be dropped into
-              // each other.
-              e.dataTransfer?.setData('text/wyrm-scene', card.id)
-              if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+            ref={(el) => {
+              if (el) cardEls.current.set(card.id, el)
+              else cardEls.current.delete(card.id)
             }}
-            onDragEnd={() => {
-              setDragging(null)
-              setOver(null)
-            }}
-            onDragOver={(e: DragEvent<HTMLDivElement>) => {
-              // Only our own cards; a binder row dragged onto the board should
-              // not look droppable here.
-              if (e.dataTransfer && !e.dataTransfer.types.includes('text/wyrm-scene')) return
-              e.preventDefault()
-              if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-              // Which half of the card the pointer is over decides whether the
-              // dragged scene lands before or after it — the same before/after
-              // vocabulary the binder's own drop already speaks.
-              const box = e.currentTarget.getBoundingClientRect()
-              setOver({ id: card.id, after: e.clientX > box.left + box.width / 2 })
-            }}
-            onDragLeave={() => setOver((o) => (o?.id === card.id ? null : o))}
-            onDrop={() => onDrop(card, over?.after ?? false)}
+            // The card lifts under the pointer rather than leaving a native
+            // drag image behind, so a moved card is the one being moved.
+            style={
+              dragging === card.id && offset
+                ? { transform: `translate(${offset.x}px, ${offset.y}px)` }
+                : undefined
+            }
+            onPointerDown={(e) => onPointerDown(e, card)}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
           >
             {/* The pin. Decorative, so it is hidden from assistive tech — the
                 card's own button carries the name and the action. */}
@@ -147,7 +223,13 @@ export function Corkboard({
             <button
               type="button"
               className="scene-card-face"
-              onClick={() => void selectDoc(card.id)}
+              onClick={() => {
+                if (suppressClick.current) {
+                  suppressClick.current = false
+                  return
+                }
+                void selectDoc(card.id)
+              }}
               aria-label={`Open ${card.title}`}
             >
               <span className="scene-card-title">{card.title}</span>

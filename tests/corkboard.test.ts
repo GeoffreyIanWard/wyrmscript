@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { BinderNode, DocFile } from '../src/shared/types'
 import { SCENE_TAG } from '../src/shared/types'
-import { countWords, excerptOf, sceneCards } from '../src/renderer/src/lib/corkboard'
+import { countWords, dropTargetAt, excerptOf, sceneCards } from '../src/renderer/src/lib/corkboard'
+import type { CardBox } from '../src/renderer/src/lib/corkboard'
 
 /**
  * The corkboard's card model (Phase 6).
@@ -146,5 +147,46 @@ describe('countWords', () => {
 
   it('does not count whitespace runs as words', () => {
     expect(countWords('one   two\n\nthree')).toBe(3)
+  })
+})
+
+describe('where a dragged card lands', () => {
+  // A row of three 200px cards with 20px gutters, which is what the board
+  // draws. jsdom has no layout engine, so this arithmetic is only honestly
+  // testable away from the DOM — the same reason `windowGeometry.ts` is pure.
+  const row: CardBox[] = [
+    { id: 'a', left: 0, top: 0, width: 200, height: 100 },
+    { id: 'b', left: 220, top: 0, width: 200, height: 100 },
+    { id: 'c', left: 440, top: 0, width: 200, height: 100 }
+  ]
+
+  it('lands before the card when the pointer is on its left half', () => {
+    expect(dropTargetAt(row, 480, 50)).toEqual({ id: 'c', after: false })
+  })
+
+  it('lands after the card when the pointer is on its right half', () => {
+    expect(dropTargetAt(row, 600, 50)).toEqual({ id: 'c', after: true })
+  })
+
+  it('resolves a release in the gutter to the nearer card', () => {
+    // The gap between a and b. Rejecting this is the snap-back the board
+    // already got wrong once: a writer aiming between two cards means it.
+    expect(dropTargetAt(row, 205, 50)).toEqual({ id: 'a', after: true })
+    expect(dropTargetAt(row, 215, 50)).toEqual({ id: 'b', after: false })
+  })
+
+  it('prefers a card on the same row to a nearer one a row down', () => {
+    const grid: CardBox[] = [
+      { id: 'a', left: 0, top: 0, width: 200, height: 100 },
+      { id: 'below', left: 0, top: 120, width: 200, height: 100 }
+    ]
+    // Horizontally 260px from a's centre but vertically only 70 from below's:
+    // weighted, the card on the same row still wins, because the eye reads
+    // the board in rows.
+    expect(dropTargetAt(grid, 360, 50)).toEqual({ id: 'a', after: true })
+  })
+
+  it('has nowhere to land on an empty board', () => {
+    expect(dropTargetAt([], 10, 10)).toBeNull()
   })
 })

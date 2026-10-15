@@ -56,6 +56,59 @@ export function countWords(text: string): number {
  * sees it here, and one who untags it does not. Deciding that twice is how
  * views drift apart.
  */
+/** A card's box on screen, measured by the component and passed in here. */
+export interface CardBox {
+  id: string
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/** Where a card released at (x, y) would land. */
+export interface DropTarget {
+  id: string
+  /** After the target card in binder order, rather than before it. */
+  after: boolean
+}
+
+/**
+ * The card under the pointer, and which side of it the drop lands on.
+ *
+ * Pure and DOM-free for the same reason `windowGeometry.ts` is: jsdom has no
+ * layout engine, so geometry asserted through a rendered component is asserted
+ * against zeroes. Boxes are measured by the caller and the arithmetic is
+ * tested directly.
+ *
+ * A release in the gutter between cards resolves to the **nearest** card
+ * rather than nothing. Cards are spaced apart on a board, so "between two
+ * cards" is exactly where a writer aims when they mean to put one there, and
+ * rejecting that drop is the snap-back this view already got wrong once.
+ */
+export function dropTargetAt(boxes: CardBox[], x: number, y: number): DropTarget | null {
+  if (boxes.length === 0) return null
+  const side = (box: CardBox): boolean => x > box.left + box.width / 2
+  const hit = boxes.find(
+    (b) => x >= b.left && x <= b.left + b.width && y >= b.top && y <= b.top + b.height
+  )
+  if (hit) return { id: hit.id, after: side(hit) }
+  // Nearest by centre, with rows weighted: a card one row down is further away
+  // than one an equal number of pixels along the same row, because the eye
+  // reads the board in rows.
+  let best: CardBox | null = null
+  let bestDist = Infinity
+  for (const b of boxes) {
+    const dx = x - (b.left + b.width / 2)
+    const dy = y - (b.top + b.height / 2)
+    const dist = dx * dx + (dy * 2) ** 2
+    if (dist < bestDist) {
+      bestDist = dist
+      best = b
+    }
+  }
+  return best ? { id: best.id, after: side(best) } : null
+}
+
 export function sceneCards(docs: DocFile[], binder: BinderNode[]): SceneCard[] {
   const byId = new Map(docs.map((d) => [d.meta.id, d]))
   const folders = folderPaths(binder)
