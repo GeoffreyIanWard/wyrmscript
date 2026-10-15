@@ -108,9 +108,14 @@ describe('the Escape key', () => {
       useWyrm.getState().showEntity('a')
     })
 
-    const project = screen.getByText('Project')
-    act(() => project.focus())
-    fireEvent.keyDown(project, { key: 'ArrowDown' })
+    // Timeline lives under Corkboard now, with the rest of the outlining
+    // toolset. Queried as the menu *title* rather than by text: the menu's
+    // first item carries the same word.
+    const board = [...document.querySelectorAll('.menu-title')].find(
+      (t) => t.textContent === 'Corkboard'
+    ) as HTMLElement
+    act(() => board.focus())
+    fireEvent.keyDown(board, { key: 'ArrowDown' })
     fireEvent.keyDown(screen.getByRole('menubar'), { key: 't' }) // Timeline…
     await act(async () => {
       fireEvent.keyDown(screen.getByRole('menubar'), { key: 'Enter' })

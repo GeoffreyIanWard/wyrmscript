@@ -22,10 +22,14 @@ import type { PlacedCard } from '../lib/corkboard'
 export function Corkboard({
   onTimeline,
   onPlotGraph,
+  onPlotlines,
+  onCharacterGraph,
   onWorldMap
 }: {
   onTimeline: () => void
   onPlotGraph: () => void
+  onPlotlines: () => void
+  onCharacterGraph: () => void
   onWorldMap: () => void
 }): JSX.Element {
   const project = useWyrm((s) => s.project)
@@ -133,6 +137,14 @@ export function Corkboard({
       <button type="button" className="board-tool" onClick={onPlotGraph}>
         <span className="board-tool-pin" aria-hidden="true" />
         <span>Plot Graph</span>
+      </button>
+      <button type="button" className="board-tool" onClick={onPlotlines}>
+        <span className="board-tool-pin" aria-hidden="true" />
+        <span>Plotlines</span>
+      </button>
+      <button type="button" className="board-tool" onClick={onCharacterGraph}>
+        <span className="board-tool-pin" aria-hidden="true" />
+        <span>Characters</span>
       </button>
       <button type="button" className="board-tool" onClick={onWorldMap}>
         <span className="board-tool-pin" aria-hidden="true" />

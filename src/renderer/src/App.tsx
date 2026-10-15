@@ -453,10 +453,14 @@ function InactiveProjectWindow({
 function MainPane({
   onTimeline,
   onPlotGraph,
+  onPlotlines,
+  onCharacterGraph,
   onWorldMap
 }: {
   onTimeline: () => void
   onPlotGraph: () => void
+  onPlotlines: () => void
+  onCharacterGraph: () => void
   onWorldMap: () => void
 }): JSX.Element {
   const mainView = useWyrm((s) => s.mainView)
@@ -465,7 +469,15 @@ function MainPane({
   if (mainView.kind === 'stats') return <StatsPage />
   if (mainView.kind === 'tags') return <TagBrowser />
   if (mainView.kind === 'corkboard')
-    return <Corkboard onTimeline={onTimeline} onPlotGraph={onPlotGraph} onWorldMap={onWorldMap} />
+    return (
+      <Corkboard
+        onTimeline={onTimeline}
+        onPlotGraph={onPlotGraph}
+        onPlotlines={onPlotlines}
+        onCharacterGraph={onCharacterGraph}
+        onWorldMap={onWorldMap}
+      />
+    )
   return <Editor />
 }
 
@@ -708,6 +720,13 @@ function App(): JSX.Element {
         // entry above: Option remaps e.key, so this must not check 'f'.
         e.preventDefault()
         setFocusMode((v) => !v)
+      } else if (e.altKey && e.metaKey && !e.shiftKey && e.code === 'KeyB' && state.project) {
+        // ⌥⌘B — between the corkboard and the manuscript, the two places a
+        // writer works. Same `e.code` reasoning as ⌥⌘F and ⌥⌘T: Option
+        // remaps e.key (⌥B is "∫" on macOS), so checking 'b' would mean the
+        // shortcut silently did nothing on the platform it was designed for.
+        e.preventDefault()
+        state.toggleCorkboard()
       } else if (e.altKey && e.metaKey && !e.shiftKey && e.code === 'KeyT' && state.project) {
         // ⌥⌘T — Typewriter scrolling (F-37). Same e.code reasoning as ⌥⌘F.
         e.preventDefault()
@@ -845,6 +864,8 @@ function App(): JSX.Element {
                         <MainPane
                           onTimeline={() => setTimelineOpen(true)}
                           onPlotGraph={() => setPlotGraphOpen(true)}
+                          onPlotlines={() => setPlotlinesOpen(true)}
+                          onCharacterGraph={() => setCharacterGraphOpen(true)}
                           onWorldMap={() => setWorldMapOpen(true)}
                         />
                       </ErrorBoundary>
@@ -961,33 +982,39 @@ function App(): JSX.Element {
                   run: () => setSearchOpen(true)
                 },
                 {
+                  id: 'corkboard',
+                  title: 'Corkboard',
+                  subtitle: 'Corkboard',
+                  run: () => useWyrm.getState().toggleCorkboard()
+                },
+                {
                   id: 'timeline',
                   title: 'Timeline…',
-                  subtitle: 'Project',
+                  subtitle: 'Corkboard',
                   run: () => setTimelineOpen(true)
                 },
                 {
                   id: 'plot-graph',
                   title: 'Plot Graph…',
-                  subtitle: 'Project',
+                  subtitle: 'Corkboard',
                   run: () => setPlotGraphOpen(true)
                 },
                 {
                   id: 'plotlines',
                   title: 'Plotlines…',
-                  subtitle: 'Project',
+                  subtitle: 'Corkboard',
                   run: () => setPlotlinesOpen(true)
                 },
                 {
                   id: 'character-graph',
                   title: 'Character Graph…',
-                  subtitle: 'Project',
+                  subtitle: 'Corkboard',
                   run: () => setCharacterGraphOpen(true)
                 },
                 {
                   id: 'world-map',
                   title: 'World Map…',
-                  subtitle: 'Project',
+                  subtitle: 'Corkboard',
                   run: () => setWorldMapOpen(true)
                 },
                 {

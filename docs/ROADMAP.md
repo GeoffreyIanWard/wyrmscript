@@ -774,6 +774,21 @@ And one that only a real click in the browser could show: the CSS that made card
 
 **A test that was lying.** The binder-order tests used a fixture titled Alpha/Bravo/Charlie — already alphabetical, so sorting the cards by title was indistinguishable from binder order and the guard passed against code that ignored the binder entirely. The fixture is now deliberately out of alphabetical order, and the guard fails against both a title sort and a reversal.
 
+### The Corkboard menu ✅ shipped — the outlining toolset in one place
+
+Requested 2026-10-15, after the board landed. The five story-structure views and the board itself now live under a **Corkboard** menu of their own, between View and Project, with `⌥⌘B` switching between the board and the manuscript.
+
+**Why they were hard to find.** The board sat in View; the timeline, plot graph, plotlines, character graph and world map sat in Project, beneath Writing Stats and above Backup and Sync Settings — filed as housekeeping, next to the things that move bytes around. Nothing in that arrangement said they are the *same scenes seen differently*: as cards, as a line, as a curve, as a cast, as a map. Grouping them is the first concrete step of the unification F-42 is after, and the board names the menu because it is the surface the rest belong to.
+
+**`⌥⌘B` is a toggle, not an opener**, because the board and the manuscript are the two places a writer works and one key should move between them. From anywhere else — a folder listing, the stats page, a story-bible entry — it goes *to* the board rather than doing nothing, since "not the board" is the only thing the other half of the toggle needs to know. The menu item renames itself to the place it would take you (Corkboard ↔ Manuscript) rather than naming where you already are. It uses `e.code`, not `e.key`: Option remaps the character on macOS (⌥B is "∫"), so a handler checking `'b'` would silently do nothing on the platform it was designed for — the trap `⌥⌘F` and `⌥⌘T` already carry comments about.
+
+**Two places had to move with it**, and they are the ones that rot quietly:
+
+- The **command palette's subtitles**, which name the menu an item lives under. They still said "Project". A subtitle is *searched*, not displayed, so this is not cosmetic: it is what makes typing "corkboard" turn up all five views, and left stale it would have sent a writer to a menu the items are no longer in.
+- The **board's own pinned strip**, which offered three of the five. The strip and the menu are two statements of the same set, so Plotlines and Characters were added; if they disagree, neither tells a writer what the outlining tools are.
+
+Tests cover the grouping, that nothing was left behind in Project (a half-done move is the likely failure), the toggle in both directions and from a third view, the palette search, and the strip — with the `e.code`/`e.key` trap and the half-done move both verified by injection.
+
 ### F-42 · Outline mode 📋 designed, not started
 
 Build a story's shape before writing it: add scenes through a templated form, then work with them exactly like any other scene — on the corkboard, the timeline, the plot graph and the map — and click one to start writing it.
