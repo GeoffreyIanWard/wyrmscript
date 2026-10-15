@@ -3230,7 +3230,12 @@ button {
      index card is the same card and an unmoved card's slot is predictable. */
   position: absolute;
   box-sizing: border-box;
-  width: 210px;
+  /* A column so the face can take the space left over and clip inside it.
+     Without this the face is sized by its own content and simply overflows
+     the card's fixed height, which puts the word count outside the border. */
+  display: flex;
+  flex-direction: column;
+  width: 230px;
   background: var(--paper);
   border: 2px solid var(--ink);
   outline: 1px solid var(--paper);
@@ -3268,8 +3273,12 @@ button {
 }
 
 /* The overflow is here rather than on the card: the pin overhangs the card's
-   top edge on purpose, and clipping the card would cut its head off. */
+   top edge on purpose, and clipping the card would cut its head off.
+   `min-height: 0` is what actually lets a flex child shrink below its content
+   and clip, rather than growing the card past its own height. */
 .scene-card-face {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -3285,12 +3294,12 @@ button {
 }
 
 .scene-card-title {
-  font-size: 12px;
+  font-size: 15px;
   text-transform: uppercase;
 }
 
 .scene-card-folder {
-  font-size: 10px;
+  font-size: 13px;
   opacity: 0.65;
 }
 
@@ -3298,16 +3307,16 @@ button {
    writing rather than chrome. */
 .scene-card-excerpt {
   font-family: var(--font-prose);
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.45;
-  min-height: 48px;
+  min-height: 60px;
   color: var(--page-ink, var(--ink));
 }
 
 .scene-card-foot {
   display: flex;
   gap: 8px;
-  font-size: 10px;
+  font-size: 13px;
   opacity: 0.75;
   border-top: 1px solid var(--ink);
   padding-top: 5px;

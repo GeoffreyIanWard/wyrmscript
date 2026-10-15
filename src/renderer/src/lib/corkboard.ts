@@ -60,8 +60,11 @@ export function countWords(text: string): number {
  * views drift apart.
  */
 /** A card's own size and the spacing of the tidy grid, in board pixels. */
-export const CARD_W = 210
-export const CARD_H = 200
+export const CARD_W = 230
+/** Tall enough to hold a card's opening at the type size it is set in — the
+ *  face clips, so a height that does not keep up with the font silently eats
+ *  the excerpt it exists to show. */
+export const CARD_H = 260
 export const CARD_GAP = 24
 
 export interface PlacedCard extends SceneCard {

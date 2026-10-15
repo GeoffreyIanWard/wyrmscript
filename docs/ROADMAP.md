@@ -789,6 +789,8 @@ Requested 2026-10-15, after the board landed. The five story-structure views and
 
 Tests cover the grouping, that nothing was left behind in Project (a half-done move is the likely failure), the toggle in both directions and from a third view, the palette search, and the strip — with the `e.code`/`e.key` trap and the half-done move both verified by injection.
 
+**Card type, 25% larger** (requested 2026-10-15): title 12→15px, folder and foot 10→13px, excerpt 11→14px. The card grew with it — 210x200 to 230x260 — because the face clips, so a card whose height does not keep up with its type silently eats the excerpt it exists to show. That also exposed a latent fault: `.scene-card-face` had `overflow: hidden` but no bounded height, so it was sized by its own content and simply overflowed the card's fixed height, putting the word count *outside* the border. The card is a flex column now and the face is `flex: 1; min-height: 0`, which is what actually lets a flex child shrink below its content and clip.
+
 ### F-42 · Outline mode 📋 designed, not started
 
 Build a story's shape before writing it: add scenes through a templated form, then work with them exactly like any other scene — on the corkboard, the timeline, the plot graph and the map — and click one to start writing it.
