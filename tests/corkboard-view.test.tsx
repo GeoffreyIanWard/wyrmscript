@@ -28,14 +28,19 @@ async function openDemo(): Promise<string> {
 }
 
 /**
- * Clears every scene tag. The mock keeps documents in a module-level map that
- * outlives a test, so without this each test inherits whatever the previous
- * one tagged — and the empty-board and unwritten-scene cases become
- * unreachable.
+ * Clears every scene tag **and every stored card position**. The mock keeps
+ * documents in a module-level map that outlives a test, so without this each
+ * test inherits whatever the previous one tagged — the empty-board and
+ * unwritten-scene cases become unreachable — and, once cards could be placed,
+ * each drag started from wherever the last test dropped that card, so the
+ * positions silently accumulated across the file.
  */
 async function clearScenes(path: string): Promise<void> {
   for (const d of await api.readAllDocs(path)) {
-    await api.writeDoc(path, { ...d, meta: { ...d.meta, tags: [] } })
+    const meta = { ...d.meta, tags: [] }
+    delete meta.boardX
+    delete meta.boardY
+    await api.writeDoc(path, { ...d, meta })
   }
 }
 
@@ -178,18 +183,8 @@ function pointer(el: HTMLElement, type: string, x: number, y: number): void {
   el.dispatchEvent(e)
 }
 
-/** jsdom has no layout engine, so the cards are given real boxes: a row of
- *  three 200px cards with 20px gutters between them. The geometry is the
- *  entire thing under test, so it has to be stated rather than measured. */
-function layOutCards(): HTMLElement[] {
-  const cards = [...document.querySelectorAll('.scene-card')] as HTMLElement[]
-  cards.forEach((card, i) => {
-    const left = i * 220
-    card.getBoundingClientRect = () =>
-      ({ left, width: 200, top: 0, height: 100, right: left + 200, bottom: 100 }) as DOMRect
-  })
-  return cards
-}
+const cardEls = (): HTMLElement[] => [...document.querySelectorAll('.scene-card')] as HTMLElement[]
+const posOf = (el: HTMLElement): { x: string; y: string } => ({ x: el.style.left, y: el.style.top })
 
 describe('dragging a card', () => {
   beforeEach(async () => {
@@ -199,90 +194,56 @@ describe('dragging a card', () => {
     await waitFor(() => expect(titles().length).toBe(3))
   })
 
-  it('reorders the manuscript through the binder, not a second mechanism', async () => {
-    // Asserted on the outcome rather than a spy: the component captured
-    // `moveBinderNode` from the store when it rendered, so a spy installed
-    // afterwards would never be the function it calls.
-    const before = titles()
-    const cards = layOutCards()
-
-    // Each event in its own act: React batches within one, so a single act
-    // would leave the later handlers seeing stale state.
-    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
-    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
-    await act(async () => pointer(cards[0], 'pointerup', 600, 50))
-
-    await waitFor(() => expect(titles()).not.toEqual(before))
-    // Dropped on the right half of the last card, so it lands last.
-    expect(titles()[2]).toBe(before[0])
-  })
-
-  it('lands before or after depending on which half of the card is under it', async () => {
-    const before = titles()
-    const cards = layOutCards()
-
-    // 490 is the left half of the third card (440–640).
-    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
-    await act(async () => pointer(cards[0], 'pointermove', 490, 50))
-    await act(async () => pointer(cards[0], 'pointerup', 490, 50))
-
-    await waitFor(() => expect(titles()).not.toEqual(before))
-    expect(titles()).toEqual([before[1], before[0], before[2]])
-  })
-
-  it('lands in the gutter between two cards rather than snapping back', async () => {
-    // A writer aiming at the space between two cards means to put it there.
-    const before = titles()
-    const cards = layOutCards()
-
-    await act(async () => pointer(cards[2], 'pointerdown', 500, 50))
-    await act(async () => pointer(cards[2], 'pointermove', 205, 50))
-    await act(async () => pointer(cards[2], 'pointerup', 205, 50))
-
-    await waitFor(() => expect(titles()).not.toEqual(before))
-    expect(titles()).toEqual([before[0], before[2], before[1]])
-  })
-
-  it('shows which side the card will land on while it is being carried', async () => {
-    const cards = layOutCards()
+  it('leaves the card where the writer dropped it', async () => {
+    // The bug this replaces: the card reordered the manuscript and then
+    // snapped into the grid, so it never stayed where it was put.
+    const cards = cardEls()
+    const before = posOf(cards[0])
 
     await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
-    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
-    expect(cards[2].className).toContain('drop-after')
+    await act(async () => pointer(cards[0], 'pointermove', 350, 420))
+    await act(async () => pointer(cards[0], 'pointerup', 350, 420))
 
-    await act(async () => pointer(cards[0], 'pointermove', 460, 50))
-    expect(cards[2].className).toContain('drop-before')
+    await waitFor(() => expect(posOf(cardEls()[0])).not.toEqual(before))
+    const after = posOf(cardEls()[0])
+    expect(after).toEqual({ x: '300px', y: '370px' })
   })
 
-  it('does not count a press that never moved as a drag', async () => {
-    // Below the threshold the card has not been picked up at all, so the
-    // click underneath it must still reach the scene.
-    const before = titles()
-    const cards = layOutCards()
-
+  it('writes the position to the scene, so it survives a reopen', async () => {
+    const cards = cardEls()
     await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
-    await act(async () => pointer(cards[0], 'pointermove', 52, 51))
-    await act(async () => pointer(cards[0], 'pointerup', 52, 51))
+    await act(async () => pointer(cards[0], 'pointermove', 250, 300))
+    await act(async () => pointer(cards[0], 'pointerup', 250, 300))
 
-    expect(titles()).toEqual(before)
-    expect(document.querySelector('.scene-card.dragging')).toBeNull()
-  })
-
-  it('does not open the scene it just moved', async () => {
-    // The card's whole face is a button, so the pointerup that ends a drag is
-    // also a click on it. Without suppression, moving a card yanks the writer
-    // into that scene.
-    const cards = layOutCards()
-    const activeBefore = useWyrm.getState().activeId
-
-    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
-    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
-    await act(async () => pointer(cards[0], 'pointerup', 600, 50))
-    await act(async () => {
-      fireEvent.click(cards[0].querySelector('.scene-card-face') as HTMLElement)
+    const path = useWyrm.getState().project?.path as string
+    await waitFor(async () => {
+      const docs = await api.readAllDocs(path)
+      const moved = docs.find((d) => d.meta.boardX != null)
+      expect(moved?.meta.boardX).toBe(200)
+      expect(moved?.meta.boardY).toBe(250)
     })
+  })
 
-    expect(useWyrm.getState().activeId).toBe(activeBefore)
+  it('does not drag a card off the top-left of the board', async () => {
+    // A card dragged past the corner would otherwise be positioned negative
+    // and sit outside the board, unreachable.
+    const cards = cardEls()
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', -500, -500))
+    await act(async () => pointer(cards[0], 'pointerup', -500, -500))
+
+    await waitFor(() => expect(posOf(cardEls()[0])).toEqual({ x: '0px', y: '0px' }))
+  })
+
+  it('leaves the manuscript order alone — the binder is still the book', async () => {
+    const before = titles()
+    const cards = cardEls()
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
+    await act(async () => pointer(cards[0], 'pointerup', 600, 50))
+
+    await waitFor(() => expect(cardEls()[0].style.left).toBe('550px'))
+    expect(titles()).toEqual(before)
   })
 
   it('does not capture the pointer until the card actually moves', async () => {
@@ -296,7 +257,7 @@ describe('dragging a card', () => {
     HTMLElement.prototype.setPointerCapture = function () {
       taken.push('captured')
     }
-    const cards = layOutCards()
+    const cards = cardEls()
 
     await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
     expect(taken).toEqual([])
@@ -305,20 +266,47 @@ describe('dragging a card', () => {
     expect(taken).toEqual(['captured'])
   })
 
+  it('does not count a press that never moved as a drag', async () => {
+    const cards = cardEls()
+    const before = posOf(cards[0])
+
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 52, 51))
+    await act(async () => pointer(cards[0], 'pointerup', 52, 51))
+
+    expect(posOf(cardEls()[0])).toEqual(before)
+    expect(document.querySelector('.scene-card.dragging')).toBeNull()
+  })
+
+  it('does not open the scene it just moved', async () => {
+    // The card's whole face is a button, so the pointerup that ends a drag is
+    // also a click on it. Without suppression, moving a card yanks the writer
+    // into that scene.
+    const cards = cardEls()
+    const activeBefore = useWyrm.getState().activeId
+
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
+    await act(async () => pointer(cards[0], 'pointerup', 600, 50))
+    await act(async () => {
+      fireEvent.click(cards[0].querySelector('.scene-card-face') as HTMLElement)
+    })
+
+    expect(useWyrm.getState().activeId).toBe(activeBefore)
+  })
+
   it('still opens a scene on the next click after a move', async () => {
     // The click that ends a drag lands on the nearest common ancestor of the
     // press and the release — the board, not the button — whenever the card
     // was dropped somewhere else. So nothing consumes the suppression, and
     // leaving it set swallows the next real click: move a card, then click
-    // any card, and it refuses to open. Caught by clicking in the preview,
-    // not by a test.
-    const cards = layOutCards()
+    // any card, and it refuses to open.
+    const cards = cardEls()
     await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
     await act(async () => pointer(cards[0], 'pointermove', 600, 50))
     await act(async () => pointer(cards[0], 'pointerup', 600, 50))
 
-    const target = [...document.querySelectorAll('.scene-card')][1] as HTMLElement
-    const id = useWyrm.getState().project?.data.binder[0].children?.[0].children?.[1].id
+    const target = cardEls()[1]
     await act(async () => pointer(target, 'pointerdown', 300, 50))
     await act(async () => pointer(target, 'pointerup', 300, 50))
     await act(async () => {
@@ -326,17 +314,50 @@ describe('dragging a card', () => {
     })
 
     await waitFor(() => expect(useWyrm.getState().activeId).toBeTruthy())
-    expect(useWyrm.getState().activeId).toBe(id)
+  })
+})
+
+describe('tidying the board', () => {
+  beforeEach(async () => {
+    const path = await openDemo()
+    await tagScenes(path)
+    await renderBoard()
+    await waitFor(() => expect(titles().length).toBe(3))
   })
 
-  it('does nothing when a card is released where it started', async () => {
-    const before = titles()
-    const cards = layOutCards()
+  it('is offered only once something has actually been moved', async () => {
+    const tidy = (): HTMLButtonElement =>
+      [...document.querySelectorAll('.board-tool')].find((b) =>
+        b.textContent?.includes('Tidy')
+      ) as HTMLButtonElement
+    expect(tidy().disabled).toBe(true)
 
+    const cards = cardEls()
     await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
-    await act(async () => pointer(cards[0], 'pointermove', 60, 55))
-    await act(async () => pointer(cards[0], 'pointerup', 60, 55))
+    await act(async () => pointer(cards[0], 'pointermove', 400, 400))
+    await act(async () => pointer(cards[0], 'pointerup', 400, 400))
 
-    expect(titles()).toEqual(before)
+    await waitFor(() => expect(tidy().disabled).toBe(false))
+  })
+
+  it('returns every card to its slot in binder order', async () => {
+    const cards = cardEls()
+    await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
+    await act(async () => pointer(cards[0], 'pointermove', 400, 400))
+    await act(async () => pointer(cards[0], 'pointerup', 400, 400))
+    await waitFor(() => expect(cardEls()[0].style.top).toBe('350px'))
+
+    const tidy = [...document.querySelectorAll('.board-tool')].find((b) =>
+      b.textContent?.includes('Tidy')
+    ) as HTMLButtonElement
+    await act(async () => {
+      fireEvent.click(tidy)
+    })
+
+    await waitFor(() => expect(cardEls()[0].style.top).toBe('0px'))
+    // And the position is gone from the file, not merely ignored by the view.
+    const path = useWyrm.getState().project?.path as string
+    const docs = await api.readAllDocs(path)
+    expect(docs.every((d) => d.meta.boardX == null)).toBe(true)
   })
 })

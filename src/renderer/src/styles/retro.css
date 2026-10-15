@@ -3206,12 +3206,13 @@ button {
   border-color: var(--ink);
 }
 
+/* Cards are placed, not flowed: each one is positioned on the board, either
+   where the writer dropped it or in its binder slot. The height is set
+   inline from the lowest card, so the board grows to hold whatever the
+   writer has spread out on it. */
 .corkboard-board {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 18px;
-  padding: 20px;
+  position: relative;
+  margin: 20px;
 }
 
 .corkboard-empty {
@@ -3224,7 +3225,11 @@ button {
 /* An index card. Deliberately paper-coloured against the cork so the board
    reads as cards pinned to a surface rather than tiles in a grid. */
 .scene-card {
-  position: relative;
+  /* Positioned by the board, not flowed: a card sits where the writer put it,
+     and an unmoved one sits in its binder slot. The size is fixed so every
+     index card is the same card and an unmoved card's slot is predictable. */
+  position: absolute;
+  box-sizing: border-box;
   width: 210px;
   background: var(--paper);
   border: 2px solid var(--ink);
@@ -3262,7 +3267,10 @@ button {
   background: var(--ink);
 }
 
+/* The overflow is here rather than on the card: the pin overhangs the card's
+   top edge on purpose, and clipping the card would cut its head off. */
 .scene-card-face {
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -3317,22 +3325,3 @@ button {
   z-index: 2;
 }
 
-/* Where the card would land. A rule down the side rather than a gap, so the
-   board does not reflow under the pointer mid-drag. */
-.scene-card.drop-before::before,
-.scene-card.drop-after::after {
-  content: '';
-  position: absolute;
-  top: -4px;
-  bottom: -4px;
-  width: 3px;
-  background: var(--ink);
-}
-
-.scene-card.drop-before::before {
-  left: -11px;
-}
-
-.scene-card.drop-after::after {
-  right: -11px;
-}

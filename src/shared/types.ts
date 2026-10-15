@@ -63,6 +63,20 @@ export interface DocMeta {
    * anything. Unset until a writer first drags a scene's node.
    */
   tension?: number
+  /**
+   * Where this scene's card sits on the corkboard, in board pixels from its
+   * top-left. Unset until a writer first moves the card, and cleared again by
+   * Tidy — an unplaced card falls back to its slot in binder order, so a
+   * project that has never used the board needs no migration and reads the
+   * same as it always did.
+   *
+   * Deliberately *not* the manuscript order: `timelineOrder` already
+   * established that a view's own arrangement and the binder are different
+   * questions (F-02). Where a card sits is the writer's thinking; the binder
+   * is still the book.
+   */
+  boardX?: number
+  boardY?: number
   created: string
   modified: string
 }

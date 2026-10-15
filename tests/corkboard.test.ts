@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { BinderNode, DocFile } from '../src/shared/types'
 import { SCENE_TAG } from '../src/shared/types'
-import { countWords, dropTargetAt, excerptOf, sceneCards } from '../src/renderer/src/lib/corkboard'
-import type { CardBox } from '../src/renderer/src/lib/corkboard'
+import {
+  boardHeight,
+  CARD_GAP,
+  CARD_H,
+  CARD_W,
+  columnsFor,
+  countWords,
+  excerptOf,
+  layoutCards,
+  sceneCards
+} from '../src/renderer/src/lib/corkboard'
+import type { SceneCard } from '../src/renderer/src/lib/corkboard'
 
 /**
  * The corkboard's card model (Phase 6).
@@ -150,43 +160,51 @@ describe('countWords', () => {
   })
 })
 
-describe('where a dragged card lands', () => {
-  // A row of three 200px cards with 20px gutters, which is what the board
-  // draws. jsdom has no layout engine, so this arithmetic is only honestly
-  // testable away from the DOM — the same reason `windowGeometry.ts` is pure.
-  const row: CardBox[] = [
-    { id: 'a', left: 0, top: 0, width: 200, height: 100 },
-    { id: 'b', left: 220, top: 0, width: 200, height: 100 },
-    { id: 'c', left: 440, top: 0, width: 200, height: 100 }
-  ]
-
-  it('lands before the card when the pointer is on its left half', () => {
-    expect(dropTargetAt(row, 480, 50)).toEqual({ id: 'c', after: false })
+describe('where a card sits on the board', () => {
+  const card = (id: string, boardX?: number, boardY?: number): SceneCard => ({
+    id,
+    title: id,
+    folder: '',
+    wordCount: 0,
+    excerpt: '',
+    empty: true,
+    boardX,
+    boardY
   })
 
-  it('lands after the card when the pointer is on its right half', () => {
-    expect(dropTargetAt(row, 600, 50)).toEqual({ id: 'c', after: true })
+  it('puts an untouched card in its binder slot', () => {
+    // Three columns' worth of width. Binder order is still what an unplaced
+    // board shows, so a project that has never used the board is unchanged.
+    const laid = layoutCards([card('a'), card('b'), card('c')], 3 * (CARD_W + CARD_GAP))
+    expect(laid.map((c) => [c.x, c.y])).toEqual([
+      [0, 0],
+      [CARD_W + CARD_GAP, 0],
+      [2 * (CARD_W + CARD_GAP), 0]
+    ])
+    expect(laid.every((c) => !c.placed)).toBe(true)
   })
 
-  it('resolves a release in the gutter to the nearer card', () => {
-    // The gap between a and b. Rejecting this is the snap-back the board
-    // already got wrong once: a writer aiming between two cards means it.
-    expect(dropTargetAt(row, 205, 50)).toEqual({ id: 'a', after: true })
-    expect(dropTargetAt(row, 215, 50)).toEqual({ id: 'b', after: false })
+  it('wraps to the next row when the board runs out of width', () => {
+    const laid = layoutCards([card('a'), card('b'), card('c')], 2 * (CARD_W + CARD_GAP))
+    expect(laid[2]).toMatchObject({ x: 0, y: CARD_H + CARD_GAP })
   })
 
-  it('prefers a card on the same row to a nearer one a row down', () => {
-    const grid: CardBox[] = [
-      { id: 'a', left: 0, top: 0, width: 200, height: 100 },
-      { id: 'below', left: 0, top: 120, width: 200, height: 100 }
-    ]
-    // Horizontally 260px from a's centre but vertically only 70 from below's:
-    // weighted, the card on the same row still wins, because the eye reads
-    // the board in rows.
-    expect(dropTargetAt(grid, 360, 50)).toEqual({ id: 'a', after: true })
+  it('keeps a card exactly where the writer put it', () => {
+    // The whole point of free placement: a placed card ignores the grid, and
+    // ignores what the cards around it are doing.
+    const laid = layoutCards([card('a', 417, 263), card('b')], 3 * (CARD_W + CARD_GAP))
+    expect(laid[0]).toMatchObject({ x: 417, y: 263, placed: true })
+    expect(laid[1]).toMatchObject({ x: CARD_W + CARD_GAP, y: 0, placed: false })
   })
 
-  it('has nowhere to land on an empty board', () => {
-    expect(dropTargetAt([], 10, 10)).toBeNull()
+  it('never puts a card off the board for want of width', () => {
+    // A board narrower than one card still has to show it.
+    expect(layoutCards([card('a'), card('b')], 10).map((c) => c.x)).toEqual([0, 0])
+    expect(columnsFor(0)).toBe(1)
+  })
+
+  it('grows the board to hold the lowest card', () => {
+    const laid = layoutCards([card('a', 0, 900)], 3 * (CARD_W + CARD_GAP))
+    expect(boardHeight(laid)).toBe(900 + CARD_H)
   })
 })

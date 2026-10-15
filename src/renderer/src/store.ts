@@ -229,6 +229,10 @@ interface WyrmState {
    * card was dragged, which is rarely the document currently open for
    * writing.
    */
+  /** Where a scene's card sits on the corkboard (free placement). */
+  setCardPosition(docId: string, x: number, y: number): Promise<void>
+  /** Clear every scene's stored card position, returning the board to binder order. */
+  tidyBoard(): Promise<void>
   setTimelineOrder(docId: string, order: number): Promise<void>
   setTimelineDate(docId: string, date: string): Promise<void>
   /** F-03: a scene's tension, set by dragging its node on the plot graph.
@@ -1017,6 +1021,35 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const doc: DocFile = { ...activeDoc, meta }
       await api.writeDoc(project.path, doc)
       set({ activeDoc: doc })
+      markDirty()
+    },
+
+    async setCardPosition(docId, x, y) {
+      const { project, activeId, activeDoc } = get()
+      if (!project) return
+      const doc =
+        docId === activeId && activeDoc ? activeDoc : await api.readDoc(project.path, docId)
+      const updated: DocFile = { ...doc, meta: { ...doc.meta, boardX: x, boardY: y } }
+      await api.writeDoc(project.path, updated)
+      if (docId === activeId) set({ activeDoc: updated })
+      markDirty()
+    },
+
+    async tidyBoard() {
+      const { project, activeId } = get()
+      if (!project) return
+      const docs = await api.readAllDocs(project.path)
+      for (const doc of docs) {
+        if (doc.meta.boardX == null && doc.meta.boardY == null) continue
+        // Deleted rather than set to undefined, the same care the rest of the
+        // metadata writers take: an explicit undefined serializes as a key.
+        const meta = { ...doc.meta }
+        delete meta.boardX
+        delete meta.boardY
+        const updated: DocFile = { ...doc, meta }
+        await api.writeDoc(project.path, updated)
+        if (doc.meta.id === activeId) set({ activeDoc: updated })
+      }
       markDirty()
     },
 

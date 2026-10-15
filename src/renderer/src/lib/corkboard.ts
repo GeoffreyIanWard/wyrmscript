@@ -29,6 +29,9 @@ export interface SceneCard {
   excerpt: string
   /** No prose yet — an outlined scene, or one not started. */
   empty: boolean
+  /** Stored board position, unset until the writer moves this card. */
+  boardX?: number
+  boardY?: number
 }
 
 /** How much of the opening a card shows before it stops being a card. */
@@ -56,57 +59,60 @@ export function countWords(text: string): number {
  * sees it here, and one who untags it does not. Deciding that twice is how
  * views drift apart.
  */
-/** A card's box on screen, measured by the component and passed in here. */
-export interface CardBox {
-  id: string
-  left: number
-  top: number
-  width: number
-  height: number
+/** A card's own size and the spacing of the tidy grid, in board pixels. */
+export const CARD_W = 210
+export const CARD_H = 200
+export const CARD_GAP = 24
+
+export interface PlacedCard extends SceneCard {
+  x: number
+  y: number
+  /** Where the writer put it, rather than where binder order would put it. */
+  placed: boolean
 }
 
-/** Where a card released at (x, y) would land. */
-export interface DropTarget {
-  id: string
-  /** After the target card in binder order, rather than before it. */
-  after: boolean
+/** The slot a card occupies when nobody has moved it. */
+export function gridSlot(index: number, columns: number): { x: number; y: number } {
+  const cols = Math.max(1, columns)
+  return {
+    x: (index % cols) * (CARD_W + CARD_GAP),
+    y: Math.floor(index / cols) * (CARD_H + CARD_GAP)
+  }
+}
+
+export function columnsFor(boardWidth: number): number {
+  return Math.max(1, Math.floor((boardWidth + CARD_GAP) / (CARD_W + CARD_GAP)))
 }
 
 /**
- * The card under the pointer, and which side of it the drop lands on.
+ * Every card's position on the board.
+ *
+ * A card the writer has moved keeps the position they gave it; one they have
+ * not falls back to its slot in **binder order**, so a project that has never
+ * used the board looks exactly as it did before free placement existed, with
+ * nothing written to any file until a card is actually moved.
  *
  * Pure and DOM-free for the same reason `windowGeometry.ts` is: jsdom has no
- * layout engine, so geometry asserted through a rendered component is asserted
- * against zeroes. Boxes are measured by the caller and the arithmetic is
- * tested directly.
- *
- * A release in the gutter between cards resolves to the **nearest** card
- * rather than nothing. Cards are spaced apart on a board, so "between two
- * cards" is exactly where a writer aims when they mean to put one there, and
- * rejecting that drop is the snap-back this view already got wrong once.
+ * layout engine, so geometry asserted through a rendered component is
+ * asserted against zeroes.
  */
-export function dropTargetAt(boxes: CardBox[], x: number, y: number): DropTarget | null {
-  if (boxes.length === 0) return null
-  const side = (box: CardBox): boolean => x > box.left + box.width / 2
-  const hit = boxes.find(
-    (b) => x >= b.left && x <= b.left + b.width && y >= b.top && y <= b.top + b.height
-  )
-  if (hit) return { id: hit.id, after: side(hit) }
-  // Nearest by centre, with rows weighted: a card one row down is further away
-  // than one an equal number of pixels along the same row, because the eye
-  // reads the board in rows.
-  let best: CardBox | null = null
-  let bestDist = Infinity
-  for (const b of boxes) {
-    const dx = x - (b.left + b.width / 2)
-    const dy = y - (b.top + b.height / 2)
-    const dist = dx * dx + (dy * 2) ** 2
-    if (dist < bestDist) {
-      bestDist = dist
-      best = b
+export function layoutCards(cards: SceneCard[], boardWidth: number): PlacedCard[] {
+  const cols = columnsFor(boardWidth)
+  return cards.map((card, i) => {
+    const placed = card.boardX != null && card.boardY != null
+    const slot = gridSlot(i, cols)
+    return {
+      ...card,
+      x: placed ? (card.boardX as number) : slot.x,
+      y: placed ? (card.boardY as number) : slot.y,
+      placed
     }
-  }
-  return best ? { id: best.id, after: side(best) } : null
+  })
+}
+
+/** How tall the board must be to hold every card, including placed ones. */
+export function boardHeight(placed: PlacedCard[]): number {
+  return placed.reduce((tallest, c) => Math.max(tallest, c.y + CARD_H), 0)
 }
 
 export function sceneCards(docs: DocFile[], binder: BinderNode[]): SceneCard[] {
@@ -126,7 +132,9 @@ export function sceneCards(docs: DocFile[], binder: BinderNode[]): SceneCard[] {
       folder: folders.get(node.id) ?? '',
       wordCount: countWords(text),
       excerpt: excerptOf(doc.body),
-      empty: text === ''
+      empty: text === '',
+      boardX: doc.meta.boardX,
+      boardY: doc.meta.boardY
     })
   })
   return cards

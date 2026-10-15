@@ -3,8 +3,8 @@ import type { JSX, PointerEvent as ReactPointerEvent } from 'react'
 import type { DocFile } from '../../../shared/types'
 import { api } from '../lib/api'
 import { useWyrm } from '../store'
-import { dropTargetAt, sceneCards } from '../lib/corkboard'
-import type { CardBox, SceneCard } from '../lib/corkboard'
+import { boardHeight, CARD_H, CARD_W, layoutCards, sceneCards } from '../lib/corkboard'
+import type { PlacedCard } from '../lib/corkboard'
 
 /**
  * The corkboard: every scene in the project as an index card (Phase 6).
@@ -31,9 +31,9 @@ export function Corkboard({
   const project = useWyrm((s) => s.project)
   const [docs, setDocs] = useState<DocFile[] | null>(null)
   const selectDoc = useWyrm((s) => s.selectDoc)
-  const moveBinderNode = useWyrm((s) => s.moveBinderNode)
+  const setCardPosition = useWyrm((s) => s.setCardPosition)
+  const tidyBoard = useWyrm((s) => s.tidyBoard)
   const [dragging, setDragging] = useState<string | null>(null)
-  const [over, setOver] = useState<{ id: string; after: boolean } | null>(null)
 
   /**
    * Dragging is **pointer events, not HTML5 drag-and-drop.**
@@ -52,12 +52,13 @@ export function Corkboard({
     pointerId: number
     startX: number
     startY: number
+    originX: number
+    originY: number
     moved: boolean
   } | null>(null)
   // Set on the pointerup that ends a real drag, so releasing a card does not
   // also count as a click and open the scene that was just moved.
   const suppressClick = useRef(false)
-  const cardEls = useRef(new Map<string, HTMLDivElement>())
   const [offset, setOffset] = useState<{ x: number; y: number } | null>(null)
 
   // Documents are read on demand rather than held in the store, the same as
@@ -79,6 +80,46 @@ export function Corkboard({
     [docs, project]
   )
 
+  // The board's own width decides how many columns an untouched card falls
+  // into. Measured rather than assumed, and guarded because jsdom has no
+  // ResizeObserver — a bare `new ResizeObserver` throws there and would take
+  // the whole view down in tests rather than failing one.
+  const boardEl = useRef<HTMLDivElement | null>(null)
+  const [boardWidth, setBoardWidth] = useState(0)
+  useEffect(() => {
+    const el = boardEl.current
+    if (!el) return
+    setBoardWidth(el.clientWidth)
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver((entries) => setBoardWidth(entries[0].contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [docs])
+
+  /**
+   * Positions this board has set but not yet read back.
+   *
+   * Documents are read on demand, and writing a card's position does not
+   * change `project`, so nothing re-reads them — the card would return to its
+   * old slot the instant the drag ended, which is exactly the snap-back this
+   * view is supposed to have stopped doing. Holding the new position here
+   * means the card stays put the moment it is dropped, with the file write
+   * following behind it.
+   */
+  const [localPos, setLocalPos] = useState<Record<string, { x: number; y: number }>>({})
+
+  const placed = useMemo(
+    () =>
+      layoutCards(
+        cards.map((c) => {
+          const local = localPos[c.id]
+          return local ? { ...c, boardX: local.x, boardY: local.y } : c
+        }),
+        boardWidth
+      ),
+    [cards, boardWidth, localPos]
+  )
+
   const tools = (
     // Pinned to the board rather than left in a menu: the timeline, the plot
     // graph and the map are the same scenes seen other ways, and the board is
@@ -96,6 +137,23 @@ export function Corkboard({
       <button type="button" className="board-tool" onClick={onWorldMap}>
         <span className="board-tool-pin" aria-hidden="true" />
         <span>World Map</span>
+      </button>
+      {/* Tidy is the way back. Free placement means a board can be left in a
+          state only its author understands, and the binder is still the book:
+          this returns every card to its slot in binder order by clearing the
+          stored positions, rather than inventing a second ordering. */}
+      <button
+        type="button"
+        className="board-tool"
+        onClick={() => {
+          // The local positions have to go too, or Tidy would clear the files
+          // and the board would carry on showing the old arrangement.
+          void tidyBoard().then(() => setLocalPos({}))
+        }}
+        disabled={!placed.some((c) => c.placed)}
+      >
+        <span className="board-tool-pin" aria-hidden="true" />
+        <span>Tidy</span>
       </button>
     </div>
   )
@@ -121,24 +179,7 @@ export function Corkboard({
   /** Past this many pixels a press becomes a drag rather than a click. */
   const DRAG_THRESHOLD = 4
 
-  /**
-   * The other cards' boxes, measured now.
-   *
-   * The dragged card is **excluded**, and that is load-bearing: it is drawn
-   * translated under the pointer, so its own rect travels with the pointer and
-   * would win every hit test against itself — leaving no target and no move,
-   * which is the snap-back all over again.
-   */
-  const boxesNow = (exceptId: string): CardBox[] =>
-    cards.flatMap((c) => {
-      if (c.id === exceptId) return []
-      const el = cardEls.current.get(c.id)
-      if (!el) return []
-      const b = el.getBoundingClientRect()
-      return [{ id: c.id, left: b.left, top: b.top, width: b.width, height: b.height }]
-    })
-
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>, card: SceneCard): void => {
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>, card: PlacedCard): void => {
     if (e.button !== 0) return
     // Cleared on every fresh press, not left standing. A drag that ends over
     // a *different* card has no click to consume it — the browser fires that
@@ -151,6 +192,8 @@ export function Corkboard({
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
+      originX: card.x,
+      originY: card.y,
       moved: false
     }
     // Capture is taken when the drag *starts*, not here. Capturing on the
@@ -173,7 +216,6 @@ export function Corkboard({
       e.currentTarget.setPointerCapture?.(e.pointerId)
     }
     setOffset({ x: dx, y: dy })
-    setOver(dropTargetAt(boxesNow(d.id), e.clientX, e.clientY))
   }
 
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>): void => {
@@ -183,35 +225,40 @@ export function Corkboard({
     e.currentTarget.releasePointerCapture?.(e.pointerId)
     setDragging(null)
     setOffset(null)
-    setOver(null)
     if (!d.moved) return
     suppressClick.current = true
-    const target = dropTargetAt(boxesNow(d.id), e.clientX, e.clientY)
-    if (!target) return
-    void moveBinderNode(d.id, target.id, target.after ? 'after' : 'before')
+    // Clamped at the top-left corner only: a board scrolls, so a card dragged
+    // past the right edge is a card further along the wall, not a mistake.
+    const x = Math.round(Math.max(0, d.originX + (e.clientX - d.startX)))
+    const y = Math.round(Math.max(0, d.originY + (e.clientY - d.startY)))
+    setLocalPos((p) => ({ ...p, [d.id]: { x, y } }))
+    void setCardPosition(d.id, x, y)
   }
 
   return (
     <div className="terminal corkboard">
       {tools}
-      <div className="corkboard-board">
-        {cards.map((card) => (
+      <div
+        className="corkboard-board"
+        ref={boardEl}
+        style={{ height: boardHeight(placed) + CARD_H / 2 }}
+      >
+        {placed.map((card) => (
           <div
             key={card.id}
-            className={`scene-card${dragging === card.id ? ' dragging' : ''}${
-              over?.id === card.id ? (over.after ? ' drop-after' : ' drop-before') : ''
-            }`}
-            ref={(el) => {
-              if (el) cardEls.current.set(card.id, el)
-              else cardEls.current.delete(card.id)
+            className={`scene-card${dragging === card.id ? ' dragging' : ''}`}
+            // Positioned on the board rather than flowed: a card sits where
+            // the writer put it, and an unmoved one sits in its binder slot.
+            style={{
+              left: card.x,
+              top: card.y,
+              width: CARD_W,
+              height: CARD_H,
+              transform:
+                dragging === card.id && offset
+                  ? `translate(${offset.x}px, ${offset.y}px)`
+                  : undefined
             }}
-            // The card lifts under the pointer rather than leaving a native
-            // drag image behind, so a moved card is the one being moved.
-            style={
-              dragging === card.id && offset
-                ? { transform: `translate(${offset.x}px, ${offset.y}px)` }
-                : undefined
-            }
             onPointerDown={(e) => onPointerDown(e, card)}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
