@@ -7,7 +7,7 @@ import { EntityPanel } from './components/EntityPanel'
 import { EntityEditor } from './components/EntityEditor'
 import { FolderView } from './components/FolderView'
 import { Welcome } from './components/Welcome'
-import { AboutDialog, PrefsDialog } from './components/Dialogs'
+import { AboutDialog, PrefsDialog, ShortcutsDialog } from './components/Dialogs'
 import { StatsPage } from './components/StatsPage'
 import { TagBrowser } from './components/TagBrowser'
 import { TimelineDialog } from './components/TimelineDialog'
@@ -504,6 +504,7 @@ function App(): JSX.Element {
   const [characterGraphOpen, setCharacterGraphOpen] = useState(false)
   const [worldMapOpen, setWorldMapOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
   const [compileOpen, setCompileOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
@@ -731,6 +732,11 @@ function App(): JSX.Element {
         // ⌥⌘T — Typewriter scrolling (F-37). Same e.code reasoning as ⌥⌘F.
         e.preventDefault()
         state.setTypewriterMode(!state.typewriterMode)
+      } else if (e.key === '/') {
+        // ⌘/ — the legend. Not gated on a project: someone on the Welcome
+        // screen asking what the keys are deserves an answer too.
+        e.preventDefault()
+        setShortcutsOpen(true)
       } else if (e.key === ',') {
         e.preventDefault()
         setPrefsOpen(true)
@@ -787,6 +793,7 @@ function App(): JSX.Element {
     >
       <MenuBar
         onAbout={() => setAboutOpen(true)}
+        onShortcuts={() => setShortcutsOpen(true)}
         onPreferences={() => setPrefsOpen(true)}
         onVersionDialog={(dialog) => {
           void useWyrm
@@ -893,6 +900,7 @@ function App(): JSX.Element {
           />
         )}
         {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
+        {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
         {printError !== null && (
           <div className="dialog-overlay" onMouseDown={() => setPrintError(null)}>
             <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
@@ -980,6 +988,12 @@ function App(): JSX.Element {
                   title: 'Find in Project…',
                   subtitle: 'Project',
                   run: () => setSearchOpen(true)
+                },
+                {
+                  id: 'shortcuts',
+                  title: 'Keyboard Shortcuts…',
+                  subtitle: 'WyrmStar',
+                  run: () => setShortcutsOpen(true)
                 },
                 {
                   id: 'corkboard',

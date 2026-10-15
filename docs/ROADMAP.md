@@ -789,7 +789,20 @@ Requested 2026-10-15, after the board landed. The five story-structure views and
 
 Tests cover the grouping, that nothing was left behind in Project (a half-done move is the likely failure), the toggle in both directions and from a third view, the palette search, and the strip — with the `e.code`/`e.key` trap and the half-done move both verified by injection.
 
-**Card type, 25% larger** (requested 2026-10-15): title 12→15px, folder and foot 10→13px, excerpt 11→14px. The card grew with it — 210x200 to 230x260 — because the face clips, so a card whose height does not keep up with its type silently eats the excerpt it exists to show. That also exposed a latent fault: `.scene-card-face` had `overflow: hidden` but no bounded height, so it was sized by its own content and simply overflowed the card's fixed height, putting the word count *outside* the border. The card is a flex column now and the face is `flex: 1; min-height: 0`, which is what actually lets a flex child shrink below its content and clip.
+**Card type, 25% larger** (requested 2026-10-15): title 12→15px, folder and foot 10→13px, excerpt 11→14px, in whole pixels because the chrome face is a pixel font. The **card stays 210x200** — it was grown to fit and then put back, because the card size is the thing a board is read by, so the opening gives up words instead: the excerpt is cut from 140 characters to 90, and the folder is one line with an ellipsis rather than three of a deep path. An excerpt is there to say which scene this is, not to be read.
+
+Two layout faults came out of it, both of which put the word count *outside* the card's border:
+
+- `.scene-card-face` had `overflow: hidden` but **no bounded height**, so it was sized by its own content and simply overflowed the card's fixed height. The card is a flex column now and the face is `flex: 1; min-height: 0` — the `min-height` is the part that actually lets a flex child shrink below its content and clip.
+- A title that wrapped to two lines then pushed the foot out anyway. The **excerpt** takes the leftover space (`flex: 1; min-height: 0`) while everything else in the face is its own height, so a long title costs the opening a line instead. Both were found by measuring the rendered boxes — the face was 250px inside a 240px card — rather than by looking at a screenshot.
+
+### The keyboard legend ✅ shipped
+
+Requested 2026-10-15, alongside the Corkboard menu. **⌘/** (and `WyrmStar → Keyboard Shortcuts…`) opens a legend of every key the app answers to, grouped by what a writer was trying to do rather than by which menu it lives in.
+
+**It exists because the keys were only discoverable by accident.** ⌘Y, ⌘P, ⌥F and Esc are in no menu at all, so nothing in the app had ever mentioned them.
+
+**One list, `lib/shortcuts.ts`, and a test that reads the menu bar's own source.** A shortcut was already stated twice — by the menu item advertising it and the handler implementing it — and a legend is a third statement. A legend that drifts is worse than no legend: it teaches a key that does nothing and the writer blames their keyboard. `tests/shortcuts-legend.test.tsx` greps `MenuBar.tsx` for every `shortcut:` it advertises and fails if one is missing here, which was verified by deleting a row.
 
 ### F-42 · Outline mode 📋 designed, not started
 

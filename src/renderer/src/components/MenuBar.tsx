@@ -13,6 +13,7 @@ type Menu = { title: string | JSX.Element; key: string; items: MenuItem[] }
 
 type MenuBarProps = {
   onAbout: () => void
+  onShortcuts: () => void
   onPreferences: () => void
   onVersionDialog: (dialog: 'commit' | 'history' | 'variants') => void
   onCompile: () => void
@@ -40,6 +41,7 @@ type MenuBarProps = {
 
 export function MenuBar({
   onAbout,
+  onShortcuts,
   onPreferences,
   onVersionDialog,
   onCompile,
@@ -103,6 +105,14 @@ export function MenuBar({
       items: [
         { kind: 'item', label: 'About WyrmStar…', action: onAbout },
         { kind: 'sep' },
+        {
+          // Not gated on a project: the keys are the same either way, and the
+          // Welcome screen is where someone is most likely to ask.
+          kind: 'item',
+          label: 'Keyboard Shortcuts…',
+          shortcut: '⌘/',
+          action: onShortcuts
+        },
         { kind: 'item', label: 'Preferences…', shortcut: '⌘,', action: onPreferences }
       ]
     },
