@@ -38,6 +38,35 @@ function ruleBody(selector: string): string {
   return bodies.join('\n')
 }
 
+describe('palette assets', () => {
+  /**
+   * The house rule: a palette must restate every SVG data-URI with its own ink
+   * baked in, because a background-image cannot inherit a colour. The
+   * corkboard added a sixth one (`--cork`) and it was initially declared only
+   * at `:root` — so every theme drew black cork grain regardless of its ink,
+   * which is exactly the drift this rule exists to prevent. A new palette is
+   * the easiest place in the codebase to forget one of these.
+   */
+  it('gives every palette its own cork, in its own ink', () => {
+    const palettes = [...bare.matchAll(/\[data-palette='(\w+)'\][^{]*\{([^}]*)\}/g)]
+      // Only the blocks that define a palette, not the ones that tweak one.
+      .filter(([, , body]) => body.includes('--dither-25:'))
+
+    expect(palettes.length).toBeGreaterThan(10)
+    for (const [, name, body] of palettes) {
+      expect(body, `${name} has no --cork`).toContain('--cork:')
+      const ink = /--ink:\s*(#[0-9a-fA-F]{3,6})/.exec(body)?.[1]
+      expect(ink, `${name} has no --ink`).toBeTruthy()
+      // The ink is URL-encoded into the data-URI as %23rrggbb.
+      const encoded = `%23${ink!.slice(1)}`
+      const cork = /--cork:[^;]*/.exec(body)?.[0] ?? ''
+      expect(cork.toLowerCase(), `${name}'s cork is not drawn in its own ink`).toContain(
+        encoded.toLowerCase()
+      )
+    }
+  })
+})
+
 describe('palette fonts', () => {
   it('resolves the chrome font on the element that carries the palette', () => {
     // Without this, a palette that overrides --font-chrome only reaches the

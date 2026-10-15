@@ -247,7 +247,12 @@ export function MenuBar({
           action: onFullScreen
         },
         { kind: 'sep' },
-        { kind: 'item', label: 'Corkboard', disabled: true },
+        {
+          kind: 'item',
+          label: 'Corkboard',
+          disabled: !hasProject,
+          action: () => useWyrm.getState().showCorkboard()
+        },
         { kind: 'sep' },
         {
           // F-41: the way back from a window that has ended up somewhere
