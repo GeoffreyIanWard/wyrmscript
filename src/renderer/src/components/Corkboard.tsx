@@ -68,6 +68,24 @@ export function Corkboard({
   // Documents are read on demand rather than held in the store, the same as
   // the timeline and plot graph do. Re-reads when the binder changes, so a
   // card dragged to a new position redraws in its new place.
+  /**
+   * Re-read the documents.
+   *
+   * Needed because positions live in the documents but writing one does not
+   * change `project`, so nothing else ever re-reads them. Placement gets away
+   * without it by holding the new position in `localPos`; **Tidy cannot**,
+   * since it is the stored positions it clears — without this it wrote the
+   * cleared values to disk and then fell back to the stale docs still held
+   * here, springing every already-placed card back to where it had been.
+   */
+  const reloadDocs = async (): Promise<DocFile[] | null> => {
+    const path = useWyrm.getState().project?.path
+    if (!path) return null
+    const all = await api.readAllDocs(path)
+    setDocs(all)
+    return all
+  }
+
   useEffect(() => {
     if (!project) return
     let live = true
@@ -158,9 +176,12 @@ export function Corkboard({
         type="button"
         className="board-tool"
         onClick={() => {
-          // The local positions have to go too, or Tidy would clear the files
-          // and the board would carry on showing the old arrangement.
-          void tidyBoard().then(() => setLocalPos({}))
+          // Re-read before clearing the local positions, and in that order:
+          // the docs held here still carry the old positions until they are
+          // re-read, so clearing first would show them again for a frame.
+          void tidyBoard()
+            .then(reloadDocs)
+            .then(() => setLocalPos({}))
         }}
         disabled={!placed.some((c) => c.placed)}
       >
