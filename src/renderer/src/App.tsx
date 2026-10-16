@@ -9,6 +9,7 @@ import { FolderView } from './components/FolderView'
 import { Welcome } from './components/Welcome'
 import { AboutDialog, PrefsDialog, ShortcutsDialog } from './components/Dialogs'
 import { HelpLayer } from './components/HelpLayer'
+import { CloneDialog } from './components/CloneDialog'
 import { StatsPage } from './components/StatsPage'
 import { TagBrowser } from './components/TagBrowser'
 import { TimelineDialog } from './components/TimelineDialog'
@@ -525,6 +526,7 @@ function App(): JSX.Element {
   const [worldMapOpen, setWorldMapOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [cloneOpen, setCloneOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
   const [compileOpen, setCompileOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
@@ -814,6 +816,7 @@ function App(): JSX.Element {
       <MenuBar
         onAbout={() => setAboutOpen(true)}
         onShortcuts={() => setShortcutsOpen(true)}
+        onCloneFromGithub={() => setCloneOpen(true)}
         onPreferences={() => setPrefsOpen(true)}
         onVersionDialog={(dialog) => {
           void useWyrm
@@ -902,7 +905,7 @@ function App(): JSX.Element {
                   </FocusedProjectWindow>
                 )
               })
-            : booted && <Welcome />}
+            : booted && <Welcome onCloneFromGithub={() => setCloneOpen(true)} />}
         </div>
         <MinimizedIcons paths={minimized} parked={parked} />
         {prefsOpen && statsSettings && (
@@ -922,6 +925,7 @@ function App(): JSX.Element {
         <HelpLayer />
         {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
         {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+        {cloneOpen && <CloneDialog onClose={() => setCloneOpen(false)} />}
         {printError !== null && (
           <div className="dialog-overlay" onMouseDown={() => setPrintError(null)}>
             <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
@@ -1009,6 +1013,12 @@ function App(): JSX.Element {
                   title: 'Find in Project…',
                   subtitle: 'Project',
                   run: () => setSearchOpen(true)
+                },
+                {
+                  id: 'clone-github',
+                  title: 'Bring Down from GitHub…',
+                  subtitle: 'File',
+                  run: () => setCloneOpen(true)
                 },
                 {
                   id: 'shortcuts',

@@ -14,6 +14,7 @@ type Menu = { title: string | JSX.Element; key: string; items: MenuItem[] }
 type MenuBarProps = {
   onAbout: () => void
   onShortcuts: () => void
+  onCloneFromGithub: () => void
   onPreferences: () => void
   onVersionDialog: (dialog: 'commit' | 'history' | 'variants') => void
   onCompile: () => void
@@ -42,6 +43,7 @@ type MenuBarProps = {
 export function MenuBar({
   onAbout,
   onShortcuts,
+  onCloneFromGithub,
   onPreferences,
   onVersionDialog,
   onCompile,
@@ -178,6 +180,14 @@ export function MenuBar({
           shortcut: '⇧⌘O',
           disabled: !hasProject,
           action: () => void useWyrm.getState().openAnotherProject()
+        },
+        {
+          // F-43. Beside Open rather than under Project's sync items: this
+          // makes a project, it does not configure one, and the writer
+          // reaching for it has nothing open to configure.
+          kind: 'item',
+          label: 'Bring Down from GitHub…',
+          action: onCloneFromGithub
         },
         { kind: 'sep' },
         {

@@ -102,6 +102,17 @@ export interface ProjectData {
   entitySort?: Partial<Record<EntityType, EntitySortMode>>
 }
 
+/** A repository on the signed-in GitHub account (F-43). */
+export interface GithubRepo {
+  name: string
+  /** `owner/name`, which is what the writer recognises. */
+  fullName: string
+  cloneUrl: string
+  private: boolean
+  /** ISO timestamp of the last push, for ordering and for the list. */
+  updatedAt: string
+}
+
 export interface ProjectInfo {
   path: string
   data: ProjectData
@@ -690,6 +701,13 @@ export interface WyrmApi {
   backupNow(path: string): Promise<BackupRun>
   /** Pick a backup and a destination, then open the restored project. Null if cancelled. */
   restoreFromBackup(): Promise<ProjectInfo | null>
+  /** F-43: the signed-in account's repositories, newest first. */
+  listGithubRepos(): Promise<GithubRepo[]>
+  /**
+   * F-43: make a local project from one that already exists on GitHub.
+   * Resolves null when the writer cancels the folder picker.
+   */
+  cloneProject(url: string): Promise<ProjectInfo | null>
 
   getSyncStatus(path: string): Promise<SyncStatus>
   /** One-time app setup: the GitHub OAuth app's client id (public, not a secret). */

@@ -874,7 +874,7 @@ cast:
 - Whether "outline mode" is a distinct mode or simply what the corkboard *is*. The request describes clicking a scene to open the writing interface, which is what a corkboard does anyway.
 - The map's own skeuomorphism — making a map look like a map — is noted as separate standalone work.
 
-### F-43 · Bring a project down from its remote 📋 planned
+### F-43 · Bring a project down from its remote ✅ shipped
 
 Create a local project by cloning one that already exists on GitHub, as a peer of New Project, Open Project and Restore from Backup.
 
@@ -884,12 +884,17 @@ Requested 2026-10-14, while setting a second computer up.
 
 **It is nearly all there already.** `github-auth.ts` already calls `/user/repos`, so listing the signed-in account's projects needs no new auth. `SyncTransport.fetchMainHead` already fetches a remote into a repo. And `restoreBackup(backupPath, destPath)` is the precedent for materialising a project into a fresh folder from an existing repository — the remote case is the same job with a different source. Cloning is init-remote-fetch-checkout rather than a `clone` call, because isomorphic-git is driven directly, the same way `backup.ts` hand-rolls its mirror.
 
-**Worth settling before building:**
+**Built 2026-10-15.** `File → Bring Down from GitHub…`, and on the Welcome screen beside Restore from Backup — which is the case that matters most, since the moment you need this is the moment the machine has no project on it at all.
 
-- **Pick from a list, or paste a URL?** A list of the signed-in account's repositories is friendlier and the API call exists; a URL field also covers a repo shared by someone else, or an account the writer is not signed into. Probably both, with the list first.
-- **Validate before opening.** A repository that is not a WyrmStar project must fail clearly rather than half-open — `restoreBackup`'s "That folder is not a backup repository" error box is the precedent for the message and the moment.
-- **The clone should arrive already connected.** After cloning, the project's sync mode should be `github` with its remote set, so it syncs immediately. Otherwise the writer lands in the sync picker being asked to choose local-only or GitHub for a project that plainly came from GitHub.
-- **Where does it go on disk, and what is it called?** `Name.wyrm` derived from the project's own title rather than the repository name, since the two can differ and the title is what the writer sees everywhere else.
+**All three questions settled the way the entry leaned:**
+
+- **Both, list first.** The list is friendlier and needed no new permission (`createPrivateRepo` already used `/user/repos`), but it can only ever show the signed-in account's own spaces — the address field is what covers a novel shared by a collaborator, or an account this machine is not signed into. Failing to read the list is the *ordinary* case here, not a failure, so it reports and leaves the field working rather than taking the dialog down.
+- **Validated before opening, and it cleans up after itself.** A repository with no `project.json` is refused with "That GitHub copy does not contain a WyrmStar project", and **anything that fails after the folder is created takes the folder with it** — that refusal is the expected case, and a half-made project left behind would make the writer's next attempt fail on "already exists" for a folder they never made.
+- **It arrives already connected**, `mode: 'github'` with its remote set, so it syncs immediately rather than dropping the writer into the sync picker to choose GitHub for a project that plainly came from GitHub.
+
+**Hand-rolled init-remote-fetch-checkout**, not a `clone` call, because isomorphic-git is driven directly here the same way `backup.ts` hand-rolls its mirror — and because the fetch goes through the **injected `SyncTransport`**, which is the seam carrying auth in production and a bare repository on disk in the tests. So the init, the ref writing, the checkout and the project that comes out are all exercised for real; only the network is stood in for.
+
+The test that matters most is the last one: after cloning, **the sync engine runs against the same remote and finds nothing to do**. That is the proof the clone is a peer rather than a lookalike — history and all — rather than a folder of files that would conflict with everything on its first sync.
 
 **Today's workaround, and why it is not good enough:** clone by hand and use Open Project. It works, but the app sees `mode: 'unset'` with a `remoteUrl` present, so the writer is asked to choose a sync path for a project that already has one, then walked through connect-project to re-attach a remote that is already in `.git/config`.
 

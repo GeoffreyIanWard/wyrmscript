@@ -301,6 +301,8 @@ interface WyrmState {
   backupNow(): Promise<BackupRun>
   /** Restore a backup into a new project and open it. True if one was opened. */
   restoreFromBackup(): Promise<boolean>
+  /** F-43: make a local project from one on GitHub and open it. */
+  cloneFromGithub(url: string): Promise<boolean>
 
   /** Every document keyed by id — the compile dialog's source of truth. */
   loadAllDocs(): Promise<Map<string, DocFile>>
@@ -1308,6 +1310,16 @@ export const useWyrm = create<WyrmState>((set, get) => {
 
     async restoreFromBackup() {
       const info = await api.restoreFromBackup()
+      if (!info) return false
+      await loadProject(info)
+      return true
+    },
+
+    async cloneFromGithub(url) {
+      // Errors are deliberately not swallowed: the dialog shows them, since
+      // "that is not a WyrmStar project" is something the writer has to read
+      // and act on rather than a failure to log.
+      const info = await api.cloneProject(url)
       if (!info) return false
       await loadProject(info)
       return true

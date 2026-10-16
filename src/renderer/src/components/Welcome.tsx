@@ -7,7 +7,7 @@ function recentDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-export function Welcome(): JSX.Element {
+export function Welcome({ onCloneFromGithub }: { onCloneFromGithub: () => void }): JSX.Element {
   const newProject = useWyrm((s) => s.newProject)
   const openProject = useWyrm((s) => s.openProject)
   const openRecentProject = useWyrm((s) => s.openRecentProject)
@@ -80,6 +80,12 @@ export function Welcome(): JSX.Element {
         <div className="dialog-buttons">
           {/* The moment a backup matters most is the moment there is no project
               to reach it through — so restore has to live out here too. */}
+          {/* Same reasoning as restore: the moment you most need to bring a
+              novel down from GitHub is when this machine has no project on it
+              at all, so it has to be reachable from here. */}
+          <button type="button" className="btn" onClick={onCloneFromGithub}>
+            From GitHub…
+          </button>
           <button type="button" className="btn" onClick={() => void restoreFromBackup()}>
             Restore from Backup…
           </button>

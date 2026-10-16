@@ -58,6 +58,7 @@ import {
   writeSyncProject
 } from './settings'
 import { backupNameFor, backupToAll, restoreBackup } from './backup'
+import { cloneProject } from './clone'
 import { dailyStats } from './stats'
 import {
   clearRemote,
@@ -70,6 +71,7 @@ import {
 import {
   createPrivateRepo,
   fetchGithubLogin,
+  listUserRepos,
   pollDeviceFlow,
   startDeviceFlow,
   type DeviceFlowSession
@@ -292,6 +294,46 @@ export function registerIpc(): void {
     const data = await restoreBackup(source, path)
     await rememberProject(path, data.title)
     return { path, data }
+  })
+
+  /**
+   * F-43: make a local project from one that already exists on GitHub.
+   *
+   * The destination is picked here rather than in the renderer, for the same
+   * reason restore does it: the native folder picker is the only one that can
+   * offer the real filesystem, and it is the moment the writer decides where
+   * their novel lives. The clone arrives **already connected** — `mode:
+   * 'github'` with its remote set — so it syncs immediately instead of
+   * dropping the writer into the sync picker to choose GitHub for a project
+   * that plainly came from GitHub.
+   */
+  ipcMain.handle('project:clone', async (_e, url: string) => {
+    const win = focusedWindow()
+    if (!win) return null
+    const address = (url ?? '').trim()
+    if (!address) throw new Error('No address was given.')
+    const suggested = basename(address.replace(/\.git$/, '')) || 'novel'
+    const destination = await dialog.showSaveDialog(win, {
+      title: 'Bring Down As New Project',
+      defaultPath: join(app.getPath('documents'), suggested),
+      buttonLabel: 'Bring It Down',
+      properties: ['createDirectory']
+    })
+    if (destination.canceled || !destination.filePath) return null
+    const path = destination.filePath.endsWith('.wyrm')
+      ? destination.filePath
+      : `${destination.filePath}.wyrm`
+
+    const data = await cloneProject(path, address, transport)
+    await writeSyncProject(path, { mode: 'github' })
+    await rememberProject(path, data.title)
+    return { path, data }
+  })
+
+  ipcMain.handle('github:repos', async () => {
+    const token = await getToken()
+    if (!token) throw new Error('Sign in with GitHub first.')
+    return listUserRepos(token)
   })
 
   /* ---------- GitHub sync (Phase 5) ---------- */

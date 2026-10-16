@@ -1,3 +1,4 @@
+import type { GithubRepo } from '../../shared/types'
 /**
  * GitHub OAuth device flow (brief §7): the writer signs in once by typing a
  * short code into github.com — no tokens pasted, no client secret anywhere.
@@ -130,6 +131,44 @@ export async function fetchGithubLogin(token: string, fetchFn: FetchLike = fetch
   const data = (await response.json()) as { login?: string }
   if (!data.login) throw new Error('GitHub returned no account name.')
   return data.login
+}
+
+/**
+ * The signed-in account's repositories, most recently pushed first (F-43).
+ *
+ * No new permission: `createPrivateRepo` already uses this endpoint, so the
+ * token the writer has already granted covers reading the list. Asks for
+ * everything the account can push to — a novel may well live in a repository
+ * the writer was added to rather than one they own.
+ */
+export async function listUserRepos(
+  token: string,
+  fetchFn: FetchLike = fetch
+): Promise<GithubRepo[]> {
+  const response = await fetchFn(
+    `${API}/user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator`,
+    {
+      headers: apiHeaders(token)
+    }
+  )
+  if (!response.ok) throw new Error(`Could not read your GitHub spaces (${response.status}).`)
+  const data = (await response.json()) as {
+    name?: string
+    full_name?: string
+    clone_url?: string
+    private?: boolean
+    pushed_at?: string
+    updated_at?: string
+  }[]
+  return data
+    .filter((r) => r.name && r.clone_url)
+    .map((r) => ({
+      name: r.name as string,
+      fullName: r.full_name ?? (r.name as string),
+      cloneUrl: r.clone_url as string,
+      private: Boolean(r.private),
+      updatedAt: r.pushed_at ?? r.updated_at ?? ''
+    }))
 }
 
 /** Create the project's private home on GitHub. Returns the clone URL. */
