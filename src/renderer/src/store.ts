@@ -339,6 +339,8 @@ interface WyrmState {
   showStats(): void
   /** The corkboard: every scene as an index card, in binder order. */
   showCorkboard(): void
+  /** Switch between the corkboard and the manuscript (⌥⌘B). */
+  toggleCorkboard(): void
   /** F-34: open the browse-by-tag page in place of the writing terminal. */
   showTags(): void
   /**
@@ -1583,6 +1585,17 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { mainView } = get()
       if (mainView.kind === 'corkboard') return
       set({ mainView: { kind: 'corkboard' }, viewHistory: [] })
+    },
+
+    toggleCorkboard() {
+      // The board and the manuscript are the two places a writer works, so
+      // one key moves between them rather than two that each only go one way.
+      // Anything else on screen — a folder listing, stats, a bible entry —
+      // counts as "not the board", so the key takes you to the board from
+      // there rather than doing nothing.
+      const { mainView } = get()
+      if (mainView.kind === 'corkboard') get().showDoc()
+      else get().showCorkboard()
     },
 
     setTagFilter(tag) {

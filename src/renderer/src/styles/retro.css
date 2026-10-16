@@ -3230,6 +3230,11 @@ button {
      index card is the same card and an unmoved card's slot is predictable. */
   position: absolute;
   box-sizing: border-box;
+  /* A column so the face can take the space left over and clip inside it.
+     Without this the face is sized by its own content and simply overflows
+     the card's fixed height, which puts the word count outside the border. */
+  display: flex;
+  flex-direction: column;
   width: 210px;
   background: var(--paper);
   border: 2px solid var(--ink);
@@ -3268,8 +3273,12 @@ button {
 }
 
 /* The overflow is here rather than on the card: the pin overhangs the card's
-   top edge on purpose, and clipping the card would cut its head off. */
+   top edge on purpose, and clipping the card would cut its head off.
+   `min-height: 0` is what actually lets a flex child shrink below its content
+   and clip, rather than growing the card past its own height. */
 .scene-card-face {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -3285,29 +3294,39 @@ button {
 }
 
 .scene-card-title {
-  font-size: 12px;
+  font-size: 15px;
   text-transform: uppercase;
 }
 
 .scene-card-folder {
-  font-size: 10px;
+  font-size: 13px;
   opacity: 0.65;
+  /* One line: a deep folder path would otherwise take two or three of them
+     and eat the opening the card exists to show. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The scene's opening, in the prose face — the one part of a card that is the
    writing rather than chrome. */
 .scene-card-excerpt {
   font-family: var(--font-prose);
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.45;
-  min-height: 48px;
+  /* The excerpt takes whatever is left and clips, so a long title that wraps
+     costs the opening a line rather than pushing the word count out of the
+     card. Everything else in the face is its own fixed height. */
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   color: var(--page-ink, var(--ink));
 }
 
 .scene-card-foot {
   display: flex;
   gap: 8px;
-  font-size: 10px;
+  font-size: 13px;
   opacity: 0.75;
   border-top: 1px solid var(--ink);
   padding-top: 5px;
@@ -3325,3 +3344,34 @@ button {
   z-index: 2;
 }
 
+
+/* The keyboard legend (⌘/). Columns rather than one long list: the groups are
+   how a writer looks a key up — by what they were trying to do. */
+.shortcut-groups {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 22px;
+}
+
+.shortcut-group-title {
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 3px;
+  margin-bottom: 5px;
+}
+
+.shortcut-row {
+  display: flex;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+/* Fixed column so the keys line up down the page and can be scanned. */
+.shortcut-keys {
+  flex: 0 0 62px;
+  text-align: right;
+}
+
+.shortcut-what {
+  opacity: 0.8;
+}

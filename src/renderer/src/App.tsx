@@ -7,7 +7,7 @@ import { EntityPanel } from './components/EntityPanel'
 import { EntityEditor } from './components/EntityEditor'
 import { FolderView } from './components/FolderView'
 import { Welcome } from './components/Welcome'
-import { AboutDialog, PrefsDialog } from './components/Dialogs'
+import { AboutDialog, PrefsDialog, ShortcutsDialog } from './components/Dialogs'
 import { StatsPage } from './components/StatsPage'
 import { TagBrowser } from './components/TagBrowser'
 import { TimelineDialog } from './components/TimelineDialog'
@@ -453,10 +453,14 @@ function InactiveProjectWindow({
 function MainPane({
   onTimeline,
   onPlotGraph,
+  onPlotlines,
+  onCharacterGraph,
   onWorldMap
 }: {
   onTimeline: () => void
   onPlotGraph: () => void
+  onPlotlines: () => void
+  onCharacterGraph: () => void
   onWorldMap: () => void
 }): JSX.Element {
   const mainView = useWyrm((s) => s.mainView)
@@ -465,7 +469,15 @@ function MainPane({
   if (mainView.kind === 'stats') return <StatsPage />
   if (mainView.kind === 'tags') return <TagBrowser />
   if (mainView.kind === 'corkboard')
-    return <Corkboard onTimeline={onTimeline} onPlotGraph={onPlotGraph} onWorldMap={onWorldMap} />
+    return (
+      <Corkboard
+        onTimeline={onTimeline}
+        onPlotGraph={onPlotGraph}
+        onPlotlines={onPlotlines}
+        onCharacterGraph={onCharacterGraph}
+        onWorldMap={onWorldMap}
+      />
+    )
   return <Editor />
 }
 
@@ -492,6 +504,7 @@ function App(): JSX.Element {
   const [characterGraphOpen, setCharacterGraphOpen] = useState(false)
   const [worldMapOpen, setWorldMapOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
   const [compileOpen, setCompileOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
@@ -708,10 +721,22 @@ function App(): JSX.Element {
         // entry above: Option remaps e.key, so this must not check 'f'.
         e.preventDefault()
         setFocusMode((v) => !v)
+      } else if (e.altKey && e.metaKey && !e.shiftKey && e.code === 'KeyB' && state.project) {
+        // ⌥⌘B — between the corkboard and the manuscript, the two places a
+        // writer works. Same `e.code` reasoning as ⌥⌘F and ⌥⌘T: Option
+        // remaps e.key (⌥B is "∫" on macOS), so checking 'b' would mean the
+        // shortcut silently did nothing on the platform it was designed for.
+        e.preventDefault()
+        state.toggleCorkboard()
       } else if (e.altKey && e.metaKey && !e.shiftKey && e.code === 'KeyT' && state.project) {
         // ⌥⌘T — Typewriter scrolling (F-37). Same e.code reasoning as ⌥⌘F.
         e.preventDefault()
         state.setTypewriterMode(!state.typewriterMode)
+      } else if (e.key === '/') {
+        // ⌘/ — the legend. Not gated on a project: someone on the Welcome
+        // screen asking what the keys are deserves an answer too.
+        e.preventDefault()
+        setShortcutsOpen(true)
       } else if (e.key === ',') {
         e.preventDefault()
         setPrefsOpen(true)
@@ -768,6 +793,7 @@ function App(): JSX.Element {
     >
       <MenuBar
         onAbout={() => setAboutOpen(true)}
+        onShortcuts={() => setShortcutsOpen(true)}
         onPreferences={() => setPrefsOpen(true)}
         onVersionDialog={(dialog) => {
           void useWyrm
@@ -845,6 +871,8 @@ function App(): JSX.Element {
                         <MainPane
                           onTimeline={() => setTimelineOpen(true)}
                           onPlotGraph={() => setPlotGraphOpen(true)}
+                          onPlotlines={() => setPlotlinesOpen(true)}
+                          onCharacterGraph={() => setCharacterGraphOpen(true)}
                           onWorldMap={() => setWorldMapOpen(true)}
                         />
                       </ErrorBoundary>
@@ -872,6 +900,7 @@ function App(): JSX.Element {
           />
         )}
         {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
+        {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
         {printError !== null && (
           <div className="dialog-overlay" onMouseDown={() => setPrintError(null)}>
             <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
@@ -961,33 +990,45 @@ function App(): JSX.Element {
                   run: () => setSearchOpen(true)
                 },
                 {
+                  id: 'shortcuts',
+                  title: 'Keyboard Shortcuts…',
+                  subtitle: 'WyrmStar',
+                  run: () => setShortcutsOpen(true)
+                },
+                {
+                  id: 'corkboard',
+                  title: 'Corkboard',
+                  subtitle: 'Corkboard',
+                  run: () => useWyrm.getState().toggleCorkboard()
+                },
+                {
                   id: 'timeline',
                   title: 'Timeline…',
-                  subtitle: 'Project',
+                  subtitle: 'Corkboard',
                   run: () => setTimelineOpen(true)
                 },
                 {
                   id: 'plot-graph',
                   title: 'Plot Graph…',
-                  subtitle: 'Project',
+                  subtitle: 'Corkboard',
                   run: () => setPlotGraphOpen(true)
                 },
                 {
                   id: 'plotlines',
                   title: 'Plotlines…',
-                  subtitle: 'Project',
+                  subtitle: 'Corkboard',
                   run: () => setPlotlinesOpen(true)
                 },
                 {
                   id: 'character-graph',
                   title: 'Character Graph…',
-                  subtitle: 'Project',
+                  subtitle: 'Corkboard',
                   run: () => setCharacterGraphOpen(true)
                 },
                 {
                   id: 'world-map',
                   title: 'World Map…',
-                  subtitle: 'Project',
+                  subtitle: 'Corkboard',
                   run: () => setWorldMapOpen(true)
                 },
                 {

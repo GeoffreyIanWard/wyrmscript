@@ -742,6 +742,10 @@ Every scene in the project as an index card, pinned to a cork desktop. Clicking 
 
 **Cards are placed, not flowed.** A card stays exactly where it is dropped, and the position is stored on the scene itself (`boardX`/`boardY` in its frontmatter), so it survives leaving the view, closing the project and syncing to another machine. A card nobody has moved has no stored position at all and falls back to its slot in **binder order**, so a project that has never used the board reads exactly as it did before placement existed and nothing is written to any file until a card is actually moved.
 
+**Tidy had to re-read the documents, and did not** (fixed 2026-10-15, reported: *"the first card snaps to the correct spot, but the second card always snaps to around the middle"*). The board reads documents once when it opens, and clearing a position does not change `project`, so nothing re-read them: Tidy wrote the cleared positions to disk and then fell straight back to the stale copies still held in the view. A card that had never been moved went to its slot correctly; every card that *had* a stored position sprang back to it — which is exactly the half-right behaviour reported.
+
+Placement gets away without a re-read because it holds the new position in the component until the write lands. Tidy cannot, since the stored positions are the thing it clears. The regression test writes a position **before the board renders**, which is what makes it the real case: the earlier test dragged a card first, so the stale documents predated the drag and happened to be correct — it passed against the bug.
+
 **Tidy is the way back.** Free placement means a board can end up in a state only its author understands, so the tool strip carries a Tidy button that clears every stored position and returns the cards to binder order. It is disabled until something has actually been moved.
 
 The tidy grid is **as square as the cards allow** rather than as wide as the board — `ceil(sqrt(n))` columns, capped by what actually fits. Filling the width first put a handful of scenes in a single row, so Tidy read as snapping cards into line rather than laying a board out: the grid was there, but nothing in the result showed it. Four scenes now land as a 2x2, nine as a 3x3, and the reading order is still left-to-right in binder order.
@@ -773,6 +777,36 @@ Cards drag on **pointer events** now, the mechanism the project windows already 
 And one that only a real click in the browser could show: the CSS that made cards positioned landed on `.timeline-line-card` rather than `.scene-card`, because the anchor text I matched was not unique to the rule I meant. The cards stayed in flow, so every card drew in the wrong place while its inline position said otherwise, and the timeline quietly gained an overflow rule it never asked for.
 
 **A test that was lying.** The binder-order tests used a fixture titled Alpha/Bravo/Charlie — already alphabetical, so sorting the cards by title was indistinguishable from binder order and the guard passed against code that ignored the binder entirely. The fixture is now deliberately out of alphabetical order, and the guard fails against both a title sort and a reversal.
+
+### The Corkboard menu ✅ shipped — the outlining toolset in one place
+
+Requested 2026-10-15, after the board landed. The five story-structure views and the board itself now live under a **Corkboard** menu of their own, between View and Project, with `⌥⌘B` switching between the board and the manuscript.
+
+**Why they were hard to find.** The board sat in View; the timeline, plot graph, plotlines, character graph and world map sat in Project, beneath Writing Stats and above Backup and Sync Settings — filed as housekeeping, next to the things that move bytes around. Nothing in that arrangement said they are the *same scenes seen differently*: as cards, as a line, as a curve, as a cast, as a map. Grouping them is the first concrete step of the unification F-42 is after, and the board names the menu because it is the surface the rest belong to.
+
+**`⌥⌘B` is a toggle, not an opener**, because the board and the manuscript are the two places a writer works and one key should move between them. From anywhere else — a folder listing, the stats page, a story-bible entry — it goes *to* the board rather than doing nothing, since "not the board" is the only thing the other half of the toggle needs to know. The menu item renames itself to the place it would take you (Corkboard ↔ Manuscript) rather than naming where you already are. It uses `e.code`, not `e.key`: Option remaps the character on macOS (⌥B is "∫"), so a handler checking `'b'` would silently do nothing on the platform it was designed for — the trap `⌥⌘F` and `⌥⌘T` already carry comments about.
+
+**Two places had to move with it**, and they are the ones that rot quietly:
+
+- The **command palette's subtitles**, which name the menu an item lives under. They still said "Project". A subtitle is *searched*, not displayed, so this is not cosmetic: it is what makes typing "corkboard" turn up all five views, and left stale it would have sent a writer to a menu the items are no longer in.
+- The **board's own pinned strip**, which offered three of the five. The strip and the menu are two statements of the same set, so Plotlines and Characters were added; if they disagree, neither tells a writer what the outlining tools are.
+
+Tests cover the grouping, that nothing was left behind in Project (a half-done move is the likely failure), the toggle in both directions and from a third view, the palette search, and the strip — with the `e.code`/`e.key` trap and the half-done move both verified by injection.
+
+**Card type, 25% larger** (requested 2026-10-15): title 12→15px, folder and foot 10→13px, excerpt 11→14px, in whole pixels because the chrome face is a pixel font. The **card stays 210x200** — it was grown to fit and then put back, because the card size is the thing a board is read by, so the opening gives up words instead: the excerpt is cut from 140 characters to 90, and the folder is one line with an ellipsis rather than three of a deep path. An excerpt is there to say which scene this is, not to be read.
+
+Two layout faults came out of it, both of which put the word count *outside* the card's border:
+
+- `.scene-card-face` had `overflow: hidden` but **no bounded height**, so it was sized by its own content and simply overflowed the card's fixed height. The card is a flex column now and the face is `flex: 1; min-height: 0` — the `min-height` is the part that actually lets a flex child shrink below its content and clip.
+- A title that wrapped to two lines then pushed the foot out anyway. The **excerpt** takes the leftover space (`flex: 1; min-height: 0`) while everything else in the face is its own height, so a long title costs the opening a line instead. Both were found by measuring the rendered boxes — the face was 250px inside a 240px card — rather than by looking at a screenshot.
+
+### The keyboard legend ✅ shipped
+
+Requested 2026-10-15, alongside the Corkboard menu. **⌘/** (and `WyrmStar → Keyboard Shortcuts…`) opens a legend of every key the app answers to, grouped by what a writer was trying to do rather than by which menu it lives in.
+
+**It exists because the keys were only discoverable by accident.** ⌘Y, ⌘P, ⌥F and Esc are in no menu at all, so nothing in the app had ever mentioned them.
+
+**One list, `lib/shortcuts.ts`, and a test that reads the menu bar's own source.** A shortcut was already stated twice — by the menu item advertising it and the handler implementing it — and a legend is a third statement. A legend that drifts is worse than no legend: it teaches a key that does nothing and the writer blames their keyboard. `tests/shortcuts-legend.test.tsx` greps `MenuBar.tsx` for every `shortcut:` it advertises and fails if one is missing here, which was verified by deleting a row.
 
 ### F-42 · Outline mode 📋 designed, not started
 

@@ -340,6 +340,43 @@ describe('tidying the board', () => {
     await waitFor(() => expect(tidy().disabled).toBe(false))
   })
 
+  it('tidies a board whose positions were stored in an earlier session', async () => {
+    // The bug this exists for: documents are read once when the board opens,
+    // so tidying wrote the cleared positions to disk and then fell back to
+    // the *stale* docs still held in the view — every card that already had a
+    // position sprang back to it, while cards that had never been moved went
+    // to their slots correctly. "The first card snaps to the right spot, the
+    // second snaps to the middle."
+    //
+    // Positions are written before the board renders, which is what makes
+    // this the real case: the earlier test dragged a card first, so the
+    // stale docs predated the drag and happened to be right.
+    const path = useWyrm.getState().project?.path as string
+    const docs = await api.readAllDocs(path)
+    const scene = docs.find((d) => d.meta.tags?.includes('scene')) as (typeof docs)[number]
+    await act(async () => {
+      await api.writeDoc(path, { ...scene, meta: { ...scene.meta, boardX: 480, boardY: 300 } })
+    })
+    cleanup()
+    await renderBoard()
+    await waitFor(() => expect(titles().length).toBe(3))
+    const placed = (): HTMLElement =>
+      [...document.querySelectorAll('.scene-card')].find(
+        (c) => c.querySelector('.scene-card-title')?.textContent === scene.meta.title
+      ) as HTMLElement
+    expect(placed().style.left).toBe('480px')
+
+    const tidy = [...document.querySelectorAll('.board-tool')].find((b) =>
+      b.textContent?.includes('Tidy')
+    ) as HTMLButtonElement
+    await act(async () => {
+      fireEvent.click(tidy)
+    })
+
+    await waitFor(() => expect(placed().style.left).not.toBe('480px'))
+    expect(placed().style.top).not.toBe('300px')
+  })
+
   it('returns every card to its slot in binder order', async () => {
     const cards = cardEls()
     await act(async () => pointer(cards[0], 'pointerdown', 50, 50))

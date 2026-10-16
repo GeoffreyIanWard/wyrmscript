@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { SHORTCUT_GROUPS } from '../lib/shortcuts'
 import { WyrmIcon } from './icons'
 import type {
   AppearanceSettings,
@@ -410,6 +411,46 @@ export function PrefsDialog({
         <div className="dialog-buttons">
           <button type="button" className="btn default" onClick={onClose}>
             Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The keyboard legend (⌘/).
+ *
+ * Reads `SHORTCUT_GROUPS` rather than listing keys of its own — see that
+ * file for why a legend that can drift is worse than none at all.
+ */
+export function ShortcutsDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
+  return (
+    <div className="dialog-overlay" onMouseDown={onClose}>
+      <div className="dialog wide" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="title-bar">
+          <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
+          <span className="title">Keyboard Shortcuts</span>
+        </div>
+        <div className="dialog-body">
+          <div className="shortcut-groups">
+            {SHORTCUT_GROUPS.map((group) => (
+              <div className="shortcut-group" key={group.title}>
+                <div className="shortcut-group-title">{group.title}</div>
+                {group.items.map((item) => (
+                  <div className="shortcut-row" key={item.keys + item.what}>
+                    <span className="shortcut-keys">{item.keys}</span>
+                    <span className="shortcut-what">{item.what}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="dialog-buttons">
+          <button className="btn default" onClick={onClose}>
+            OK
           </button>
         </div>
       </div>

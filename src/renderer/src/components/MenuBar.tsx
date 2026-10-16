@@ -13,6 +13,7 @@ type Menu = { title: string | JSX.Element; key: string; items: MenuItem[] }
 
 type MenuBarProps = {
   onAbout: () => void
+  onShortcuts: () => void
   onPreferences: () => void
   onVersionDialog: (dialog: 'commit' | 'history' | 'variants') => void
   onCompile: () => void
@@ -40,6 +41,7 @@ type MenuBarProps = {
 
 export function MenuBar({
   onAbout,
+  onShortcuts,
   onPreferences,
   onVersionDialog,
   onCompile,
@@ -75,6 +77,9 @@ export function MenuBar({
   }, [registerFocusMenus])
   const project = useWyrm((s) => s.project)
   const typewriterMode = useWyrm((s) => s.typewriterMode)
+  // A boolean, not the view object: the label flips between the two places a
+  // writer works, so the menu has to re-render when the board opens or closes.
+  const onBoard = useWyrm((s) => s.mainView.kind === 'corkboard')
   const editor = useWyrm((s) => s.editor)
   const newProjectAction = (): void => {
     void useWyrm.getState().newProject('')
@@ -100,6 +105,14 @@ export function MenuBar({
       items: [
         { kind: 'item', label: 'About WyrmStar…', action: onAbout },
         { kind: 'sep' },
+        {
+          // Not gated on a project: the keys are the same either way, and the
+          // Welcome screen is where someone is most likely to ask.
+          kind: 'item',
+          label: 'Keyboard Shortcuts…',
+          shortcut: '⌘/',
+          action: onShortcuts
+        },
         { kind: 'item', label: 'Preferences…', shortcut: '⌘,', action: onPreferences }
       ]
     },
@@ -248,13 +261,6 @@ export function MenuBar({
         },
         { kind: 'sep' },
         {
-          kind: 'item',
-          label: 'Corkboard',
-          disabled: !hasProject,
-          action: () => useWyrm.getState().showCorkboard()
-        },
-        { kind: 'sep' },
-        {
           // F-41: the way back from a window that has ended up somewhere
           // unreachable. Clamping is meant to prevent that, but the failure
           // mode is a novel you can see and cannot click, so there has to be a
@@ -271,6 +277,36 @@ export function MenuBar({
           disabled: !hasProject,
           action: onPalette
         }
+      ]
+    },
+    {
+      // The outlining toolset, in one place. These were scattered across
+      // View (the board) and Project (five dialogs that sat beside Backup and
+      // Sync Settings as though they were housekeeping), which left no way to
+      // tell that they are all the same scenes seen differently — as cards,
+      // as a line, as a curve, as a cast, as a map. The board is the surface
+      // they belong to, so it names the menu and comes first in it.
+      key: 'corkboard',
+      title: 'Corkboard',
+      items: [
+        {
+          kind: 'item',
+          label: onBoard ? 'Manuscript' : 'Corkboard',
+          shortcut: '⌥⌘B',
+          disabled: !hasProject,
+          action: () => useWyrm.getState().toggleCorkboard()
+        },
+        { kind: 'sep' },
+        { kind: 'item', label: 'Timeline…', disabled: !hasProject, action: onTimeline },
+        { kind: 'item', label: 'Plot Graph…', disabled: !hasProject, action: onPlotGraph },
+        { kind: 'item', label: 'Plotlines…', disabled: !hasProject, action: onPlotlines },
+        {
+          kind: 'item',
+          label: 'Character Graph…',
+          disabled: !hasProject,
+          action: onCharacterGraph
+        },
+        { kind: 'item', label: 'World Map…', disabled: !hasProject, action: onWorldMap }
       ]
     },
     {
@@ -309,16 +345,6 @@ export function MenuBar({
           disabled: !hasProject,
           action: onBrowseTags
         },
-        { kind: 'item', label: 'Timeline…', disabled: !hasProject, action: onTimeline },
-        { kind: 'item', label: 'Plot Graph…', disabled: !hasProject, action: onPlotGraph },
-        { kind: 'item', label: 'Plotlines…', disabled: !hasProject, action: onPlotlines },
-        {
-          kind: 'item',
-          label: 'Character Graph…',
-          disabled: !hasProject,
-          action: onCharacterGraph
-        },
-        { kind: 'item', label: 'World Map…', disabled: !hasProject, action: onWorldMap },
         { kind: 'sep' },
         { kind: 'item', label: 'Backup…', disabled: !hasProject, action: onBackup },
         {

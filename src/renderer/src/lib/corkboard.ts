@@ -34,8 +34,15 @@ export interface SceneCard {
   boardY?: number
 }
 
-/** How much of the opening a card shows before it stops being a card. */
-const EXCERPT_CHARS = 140
+/**
+ * How much of the opening a card shows before it stops being a card.
+ *
+ * Cut back from 140 when the card type grew 25%: the card is a fixed size and
+ * the face clips, so the choice is fewer words or a card that keeps part of a
+ * sentence it never shows. Fewer words — the excerpt is there to remind a
+ * writer which scene this is, not to be read.
+ */
+const EXCERPT_CHARS = 90
 
 export function excerptOf(body: string): string {
   const text = plainTextOf(body).replace(/\s+/g, ' ').trim()
