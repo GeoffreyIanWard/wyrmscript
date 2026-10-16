@@ -70,6 +70,8 @@ const api: WyrmApi = {
   removeBackupTarget: (path, targetId) => ipcRenderer.invoke('backup:remove', path, targetId),
   backupNow: (path) => ipcRenderer.invoke('backup:now', path),
   restoreFromBackup: () => ipcRenderer.invoke('backup:restore'),
+  listGithubRepos: () => ipcRenderer.invoke('github:repos'),
+  cloneProject: (url: string) => ipcRenderer.invoke('project:clone', url),
 
   getSyncStatus: (path) => ipcRenderer.invoke('sync:status', path),
   setSyncClientId: (path, clientId) => ipcRenderer.invoke('sync:clientId', path, clientId),

@@ -22,6 +22,7 @@ import type {
   PrinterInfo,
   PrintSettings,
   StatsSettings,
+  GithubRepo,
   VariantInfo,
   WyrmApi
 } from '../../../shared/types'
@@ -722,6 +723,30 @@ export function createMockApi(): WyrmApi {
     },
     async restoreFromBackup(): Promise<ProjectInfo | null> {
       // Restoring needs real repositories on disk; the preview has neither.
+      return null
+    },
+    async listGithubRepos(): Promise<GithubRepo[]> {
+      // Enough shape for the dialog's list, sorting and empty states to be
+      // walked in the preview. Cloning itself needs git and a disk.
+      return [
+        {
+          name: 'wyrm-of-winter',
+          fullName: 'demo/wyrm-of-winter',
+          cloneUrl: 'https://github.com/demo/wyrm-of-winter.git',
+          private: true,
+          updatedAt: new Date(Date.now() - 3 * 86400000).toISOString()
+        },
+        {
+          name: 'saltmarsh-notes',
+          fullName: 'demo/saltmarsh-notes',
+          cloneUrl: 'https://github.com/demo/saltmarsh-notes.git',
+          private: false,
+          updatedAt: new Date(Date.now() - 40 * 86400000).toISOString()
+        }
+      ]
+    },
+    async cloneProject(): Promise<ProjectInfo | null> {
+      // Needs a real repository and a real disk, like restoring does.
       return null
     },
     async exportFile(defaultName: string): Promise<string | null> {
