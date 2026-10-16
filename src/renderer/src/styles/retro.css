@@ -1884,6 +1884,12 @@ button {
 
 .dialog-buttons {
   display: flex;
+  /* Wraps rather than overflowing. The row is justified to the right, so a
+     row of buttons wider than its dialog spills out of the *left* edge
+     instead of being clipped — which is what a third button on Welcome did.
+     Button widths depend on the palette's chrome face, so no fixed dialog
+     width can be relied on to prevent it. */
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 12px;
   padding: 0 20px 16px;
@@ -2060,7 +2066,9 @@ button {
 }
 
 .dialog.welcome {
-  min-width: 460px;
+  /* Wide enough for its three buttons to sit on one line in the default
+     face; `.dialog-buttons` wraps if a palette's own face is wider. */
+  min-width: 600px;
 }
 
 /* TipTap host: the .page class is applied to the ProseMirror element itself */

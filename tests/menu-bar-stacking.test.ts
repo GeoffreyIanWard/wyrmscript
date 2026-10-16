@@ -40,3 +40,29 @@ describe('menu bar vs. dialog-overlay stacking', () => {
     expect(zIndexOf('.menu-overlay')).toBeLessThan(zIndexOf('.menu-bar'))
   })
 })
+
+/**
+ * Regression for the third button on Welcome (F-43's "From GitHub…"), which
+ * hung off the *left* edge of its own dialog.
+ *
+ * `.dialog-buttons` is justified to the right, so a row of buttons wider than
+ * its dialog overflows backwards, out of the left edge, rather than being
+ * clipped at the right where it would be obvious. Button widths depend on the
+ * palette's chrome face — sixteen of them, some much wider than the default —
+ * so no fixed dialog width can be relied on to prevent it. Wrapping is what
+ * makes it structurally impossible.
+ *
+ * jsdom has no layout engine, so this reads the rule rather than measuring
+ * the result; the sixteen palettes were measured in the browser.
+ */
+describe('a dialog’s button row', () => {
+  it('wraps rather than spilling out of the dialog', () => {
+    const css = readFileSync(join('src/renderer/src/styles/retro.css'), 'utf8')
+    // Anchored to the start of a line: `.dialog > .dialog-buttons` is a
+    // different rule that appears first, and matching it would have passed
+    // this test against the bug.
+    const match = /^\.dialog-buttons \{([^}]*)\}/m.exec(css)
+    expect(match, '.dialog-buttons rule not found').toBeTruthy()
+    expect(match?.[1]).toContain('flex-wrap: wrap')
+  })
+})
