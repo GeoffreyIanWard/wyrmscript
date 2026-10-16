@@ -341,6 +341,16 @@ interface WyrmState {
   showCorkboard(): void
   /** Switch between the corkboard and the manuscript (⌥⌘B). */
   toggleCorkboard(): void
+  /**
+   * Guided help: hovering a marked control explains it (F-44).
+   *
+   * App state rather than a persisted setting — it is a thing you turn on to
+   * ask a question, not a preference. It does not belong to a project
+   * either, so it stays out of `SLICE_KEYS`: the explanations are the same
+   * whichever novel is in front.
+   */
+  helpMode: boolean
+  setHelpMode(on: boolean): void
   /** F-34: open the browse-by-tag page in place of the writing terminal. */
   showTags(): void
   /**
@@ -689,6 +699,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     lastCommitAt: null,
     renamingId: null,
     typewriterMode: false,
+    helpMode: false,
     recentProjects: [],
     entities: [],
     entityIndex: buildEntityIndex([]),
@@ -1585,6 +1596,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { mainView } = get()
       if (mainView.kind === 'corkboard') return
       set({ mainView: { kind: 'corkboard' }, viewHistory: [] })
+    },
+
+    setHelpMode(on) {
+      set({ helpMode: on })
     },
 
     toggleCorkboard() {

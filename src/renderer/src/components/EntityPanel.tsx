@@ -41,7 +41,7 @@ export function EntityPanel(): JSX.Element | null {
   const locatedIn = entity.type === 'world' ? locationChain(entities, entity.id).slice(0, -1) : []
 
   return (
-    <div className="entity-panel">
+    <div className="entity-panel" data-help="entity-panel">
       <div className="panel-title">
         <button
           type="button"

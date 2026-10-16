@@ -1,0 +1,130 @@
+/**
+ * Guided help: what each part of WyrmStar is for.
+ *
+ * Turn the mode on and hovering a marked control explains it. The copy lives
+ * here, in one place, rather than in `title` attributes scattered through the
+ * tree — a `title` cannot be styled to match the app, does not appear on a
+ * deliberate gesture, and is impossible to review as a body of writing.
+ *
+ * An element opts in with `data-help="<id>"`. `tests/guided-help.test.tsx`
+ * reads the source for every one of those attributes and fails if the id has
+ * no entry here, or if an entry here is used nowhere — an explanation that
+ * explains nothing is as bad as a control with no explanation.
+ *
+ * What gets an entry: the things that are **WyrmStar's own** and that a
+ * writer coming from another word processor would not guess. Not Save, not
+ * Bold. The binder, checkpoints, variants, the board, the story bible — the
+ * vocabulary this app made up.
+ */
+export interface HelpTopic {
+  title: string
+  body: string
+}
+
+export const HELP_TOPICS: Record<string, HelpTopic> = {
+  binder: {
+    title: 'The binder',
+    body: 'Your manuscript as a tree of documents and folders. A novel is written in pieces here rather than as one long file, and the order of this list is the order of the book. Drag a row to move a scene.'
+  },
+  trash: {
+    title: 'Trash',
+    body: 'Deleted documents wait here rather than leaving. Nothing in WyrmStar is ever truly lost: even emptying this keeps the text in the project history, where it can still be recovered.'
+  },
+  'entity-panel': {
+    title: 'The story bible',
+    body: 'Characters, places and terms, each its own entry. Anything you name here is found automatically in your prose and quietly linked — the link is drawn over the text, never written into it, so your manuscript stays plain words.'
+  },
+  'scene-tag': {
+    title: 'Marking a scene',
+    body: 'Tagging a document as a scene is what puts it on the corkboard, the timeline, the plot graph and the map. They all read the same tag, so a document is a scene everywhere or nowhere.'
+  },
+  'doc-pins': {
+    title: 'Pins',
+    body: 'Small marks for your own purposes — a scene to revisit, a thread to pick up. Pins are yours and are never interpreted by the app.'
+  },
+  'word-count': {
+    title: 'Word count',
+    body: 'Words in the document you are writing. If you would rather not watch a number climb, Preferences turns every ambient counter off at once.'
+  },
+  'save-state': {
+    title: 'Saved',
+    body: 'Your words are written to disk as you type, so this rarely says anything else. Saving is not the same as a checkpoint: this is the file, a checkpoint is a moment in the history.'
+  },
+  'last-commit': {
+    title: 'Last checkpoint',
+    body: 'How long since a version of the whole project was recorded. Checkpoints happen on their own as you write, and ⌘S makes one with a note of your choosing. Any of them can be returned to.'
+  },
+  place: {
+    title: 'Where this project lives',
+    body: 'Whether this project is only on this machine, backed up to a second place, or synced with a remote. Hover the words for the actual location.'
+  },
+  'zoom-box': {
+    title: 'Focus mode',
+    body: 'Hides the binder, the story bible and everything else, leaving the page. ⌥⌘F does the same from the keyboard, and Esc comes back.'
+  },
+  'minimize-box': {
+    title: 'Minimise',
+    body: 'Puts this project down on the desktop as an icon without closing it. It keeps checkpointing, backing up and syncing while it is down there.'
+  },
+  corkboard: {
+    title: 'The corkboard',
+    body: 'Every scene as an index card. Drag a card and it stays where you put it — the board is for arranging your thinking, so a card sits where you leave it rather than snapping into a row. ⌥⌘B switches between the board and the manuscript.'
+  },
+  'scene-card': {
+    title: 'A scene card',
+    body: 'The scene, its folder, its opening and its length. Click it to start writing; drag it to move it on the board. Moving a card does not reorder the manuscript — the binder does that.'
+  },
+  'board-tidy': {
+    title: 'Tidy',
+    body: 'Puts every card back into a grid in binder order and forgets where they were. The way back from an arrangement that has stopped helping.'
+  },
+  'board-tools': {
+    title: 'The same scenes, seen other ways',
+    body: 'A timeline, a plot graph, your plotlines, your cast and a map — all reading the scenes on this board. They are pinned here rather than buried in a menu because they are the same material, not five separate features.'
+  }
+}
+
+export const HELP_IDS = Object.keys(HELP_TOPICS)
+
+/** The tip's own size, which the placement has to assume before it renders. */
+export const TIP_W = 280
+export const TIP_MAX_H = 170
+/** Past this, a control is tall enough that its bottom edge is nowhere near
+ *  the thing the writer is actually pointing at. */
+const TALL = 220
+
+export interface Box {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/**
+ * Where to put the explanation.
+ *
+ * Pure for the same reason the rest of this app's geometry is: jsdom has no
+ * layout engine, so this is only honestly testable away from the DOM. Three
+ * rules, each of which was a tip you could not read:
+ *
+ * - Anchored to the **control**, not the pointer, so it holds still enough to
+ *   read — except for a very tall control like the binder, where the bottom
+ *   edge is nowhere near the pointer and the tip follows the cursor instead.
+ * - Clamped at the right so a control near the edge does not push its own
+ *   explanation off the screen.
+ * - Flipped **above** the control when there is no room below, rather than
+ *   running off the bottom, which is what the binder did.
+ */
+export function tipPosition(
+  box: Box,
+  pointer: { x: number; y: number },
+  viewport: { width: number; height: number }
+): { x: number; y: number } {
+  const tall = box.height > TALL
+  const anchorTop = tall ? pointer.y : box.top
+  const below = tall ? pointer.y + 18 : box.top + box.height + 6
+  const x = Math.max(8, Math.min(box.left, viewport.width - TIP_W - 8))
+  if (below + TIP_MAX_H <= viewport.height) return { x, y: below }
+  // No room below: sit above the anchor, and never above the screen either.
+  return { x, y: Math.max(8, anchorTop - TIP_MAX_H - 6) }
+}

@@ -107,6 +107,7 @@ function DocMetaBar(): JSX.Element | null {
         role="checkbox"
         aria-checked={isScene}
         className={isScene ? 'scene-toggle on' : 'scene-toggle'}
+        data-help="scene-tag"
         onClick={() =>
           void updateDocMeta({
             tags: isScene ? removeTag(tags, SCENE_TAG) : addTag(tags, SCENE_TAG)
@@ -147,7 +148,12 @@ function DocMetaBar(): JSX.Element | null {
       />
       <span className="spacer" />
       <div className="pin-menu-anchor">
-        <button type="button" className="btn small" onClick={() => setPinMenuOpen((v) => !v)}>
+        <button
+          type="button"
+          className="btn small"
+          data-help="doc-pins"
+          onClick={() => setPinMenuOpen((v) => !v)}
+        >
           + Pin
         </button>
         {pinMenuOpen && (

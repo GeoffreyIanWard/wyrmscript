@@ -808,6 +808,24 @@ Requested 2026-10-15, alongside the Corkboard menu. **⌘/** (and `WyrmStar → 
 
 **One list, `lib/shortcuts.ts`, and a test that reads the menu bar's own source.** A shortcut was already stated twice — by the menu item advertising it and the handler implementing it — and a legend is a third statement. A legend that drifts is worse than no legend: it teaches a key that does nothing and the writer blames their keyboard. `tests/shortcuts-legend.test.tsx` greps `MenuBar.tsx` for every `shortcut:` it advertises and fails if one is missing here, which was verified by deleting a row.
 
+### F-44 · Guided help ✅ shipped
+
+Requested 2026-10-15. The **?** in the status bar (or `WyrmStar → Guided Help`) turns on a mode where hovering a control explains what it is for. Esc, or the same button, turns it off.
+
+**Why a mode rather than tooltips everywhere.** A `title` attribute cannot be styled to match the app, appears whether or not it was wanted, and is impossible to review as a body of writing. A mode is also honest about what it is: a writer asking "what is all this?" is doing something different from writing, and the banner says so while it is on.
+
+**The copy lives in one file** (`lib/help.ts`), and a control opts in with `data-help="<id>"`. What earns an entry is the vocabulary **WyrmStar made up** — the binder, checkpoints, the story bible, scene tags, the board, where a project lives — not Save and not Bold. Fifteen controls so far.
+
+**Clicks on an explained control are swallowed while the mode is on.** Someone asking what a thing does has not asked to do it, and the marked controls include minimise, trash and the scene tag. The cost is that the mode must be left deliberately, which is also what stops it being a mode you fall into and cannot escape.
+
+**Esc stops propagating.** It is already "back" and "close the dialog", so without that, leaving guided help would also walk the writer out of whatever they were reading about.
+
+**Placement is a pure function** (`tipPosition`), for the same reason the window and board geometry are: jsdom has no layout engine. It flips the tip **above** a control when there is no room below — which the binder, being most of the window's height, did immediately — follows the pointer for a control too tall for its own bottom edge to mean anything, and clamps at both screen edges.
+
+Both drift guards read the source: `tests/guided-help.test.tsx` fails if a marked control has no copy, or if copy exists for a control that no longer does. Verified by injection, as were the swallowed click and the Esc guard — the first version of the click test clicked the trash row, which only expands an empty list, and passed just as happily with the guard removed.
+
+**Left for later:** the mode explains controls, not workflows. A first-run tour, or an explanation attached to a *view* rather than a control ("what is this page for?"), would both fit the same machinery.
+
 ### F-42 · Outline mode 📋 designed, not started
 
 Build a story's shape before writing it: add scenes through a templated form, then work with them exactly like any other scene — on the corkboard, the timeline, the plot graph and the map — and click one to start writing it.
