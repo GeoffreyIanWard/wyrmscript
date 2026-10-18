@@ -203,6 +203,36 @@ export function Corkboard({
   const [stacked, setStacked] = useState(false)
   const [pulled, setPulled] = useState<Set<string>>(() => new Set())
 
+  /**
+   * Portraits for the cards that have one (F-47), as data: URLs keyed by
+   * card id. Read when the set of portrait files changes — the key is the
+   * ids and filenames joined, so a changed or removed portrait re-reads and
+   * an unchanged board does not. Drawn only while the card still names a
+   * portrait, so a removed one never lingers from an earlier read.
+   */
+  const [portraits, setPortraits] = useState<Record<string, string>>({})
+  const portraitKey = cards
+    .filter((c) => c.portrait)
+    .map((c) => `${c.id}:${c.portrait}`)
+    .join('|')
+  useEffect(() => {
+    const path = project?.path
+    if (!path || portraitKey === '') return
+    let live = true
+    for (const part of portraitKey.split('|')) {
+      const id = part.slice(0, part.indexOf(':'))
+      void api
+        .readPortrait(path, id)
+        .then(
+          (url) => live && url && setPortraits((p) => (p[id] === url ? p : { ...p, [id]: url }))
+        )
+        .catch(() => undefined)
+    }
+    return () => {
+      live = false
+    }
+  }, [project, portraitKey])
+
   const placed = useMemo(() => {
     const laid = layoutCards(
       cards.map((c) => {
@@ -536,7 +566,7 @@ export function Corkboard({
                 onClick={(e) => open(card, e)}
                 aria-label={`Open ${card.title}`}
               >
-                <CardFace card={card} />
+                <CardFace card={card} portrait={card.portrait ? portraits[card.id] : undefined} />
               </button>
             )}
           </div>
@@ -582,10 +612,13 @@ export function Corkboard({
 }
 
 /** What a card says: title, where it lives, its opening, and its foot. */
-function CardFace({ card }: { card: PlacedCard }): JSX.Element {
+function CardFace({ card, portrait }: { card: PlacedCard; portrait?: string }): JSX.Element {
   return (
     <>
-      <span className="scene-card-title">{card.title}</span>
+      <span className="scene-card-head">
+        {portrait && <img className="scene-card-portrait" src={portrait} alt="" />}
+        <span className="scene-card-title">{card.title}</span>
+      </span>
       {card.folder !== '' && <span className="scene-card-folder">{card.folder}</span>}
       <span className="scene-card-excerpt">
         {card.empty ? <em>Not written yet.</em> : card.excerpt}

@@ -86,6 +86,10 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'Add a card',
     body: 'A new scene, character or location — made for real, as a document in the manuscript or an entry in the story bible, with its card here. Or an entry that already exists, put on the board.'
   },
+  'entity-portrait': {
+    title: 'Portrait',
+    body: "A picture for this character or place, kept inside the project beside the entry so it travels with it — to a backup, to GitHub, to another machine. It shows on the entry's card on the corkboard."
+  },
   'board-string': {
     title: 'String',
     body: 'Red string between cards, pin to pin. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go.'

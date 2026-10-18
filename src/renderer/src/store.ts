@@ -369,6 +369,14 @@ interface WyrmState {
   createEntity(type: EntityType, name: string, extra?: Partial<Entity>): Promise<Entity | null>
   saveEntity(entity: Entity): Promise<void>
   deleteEntity(entity: Entity): Promise<void>
+  /**
+   * F-47: pick an image for an entry and record it on the entry. False means
+   * the writer closed the picker — nothing was copied and nothing written,
+   * so an entry does not end up pointing at an image that is not there.
+   */
+  setPortrait(entityId: string): Promise<boolean>
+  /** F-47: delete the image and the entry's record of it. */
+  clearPortrait(entityId: string): Promise<void>
   openEntityPanel(id: string | null): void
   showEntity(id: string): void
   showDoc(): void
@@ -1679,6 +1687,40 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({
         viewHistory: get().viewHistory.filter((v) => v.kind !== 'entity' || v.id !== entity.id)
       })
+    },
+
+    async setPortrait(entityId) {
+      const { project, entities } = get()
+      if (!project) return false
+      if (!entities.some((e) => e.id === entityId)) return false
+      const rel = await api.importPortrait(project.path, entityId)
+      // Null is the picker being closed: no file was copied, so the entry
+      // must not be re-saved to point at an image that is not there.
+      if (!rel) return false
+      // Looked up again after the await rather than held across it: the
+      // picker is modal, but a save that lands meanwhile (the editor's own
+      // autosave of the entry) would otherwise be written over with the copy
+      // from before it. Through saveEntity, so setEntities stays the only
+      // writer of the entity index.
+      const entity = get().entities.find((e) => e.id === entityId)
+      if (!entity) return false
+      await get().saveEntity({ ...entity, portrait: rel })
+      return true
+    },
+
+    async clearPortrait(entityId) {
+      const { project, entities } = get()
+      if (!project) return
+      const entity = entities.find((e) => e.id === entityId)
+      if (!entity) return
+      await api.removePortrait(project.path, entityId)
+      // The key is deleted from a copy, never assigned undefined — gray-matter
+      // throws on an explicit undefined frontmatter value, and main's
+      // writeEntity only emits the key when set, so the bare delete is the
+      // whole of "no portrait" (the rule removeEntityFromBoard follows too).
+      const cleared = { ...entity }
+      delete cleared.portrait
+      await get().saveEntity(cleared)
     },
 
     openEntityPanel(id) {

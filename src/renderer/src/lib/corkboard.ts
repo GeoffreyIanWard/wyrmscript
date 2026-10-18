@@ -46,6 +46,8 @@ export interface BoardCard {
   /** Stored board position, unset until the writer moves this card. */
   boardX?: number
   boardY?: number
+  /** A character's or location's portrait, as the project-relative file (F-47). */
+  portrait?: string
 }
 
 /** The board's original card type; a scene is one kind of card now. */
@@ -220,7 +222,8 @@ export function entityCards(entities: Entity[]): BoardCard[] {
         excerpt: excerptOf(e.body),
         empty: text === '',
         boardX: e.boardX,
-        boardY: e.boardY
+        boardY: e.boardY,
+        portrait: e.portrait
       })
     }
   }

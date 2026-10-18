@@ -17,6 +17,8 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
   const entities = useWyrm((s) => s.entities)
   const entity = useWyrm((s) => s.entities.find((e) => e.id === entityId) ?? null)
   const saveEntity = useWyrm((s) => s.saveEntity)
+  const setPortrait = useWyrm((s) => s.setPortrait)
+  const clearPortrait = useWyrm((s) => s.clearPortrait)
   const deleteEntity = useWyrm((s) => s.deleteEntity)
   const showDoc = useWyrm((s) => s.showDoc)
   const selectDoc = useWyrm((s) => s.selectDoc)
@@ -33,6 +35,25 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
   const [parentId, setParentId] = useState(entity?.parentId ?? '')
   const [dirty, setDirty] = useState(false)
   const [backlinks, setBacklinks] = useState<Backlink[] | null>(null)
+
+  // The portrait arrives as a data: URL over the bridge (F-47) — the renderer
+  // never gets a path, only the entry's id — and is re-read whenever the
+  // entry's portrait field changes. Shown only while the entry still has
+  // one, so a removed portrait does not linger from the last read.
+  const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
+  const portraitFile = entity?.portrait ?? null
+  useEffect(() => {
+    if (!project || !entity || !portraitFile) return
+    let live = true
+    void api
+      .readPortrait(project.path, entity.id)
+      .then((url) => live && setPortraitUrl(url))
+      .catch(() => live && setPortraitUrl(null))
+    return () => {
+      live = false
+    }
+  }, [project, entity, portraitFile])
+  const portrait = portraitFile ? portraitUrl : null
 
   useEffect(() => {
     if (!project || !entity) return
@@ -114,6 +135,44 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
             }}
           />
         </div>
+        {entity.type !== 'glossary' && (
+          // A face for a character, a view for a place. Not a glossary
+          // term, which has nothing to look like.
+          <div className="entry-field">
+            <div className="field-name">PORTRAIT</div>
+            <div className="entity-portrait" data-help="entity-portrait">
+              {portrait ? (
+                <img className="entity-portrait-img" src={portrait} alt="" />
+              ) : (
+                <div className="entity-portrait-empty" aria-hidden="true">
+                  none
+                </div>
+              )}
+              <div className="entity-portrait-actions">
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => void setPortrait(entity.id)}
+                >
+                  {entity.portrait ? 'Change Image…' : 'Choose Image…'}
+                </button>
+                {entity.portrait && (
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => void clearPortrait(entity.id)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="dialog-hint">
+              Kept inside the project, beside the entry, so it travels with it. Shown on the entry&apos;s
+              card on the corkboard.
+            </div>
+          </div>
+        )}
         <div className="entry-field">
           <div className="field-name">ALIASES (COMMA-SEPARATED)</div>
           <input

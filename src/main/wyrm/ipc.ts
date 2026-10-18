@@ -21,7 +21,15 @@ import type {
 } from '../../shared/types'
 import { TITLE_BAR_OVERLAY_HEIGHT } from '../../shared/types'
 import { commitAll, createVariant, deleteVariant, listVariants, logCommits } from './git'
-import { deleteEntity, listEntities, readAllDocs, writeEntity } from './entities'
+import {
+  copyPortrait,
+  deleteEntity,
+  listEntities,
+  readAllDocs,
+  readPortraitDataUrl,
+  removePortrait,
+  writeEntity
+} from './entities'
 import { deletePlotline, listPlotlines, writePlotline } from './plotlines'
 import { deleteRelationship, listRelationships, writeRelationship } from './relationships'
 import { deleteMapPin, listMapPins, writeMapPin } from './worldMap'
@@ -173,6 +181,41 @@ export function registerIpc(): void {
     deleteEntity(path, type, id)
   )
   ipcMain.handle('doc:readAll', (_e, path: string) => readAllDocs(path))
+
+  /* ---------- portraits (F-47) ---------- */
+
+  // The renderer names the entry by id alone; its collection folder comes
+  // from the entry's own record, so nothing sent over the bridge is ever
+  // used as a path. An id not in the project is "no portrait", not an error:
+  // a card can ask just after its entry was deleted on another device.
+  const entityTypeOf = async (path: string, entityId: string): Promise<EntityType | null> =>
+    (await listEntities(path)).find((e) => e.id === entityId)?.type ?? null
+
+  ipcMain.handle('portrait:import', async (_e, path: string, entityId: string) => {
+    const win = focusedWindow()
+    if (!win) return null
+    const type = await entityTypeOf(path, entityId)
+    if (!type) return null
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Choose a Portrait',
+      defaultPath: app.getPath('pictures'),
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+      buttonLabel: 'Use This Image'
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return copyPortrait(path, type, entityId, result.filePaths[0])
+  })
+
+  ipcMain.handle('portrait:read', async (_e, path: string, entityId: string) => {
+    const type = await entityTypeOf(path, entityId)
+    return type ? readPortraitDataUrl(path, type, entityId) : null
+  })
+
+  ipcMain.handle('portrait:remove', async (_e, path: string, entityId: string) => {
+    const type = await entityTypeOf(path, entityId)
+    if (type) await removePortrait(path, type, entityId)
+  })
 
   ipcMain.handle('plotline:list', (_e, path: string) => listPlotlines(path))
   ipcMain.handle('plotline:write', (_e, path: string, plotline: Plotline) =>
