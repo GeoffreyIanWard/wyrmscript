@@ -3193,9 +3193,15 @@ button {
   cursor: default;
 }
 
-.board-tool:active {
+.board-tool:active,
+.board-tool.on {
   background: var(--ink);
   color: var(--paper);
+}
+
+.board-tool.on .board-tool-pin {
+  background: var(--paper);
+  border-color: var(--ink);
 }
 
 /* Same pin as a card's, smaller and at the corner — these are notes pinned to
@@ -3352,6 +3358,71 @@ button {
   z-index: 2;
 }
 
+/* F-45: three kinds of card, told apart by their pin rather than a colour —
+   the board keeps the palette's two inks. A character's pin is square, a
+   location's is a diamond; a scene keeps the round head. Enough to read a
+   pile at a glance, invisible when it does not matter. */
+.scene-card.kind-character .scene-card-pin {
+  border-radius: 0;
+}
+
+.scene-card.kind-location .scene-card-pin {
+  border-radius: 0;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.scene-card.kind-location .scene-card-pin::after {
+  /* The shaft is drawn by the pin's own box; rotated with it, it would stick
+     out of the diamond's corner. Undo the rotation for the shaft alone. */
+  transform: rotate(-45deg);
+  transform-origin: 50% 0;
+}
+
+.scene-card-kind {
+  text-transform: uppercase;
+  border: 1px solid var(--ink);
+  padding: 0 4px;
+  line-height: 1.3;
+}
+
+/* Takes a bible card off the board. Faint until the card is hovered, so a
+   board full of cards is not a board full of crosses; a sibling of the face,
+   sitting in the top corner over the border. */
+.scene-card-off {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  line-height: 1;
+  font: inherit;
+  font-family: var(--font-chrome);
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  opacity: 0.35;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.scene-card:hover .scene-card-off,
+.scene-card-off:focus-visible {
+  opacity: 1;
+}
+
+.scene-card-off:active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Stacked: cards overlap in piles, so the face stops clipping its own
+   content as if it were alone and the pile reads as a pile — each card's
+   title line shows above the one on top of it. */
+.corkboard-board.stacked .scene-card {
+  box-shadow: 0 1px 0 var(--ink);
+}
+
 
 /* The keyboard legend (⌘/). Columns rather than one long list: the groups are
    how a writer looks a key up — by what they were trying to do. */
@@ -3444,4 +3515,27 @@ button {
   font-family: var(--font-prose);
   font-size: 13px;
   line-height: 1.45;
+}
+
+/* The Add Card dialog (F-45). */
+.add-card-new {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.add-card-new .text-field {
+  flex: 1;
+}
+
+.add-card-existing {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.add-card-error {
+  color: var(--ink);
+  border-top: 1px solid var(--ink);
+  margin-top: 8px;
+  padding-top: 6px;
 }

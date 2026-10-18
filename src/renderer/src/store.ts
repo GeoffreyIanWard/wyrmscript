@@ -28,7 +28,7 @@ import type {
   PrintSettings,
   CompileBlock
 } from '../../shared/types'
-import { PLOTLINE_COLOURS } from '../../shared/types'
+import { PLOTLINE_COLOURS, SCENE_TAG } from '../../shared/types'
 import { api } from './lib/api'
 import { isConnected } from './lib/syncState'
 import { compile, compileFileName, renderHtml } from './lib/compile'
@@ -231,8 +231,23 @@ interface WyrmState {
    */
   /** Where a scene's card sits on the corkboard (free placement). */
   setCardPosition(docId: string, x: number, y: number): Promise<void>
-  /** Clear every scene's stored card position, returning the board to binder order. */
+  /**
+   * Clear every stored card position — scenes and bible entries alike —
+   * returning the board to binder order. Entries keep their place *on* the
+   * board: Tidy is about where cards sit, not which cards there are.
+   */
   tidyBoard(): Promise<void>
+  /**
+   * F-45: characters and locations on the board, by explicit membership —
+   * an entry has a card iff `onBoard` is true. Deliberate, like the World
+   * Map's "Place on Map", rather than automatic like scenes, so a big story
+   * bible does not flood the board.
+   */
+  addEntityToBoard(entityId: string): Promise<void>
+  /** Take the card off the board; the entry itself stays in the bible. */
+  removeEntityFromBoard(entityId: string): Promise<void>
+  /** Where an entry's card sits — the entity-side twin of `setCardPosition`. */
+  setEntityPosition(entityId: string, x: number, y: number): Promise<void>
   setTimelineOrder(docId: string, order: number): Promise<void>
   setTimelineDate(docId: string, date: string): Promise<void>
   /** F-03: a scene's tension, set by dragging its node on the plot graph.
@@ -318,6 +333,16 @@ interface WyrmState {
   ): Promise<{ result: CompileResult; path: string | null }>
 
   addDoc(parentId: string | null): Promise<void>
+  /**
+   * F-45: a new scene made from the corkboard. `addDoc` without the doc
+   * switch and the rename mode — the board stays up, since switching to the
+   * manuscript would yank the writer off the view they were working from,
+   * and the rename field lives in the binder, which is hidden while the
+   * board is up. Born tagged as a scene (which is what puts it on the board)
+   * at the end of the Manuscript folder. Resolves to the new id, or null
+   * with no project open.
+   */
+  addSceneDoc(title: string): Promise<string | null>
   addFolder(parentId: string | null): Promise<void>
   startRename(id: string): void
   finishRename(id: string, title: string): Promise<void>
@@ -328,8 +353,12 @@ interface WyrmState {
   setEntitySort(type: EntityType, mode: EntitySortMode): Promise<void>
 
   loadEntities(): Promise<void>
-  /** Create an entry, optionally pre-named from a terminal selection. */
-  createEntity(type: EntityType, name: string): Promise<Entity | null>
+  /**
+   * Create an entry, optionally pre-named from a terminal selection. `extra`
+   * is folded in before the write, so an entry made from the board is born
+   * with `onBoard` in one write rather than a create and then a save.
+   */
+  createEntity(type: EntityType, name: string, extra?: Partial<Entity>): Promise<Entity | null>
   saveEntity(entity: Entity): Promise<void>
   deleteEntity(entity: Entity): Promise<void>
   openEntityPanel(id: string | null): void
@@ -1065,7 +1094,53 @@ export const useWyrm = create<WyrmState>((set, get) => {
         await api.writeDoc(project.path, updated)
         if (doc.meta.id === activeId) set({ activeDoc: updated })
       }
+      // F-45: the bible entries' cards too. Membership stays — Tidy puts
+      // cards back in their slots, it does not take them off — so only the
+      // position keys go, deleted for the reason above. Through saveEntity,
+      // so setEntities stays the only writer of the entity index.
+      for (const entity of get().entities) {
+        if (entity.boardX == null && entity.boardY == null) continue
+        const tidied = { ...entity }
+        delete tidied.boardX
+        delete tidied.boardY
+        await get().saveEntity(tidied)
+      }
       markDirty()
+    },
+
+    async addEntityToBoard(entityId) {
+      const { project, entities } = get()
+      if (!project) return
+      const entity = entities.find((e) => e.id === entityId)
+      // Already on the board is not an error, but it is not a write either:
+      // re-saving would bump `modified` on an entry nothing happened to.
+      if (!entity || entity.onBoard) return
+      await get().saveEntity({ ...entity, onBoard: true })
+    },
+
+    async removeEntityFromBoard(entityId) {
+      const { project, entities } = get()
+      if (!project) return
+      const entity = entities.find((e) => e.id === entityId)
+      if (!entity) return
+      // Off the board, not out of the bible: only the card goes. The keys
+      // are deleted rather than set to undefined — gray-matter throws on an
+      // explicit undefined frontmatter value, and main's writeEntity only
+      // emits them when set anyway. The position goes with the membership,
+      // so a card put back later takes a grid slot rather than its old spot.
+      const off = { ...entity }
+      delete off.onBoard
+      delete off.boardX
+      delete off.boardY
+      await get().saveEntity(off)
+    },
+
+    async setEntityPosition(entityId, x, y) {
+      const { project, entities } = get()
+      if (!project) return
+      const entity = entities.find((e) => e.id === entityId)
+      if (!entity) return
+      await get().saveEntity({ ...entity, boardX: x, boardY: y })
     },
 
     async setTimelineOrder(docId, order) {
@@ -1403,6 +1478,41 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await get().selectDoc(meta.id)
     },
 
+    async addSceneDoc(title) {
+      const { project } = get()
+      if (!project) return null
+      const now = new Date().toISOString()
+      const meta = {
+        id: newId(),
+        title: title.trim() || 'Untitled',
+        status: 'draft' as const,
+        tags: [SCENE_TAG],
+        created: now,
+        modified: now
+      }
+      await api.writeDoc(project.path, { meta, body: '' })
+      const node: BinderNode = { id: meta.id, type: 'doc', title: meta.title }
+      // Found by name, not by position: the writer can rename or trash any
+      // root folder, so there may be no Manuscript at all. The first root
+      // folder is the next best home and the binder root the last resort — a
+      // scene that lands somewhere surprising beats one written to disk that
+      // no binder lists.
+      const root = project.data.binder
+      const manuscript =
+        root.find((n) => n.type === 'folder' && n.title === 'Manuscript') ??
+        (root[0]?.type === 'folder' ? root[0] : null)
+      if (manuscript) {
+        manuscript.children = manuscript.children ?? []
+        manuscript.children.push(node)
+      } else {
+        root.push(node)
+      }
+      setProject({ ...project })
+      await persistProject()
+      // No startRename or selectDoc, deliberately — see the interface.
+      return meta.id
+    },
+
     async addFolder(parentId) {
       const { project } = get()
       if (!project) return
@@ -1502,16 +1612,19 @@ export const useWyrm = create<WyrmState>((set, get) => {
       setEntities(entities)
     },
 
-    async createEntity(type, name) {
+    async createEntity(type, name, extra) {
       const { project } = get()
       if (!project) return null
       const now = new Date().toISOString()
+      // `extra` sits between the defaults and the identity, so it can seed a
+      // body or put the entry on the board but never forge an id or a type.
       const entity: Entity = {
+        aliases: [],
+        body: '',
+        ...extra,
         id: newId(),
         type,
         name: name.trim() || 'Untitled',
-        aliases: [],
-        body: '',
         created: now,
         modified: now
       }

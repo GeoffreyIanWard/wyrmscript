@@ -267,6 +267,82 @@ describe('divergence without overlap', () => {
   })
 })
 
+describe('clearing an optional field', () => {
+  // A cleared field is an absent key — writeEntity and writeDoc omit unset
+  // optional fields rather than writing an empty one — and every save
+  // restamps `modified`, so the other device merely re-saving the entry is
+  // enough to make the file both-modified. The merge used to carry the
+  // cleared key through as `undefined`, which js-yaml refuses to dump, so a
+  // Tidy on one device turned every later sync on the other into a failure.
+
+  it('an entity whose tags were cleared on one device merges, and stays cleared', async () => {
+    const w = await makeWorld()
+    const now = new Date().toISOString()
+    const entity: Entity = {
+      id: 'wyrmfire',
+      type: 'glossary',
+      name: 'Wyrmfire',
+      aliases: [],
+      body: 'A fire that does not go out.',
+      tags: ['x'],
+      created: now,
+      modified: now
+    }
+    await writeEntity(w.a, entity)
+    await commitAll(w.a, 'Add Wyrmfire')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+    const b = await cloneB(w)
+
+    await writeEntity(w.a, { ...entity, tags: undefined })
+    await commitAll(w.a, 'A clears tags')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+
+    // B re-saves the entry untouched; only the stamp moves.
+    const onB = (await listEntities(b)).find((e) => e.id === entity.id)!
+    await writeEntity(b, onB)
+    await commitAll(b, 'B re-saves')
+
+    expectStatus(await syncProject(b, w.transport), 'merged')
+
+    const merged = (await listEntities(b)).find((e) => e.id === entity.id)
+    expect(merged?.tags).toBeUndefined()
+    expect(merged?.body).toBe(onB.body)
+    const raw = await fsp.readFile(join(b, 'glossary', `${entity.id}.md`), 'utf8')
+    expect(raw).not.toContain('tags:')
+  })
+
+  it('a scene whose board position was tidied away on one device merges, and stays unplaced', async () => {
+    const w = await makeWorld()
+    const doc = await readDoc(w.a, w.docId)
+    await writeDoc(w.a, { meta: { ...doc.meta, boardX: 120, boardY: 80 }, body: doc.body })
+    await commitAll(w.a, 'A places the card')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+    const b = await cloneB(w)
+
+    // Tidy, as the store does it: the keys are deleted, not set to undefined.
+    const placed = await readDoc(w.a, w.docId)
+    const meta = { ...placed.meta }
+    delete meta.boardX
+    delete meta.boardY
+    await writeDoc(w.a, { meta, body: placed.body })
+    await commitAll(w.a, 'A tidies')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+
+    const onB = await readDoc(b, w.docId)
+    await writeDoc(b, onB)
+    await commitAll(b, 'B re-saves')
+
+    expectStatus(await syncProject(b, w.transport), 'merged')
+
+    const merged = await readDoc(b, w.docId)
+    expect(merged.meta.boardX).toBeUndefined()
+    expect(merged.meta.boardY).toBeUndefined()
+    expect(merged.body).toBe(onB.body)
+    const raw = await fsp.readFile(join(b, 'documents', `${w.docId}.md`), 'utf8')
+    expect(raw).not.toMatch(/^board[XY]:/m)
+  })
+})
+
 describe('genuine conflicts', () => {
   async function diverge(w: World): Promise<string> {
     const b = await cloneB(w)

@@ -74,6 +74,22 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'A scene card',
     body: 'The scene, its folder, its opening and its length. Click it to start writing; drag it to move it on the board. Moving a card does not reorder the manuscript — the binder does that.'
   },
+  'bible-card': {
+    title: 'A character or location card',
+    body: 'An entry from the story bible, on the board because you put it there. Click it to open the entry; drag it like any other card. A square pin is a character, a diamond is a location.'
+  },
+  'card-off': {
+    title: 'Take off the board',
+    body: 'Removes this card from the board and nothing else — the character or location stays in its book, and Add Card can bring it back.'
+  },
+  'board-add': {
+    title: 'Add a card',
+    body: 'A new scene, character or location — made for real, as a document in the manuscript or an entry in the story bible, with its card here. Or an entry that already exists, put on the board.'
+  },
+  'board-stack': {
+    title: 'Stack',
+    body: 'Gathers the cards into three piles — scenes, characters, locations — each cascading so every title shows, like a hand of patience. A way of looking rather than an arrangement: Unstack puts every card back where it was. Drag a card out of its pile to keep it out.'
+  },
   'board-tidy': {
     title: 'Tidy',
     body: 'Puts every card back into a grid in binder order and forgets where they were. The way back from an arrangement that has stopped helping.'

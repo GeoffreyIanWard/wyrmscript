@@ -206,6 +206,17 @@ function mergeFrontmattered(
     // Per-field three-way; when both devices changed a field, this device wins.
     data[key] = asJson(o) !== asJson(b) ? o : asJson(t) !== asJson(b) ? t : o
   }
+  // A cleared optional field (tags, pins, a Tidied board position) is an
+  // absent key — writeEntity/writeDoc omit unset fields rather than write an
+  // empty one — so when the clearing side wins, the rule above yields
+  // `undefined`, which js-yaml refuses to dump. That turned a clean merge into
+  // a failed sync for every both-modified file, and every save restamps
+  // `modified`, so merely re-saving on the other device was enough to hit it.
+  // Swept here, after every rule has run, rather than guarded per assignment:
+  // one place holds the invariant for any rule that writes `data`, and
+  // deleting (not writing null) keeps "cleared" meaning "absent" — the only
+  // form the writers ever put on disk — so the cleared field stays cleared.
+  for (const key of Object.keys(data)) if (data[key] === undefined) delete data[key]
 
   const cleanBody = body.replace(/^\n/, '')
   return matter.stringify(cleanBody.endsWith('\n') ? cleanBody : cleanBody + '\n', data)

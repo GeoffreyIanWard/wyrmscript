@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import type { BinderNode, DocFile } from '../src/shared/types'
+import type { BinderNode, DocFile, Entity } from '../src/shared/types'
 import { SCENE_TAG } from '../src/shared/types'
 import {
+  boardCards,
   boardHeight,
   CARD_GAP,
   CARD_H,
   CARD_W,
   columnsFor,
   countWords,
+  entityCards,
   tidyColumns,
   excerptOf,
   layoutCards,
-  sceneCards
+  sceneCards,
+  STACK_STEP,
+  stackLayout
 } from '../src/renderer/src/lib/corkboard'
 import type { SceneCard } from '../src/renderer/src/lib/corkboard'
 
@@ -163,6 +167,7 @@ describe('countWords', () => {
 
 describe('where a card sits on the board', () => {
   const card = (id: string, boardX?: number, boardY?: number): SceneCard => ({
+    kind: 'scene',
     id,
     title: id,
     folder: '',
@@ -234,5 +239,143 @@ describe('where a card sits on the board', () => {
   it('grows the board to hold the lowest card', () => {
     const laid = layoutCards([card('a', 0, 900)], 3 * (CARD_W + CARD_GAP))
     expect(boardHeight(laid)).toBe(900 + CARD_H)
+  })
+})
+
+/** A story-bible entry, on the board or not. */
+function entity(
+  id: string,
+  type: Entity['type'],
+  name: string,
+  extra: Partial<Entity> = {}
+): Entity {
+  return {
+    id,
+    type,
+    name,
+    aliases: [],
+    body: '',
+    created: '2026-01-01',
+    modified: '2026-01-01',
+    ...extra
+  }
+}
+
+describe('characters and locations as cards', () => {
+  it('shows only the entries that were put on the board', () => {
+    // The World Map's model, not the scenes': membership is deliberate, so a
+    // forty-strong cast does not flood the board the first time it opens.
+    const cards = entityCards([
+      entity('e1', 'character', 'Elara', { onBoard: true }),
+      entity('e2', 'character', 'Marten'),
+      entity('w1', 'world', 'Harrowgate', { onBoard: true })
+    ])
+    expect(cards.map((c) => c.id)).toEqual(['e1', 'w1'])
+  })
+
+  it('never makes a card of a glossary entry, on the board or not', () => {
+    // onBoard is meaningless on a glossary entry; a stray flag must not grow
+    // a fourth kind of card the rest of the board does not know about.
+    const cards = entityCards([entity('g1', 'glossary', 'wyrmlight', { onBoard: true })])
+    expect(cards).toEqual([])
+  })
+
+  it('names the kind, so the board can tell them apart', () => {
+    const cards = entityCards([
+      entity('e1', 'character', 'Elara', { onBoard: true }),
+      entity('w1', 'world', 'Harrowgate', { onBoard: true })
+    ])
+    expect(cards.map((c) => c.kind)).toEqual(['character', 'location'])
+  })
+
+  it('reads a cast in alphabetical order, whatever order the book holds them in', () => {
+    const cards = entityCards([
+      entity('e3', 'character', 'Zara', { onBoard: true }),
+      entity('e1', 'character', 'Elara', { onBoard: true }),
+      entity('e2', 'character', 'Marten', { onBoard: true })
+    ])
+    expect(cards.map((c) => c.title)).toEqual(['Elara', 'Marten', 'Zara'])
+  })
+
+  it('says which book an entry is in, and for a location what it is inside', () => {
+    // A tavern's card says which city it is in, the way a scene card says
+    // which part it is in (F-13 nesting).
+    const cards = entityCards([
+      entity('e1', 'character', 'Elara', { onBoard: true }),
+      entity('city', 'world', 'Harrowgate'),
+      entity('tavern', 'world', 'The Drowned Bell', { onBoard: true, parentId: 'city' })
+    ])
+    expect(cards.find((c) => c.id === 'e1')?.folder).toBe('Character Book')
+    expect(cards.find((c) => c.id === 'tavern')?.folder).toBe('World Book / Harrowgate')
+  })
+
+  it("carries the entry's opening and position like a scene does", () => {
+    const [card] = entityCards([
+      entity('e1', 'character', 'Elara', {
+        onBoard: true,
+        body: 'Captain of the harbour watch.',
+        boardX: 40,
+        boardY: 60
+      })
+    ])
+    expect(card.excerpt).toBe('Captain of the harbour watch.')
+    expect(card.empty).toBe(false)
+    expect(card.wordCount).toBe(5)
+    expect(card.boardX).toBe(40)
+    expect(card.boardY).toBe(60)
+  })
+
+  it('puts scenes first, in binder order, then characters, then locations', () => {
+    const docs = [doc('a', 'Zulu'), doc('b', 'Mike'), doc('c', 'Alpha')]
+    const cards = boardCards(docs, BINDER, [
+      entity('w1', 'world', 'Harrowgate', { onBoard: true }),
+      entity('e1', 'character', 'Elara', { onBoard: true })
+    ])
+    expect(cards.map((c) => c.title)).toEqual(['Zulu', 'Mike', 'Alpha', 'Elara', 'Harrowgate'])
+  })
+})
+
+describe('stacking', () => {
+  const scene = (id: string): SceneCard => ({
+    kind: 'scene',
+    id,
+    title: id,
+    folder: '',
+    wordCount: 0,
+    excerpt: '',
+    empty: true
+  })
+  const bible = (id: string, kind: 'character' | 'location'): SceneCard => ({ ...scene(id), kind })
+
+  it('gathers each kind into its own pile, cascading so every title shows', () => {
+    // The tableau in a game of patience: each card sits STACK_STEP below the
+    // one before, which is the strip a title line needs.
+    const piles = stackLayout([scene('s1'), scene('s2'), scene('s3')])
+    expect(piles.get('s1')).toEqual({ x: 0, y: 0 })
+    expect(piles.get('s2')).toEqual({ x: 0, y: STACK_STEP })
+    expect(piles.get('s3')).toEqual({ x: 0, y: 2 * STACK_STEP })
+  })
+
+  it('sets the piles side by side in kind order', () => {
+    const piles = stackLayout([bible('w1', 'location'), scene('s1'), bible('e1', 'character')])
+    expect(piles.get('s1')?.x).toBe(0)
+    expect(piles.get('e1')?.x).toBe(CARD_W + CARD_GAP)
+    expect(piles.get('w1')?.x).toBe(2 * (CARD_W + CARD_GAP))
+  })
+
+  it('leaves no gap for a kind with no cards', () => {
+    // A board with scenes and locations but no characters should not have an
+    // empty pile's worth of cork between them.
+    const piles = stackLayout([scene('s1'), bible('w1', 'location')])
+    expect(piles.get('w1')?.x).toBe(CARD_W + CARD_GAP)
+  })
+
+  it('writes nothing — it is a layout, not an arrangement', () => {
+    // The cards passed in are untouched: unstacking is "forget the piles",
+    // and that only works if stacking never changed anything.
+    const cards = [scene('s1'), bible('e1', 'character')]
+    const before = JSON.stringify(cards)
+    stackLayout(cards)
+    expect(JSON.stringify(cards)).toBe(before)
   })
 })

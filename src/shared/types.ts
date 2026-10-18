@@ -160,6 +160,21 @@ export interface Entity {
    * on `character`/`glossary` entities.
    */
   parentId?: string
+  /**
+   * F-45: this entry has a card on the corkboard. Characters and locations
+   * are put on the board deliberately — the World Map's "Place on Map" model,
+   * not the scenes' automatic one — so a big story bible does not flood the
+   * board, and a card can come off it without deleting the entry behind it.
+   * Written only when true. Meaningless on `glossary` entities.
+   */
+  onBoard?: boolean
+  /**
+   * Where the card sits, in board pixels — the same fields a scene carries in
+   * `DocMeta`, with the same rules: unset until the writer moves it, cleared
+   * by Tidy, grid slot in the meantime.
+   */
+  boardX?: number
+  boardY?: number
   created: string
   modified: string
 }
