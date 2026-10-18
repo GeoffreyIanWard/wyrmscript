@@ -1,5 +1,5 @@
 import { promises as fsp } from 'node:fs'
-import { join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import matter from 'gray-matter'
 import type { DocFile, Entity, EntityType } from '../../shared/types'
 import { readDoc } from './project'
@@ -32,6 +32,7 @@ interface EntityFrontmatter {
   onBoard?: boolean
   boardX?: number
   boardY?: number
+  portrait?: string
   created: string
   modified: string
 }
@@ -51,6 +52,7 @@ function parseEntityFile(raw: string): Entity {
     onBoard: data.onBoard,
     boardX: data.boardX,
     boardY: data.boardY,
+    portrait: data.portrait,
     created: data.created,
     modified: data.modified
   }
@@ -77,6 +79,10 @@ export async function writeEntity(projectPath: string, entity: Entity): Promise<
   if (entity.onBoard) meta.onBoard = true
   if (entity.boardX != null) meta.boardX = entity.boardX
   if (entity.boardY != null) meta.boardY = entity.boardY
+  // F-47. Only when set, like the fields above: clearing a portrait deletes
+  // the key on the renderer side, and the file must then say nothing about
+  // one — `portrait: ''` would point the card at an image that is not there.
+  if (entity.portrait) meta.portrait = entity.portrait
   const file = matter.stringify(entity.body.endsWith('\n') ? entity.body : entity.body + '\n', meta)
   await fsp.writeFile(entityPath(projectPath, entity.type, entity.id), file, 'utf8')
 }
@@ -122,6 +128,114 @@ export async function deleteEntity(
 ): Promise<void> {
   // force: true means a missing file is not an error.
   await fsp.rm(entityPath(projectPath, type, id), { force: true })
+  // The portrait goes with the entry (F-47). It is not an entry, so nothing
+  // else would ever list it or remove it — it would sit in the folder, in
+  // every backup and on every synced device, for an entry that no longer
+  // exists.
+  await removePortrait(projectPath, type, id)
+}
+
+/* ---------- portraits (F-47) ---------- */
+
+/**
+ * The image types a portrait may be, keyed by extension, with the mime the
+ * renderer needs to show one. A closed set, checked at the copy: a picker
+ * filter that drifted from this list could otherwise land a file here that
+ * `readPortraitDataUrl` has no mime for, and the card would show nothing
+ * with no error anywhere.
+ */
+const PORTRAIT_MIMES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp'
+}
+const PORTRAIT_EXTS = Object.keys(PORTRAIT_MIMES)
+
+/**
+ * The id is the only thing the renderer names, and here it becomes a
+ * filename inside the project — so one carrying a separator or `..` is
+ * refused outright rather than resolved to wherever it points. Every id this
+ * app mints is base-36, so a real one never trips this.
+ */
+function assertPlainId(id: string): void {
+  if (!id || id.includes('/') || id.includes('\\') || id.includes('..')) {
+    throw new Error(`Not a valid entry id: ${JSON.stringify(id)}`)
+  }
+}
+
+/** The portrait on disk for this entry, if any — found by extension rather
+ *  than from the entry's record, which can lag the folder after a sync. */
+async function findPortraitExt(dir: string, id: string): Promise<string | null> {
+  for (const ext of PORTRAIT_EXTS) {
+    try {
+      await fsp.access(join(dir, id + ext))
+      return ext
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+/**
+ * Copy an image into the project as the entry's portrait and return the
+ * project-relative filename to store on the entry. `sourceAbs` is wherever
+ * the native picker pointed; the destination is derived from the type and
+ * id alone.
+ */
+export async function copyPortrait(
+  projectPath: string,
+  entityType: EntityType,
+  entityId: string,
+  sourceAbs: string
+): Promise<string> {
+  assertPlainId(entityId)
+  // Lowercased so `face.PNG` and `face.png` are one file, not two portraits
+  // for one entry with the reader finding whichever the loop reaches first.
+  const ext = extname(sourceAbs).toLowerCase()
+  if (!PORTRAIT_MIMES[ext]) throw new Error(`Not a supported image: ${basename(sourceAbs)}`)
+  const dir = entityDir(projectPath, entityType)
+  await fsp.mkdir(dir, { recursive: true })
+  // The old portrait goes first, whatever its extension. A replacement with a
+  // different one would otherwise leave both on disk, and the reader picks by
+  // extension order, not by date — choose a new .jpg over an old .png and the
+  // card would keep showing the old face.
+  await removePortrait(projectPath, entityType, entityId)
+  await fsp.copyFile(sourceAbs, join(dir, entityId + ext))
+  // Forward slashes whatever the platform: this is the frontmatter value, and
+  // a project written on Windows is opened on a Mac.
+  return `${ENTITY_DIRS[entityType]}/${entityId}${ext}`
+}
+
+/** The entry's portrait as a `data:` URL the renderer can show as-is, or null
+ *  when it has none. */
+export async function readPortraitDataUrl(
+  projectPath: string,
+  entityType: EntityType,
+  entityId: string
+): Promise<string | null> {
+  assertPlainId(entityId)
+  const dir = entityDir(projectPath, entityType)
+  const ext = await findPortraitExt(dir, entityId)
+  if (!ext) return null
+  const bytes = await fsp.readFile(join(dir, entityId + ext))
+  return `data:${PORTRAIT_MIMES[ext]};base64,${bytes.toString('base64')}`
+}
+
+/** Delete the entry's portrait. A no-op when there is none. */
+export async function removePortrait(
+  projectPath: string,
+  entityType: EntityType,
+  entityId: string
+): Promise<void> {
+  assertPlainId(entityId)
+  const dir = entityDir(projectPath, entityType)
+  // Every extension, not only the one the entry records: a frontmatter out of
+  // step with the folder (one side of a sync renamed the image) would
+  // otherwise leave an orphan behind that no later import ever replaces.
+  for (const ext of PORTRAIT_EXTS) await fsp.rm(join(dir, entityId + ext), { force: true })
 }
 
 /** All documents with metadata, for backlink computation. */

@@ -852,3 +852,42 @@ describe('strings between cards (F-46)', () => {
     expect(await api.listBoardStrings(path)).toHaveLength(1)
   })
 })
+
+describe('portraits on cards (F-47)', () => {
+  const PNG =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+  it('shows the portrait beside the title of a card that has one', async () => {
+    const path = await openDemo()
+    await tagScenes(path, 1)
+    const elara = (await api.listEntities(path)).find((e) => e.name === 'Elara Voss')!
+    await api.writeEntity(path, { ...elara, onBoard: true, portrait: `characters/${elara.id}.png` })
+    vi.spyOn(api, 'readPortrait').mockResolvedValue(PNG)
+    await act(async () => {
+      await useWyrm.getState().loadEntities()
+    })
+    await renderBoard()
+    await waitFor(() => expect(cardByTitle('Elara Voss')).toBeTruthy())
+
+    await waitFor(() =>
+      expect(cardByTitle('Elara Voss').querySelector('.scene-card-portrait')).toBeTruthy()
+    )
+    const img = cardByTitle('Elara Voss').querySelector('.scene-card-portrait') as HTMLImageElement
+    // A data: URL, never a path: the renderer names an entry, not a file.
+    expect(img.src.startsWith('data:image/png')).toBe(true)
+    // Read by id through the bridge, once.
+    expect(api.readPortrait).toHaveBeenCalledWith(path, elara.id)
+  })
+
+  it('shows no portrait on a card that has none, and never asks for one', async () => {
+    const path = await openDemo()
+    await tagScenes(path, 1)
+    await putOnBoard(path, 'Marten')
+    const read = vi.spyOn(api, 'readPortrait')
+    await renderBoard()
+    await waitFor(() => expect(cardByTitle('Marten')).toBeTruthy())
+
+    expect(cardByTitle('Marten').querySelector('.scene-card-portrait')).toBeNull()
+    expect(read).not.toHaveBeenCalled()
+  })
+})

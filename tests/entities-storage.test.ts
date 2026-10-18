@@ -2,7 +2,15 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { promises as fsp } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
-import { deleteEntity, listEntities, readAllDocs, writeEntity } from '../src/main/wyrm/entities'
+import {
+  copyPortrait,
+  deleteEntity,
+  listEntities,
+  readAllDocs,
+  readPortraitDataUrl,
+  removePortrait,
+  writeEntity
+} from '../src/main/wyrm/entities'
 import { createProject } from '../src/main/wyrm/project'
 import type { Entity, EntityType } from '../src/shared/types'
 
@@ -209,6 +217,23 @@ describe('writeEntity / listEntities', () => {
     )
     expect(raw).not.toContain('onBoard:')
   })
+
+  // F-47: the portrait filename, with the same field-by-field caveat as the
+  // corkboard fields — missing from either side of the round trip and it is
+  // silently dropped, and the card shows no face with no error anywhere.
+  it('round-trips portrait (F-47) and leaves it out of the file when unset', async () => {
+    const dir = await makeProject()
+    const withFace = makeEntity({ type: 'character', name: 'Elara', portrait: 'characters/x.png' })
+    const bare = makeEntity({ type: 'character', name: 'Marten' })
+    await writeEntity(dir, withFace)
+    await writeEntity(dir, bare)
+
+    const all = await listEntities(dir)
+    expect(all.find((e) => e.id === withFace.id)?.portrait).toBe('characters/x.png')
+    expect(all.find((e) => e.id === bare.id)?.portrait).toBeUndefined()
+    const raw = await fsp.readFile(join(dir, 'characters', `${bare.id}.md`), 'utf8')
+    expect(raw).not.toContain('portrait:')
+  })
 })
 
 describe('deleteEntity', () => {
@@ -236,5 +261,134 @@ describe('readAllDocs', () => {
     expect(docs).toHaveLength(1)
     expect(docs[0].meta.title).toBe('First Scene')
     expect(typeof docs[0].body).toBe('string')
+  })
+})
+
+/* ---------- portraits (F-47) ---------- */
+
+/** A picked image, as the native picker hands one over: an absolute path outside the project. */
+async function makeSourceImage(name: string, bytes: Uint8Array): Promise<string> {
+  const dir = await fsp.mkdtemp(join(os.tmpdir(), 'wyrm-portrait-src-'))
+  tmpDirs.push(dir)
+  const file = join(dir, name)
+  await fsp.writeFile(file, bytes)
+  return file
+}
+
+/** A few recognisable bytes — the PNG signature and a tail. Nothing decodes it; equality is the test. */
+const FACE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+
+describe('copyPortrait', () => {
+  it('copies the image into the collection folder, creating it, with the extension lowercased', async () => {
+    // No entry written first: the folder does not exist yet, and the copy
+    // has to make it rather than fail on a project whose bible is empty.
+    const dir = await makeProject()
+    const id = 'elara'
+    // Uppercase on purpose: a camera's FACE.PNG must land as .png, or the
+    // reader, which looks for the lowercase extensions, never finds it.
+    const source = await makeSourceImage('face.PNG', FACE)
+
+    const rel = await copyPortrait(dir, 'character', id, source)
+
+    expect(rel).toBe('characters/elara.png')
+    const copied = await fsp.readFile(join(dir, 'characters', 'elara.png'))
+    expect(Buffer.compare(copied, FACE)).toBe(0)
+  })
+
+  it('replaces an older portrait of a different extension', async () => {
+    const dir = await makeProject()
+    await copyPortrait(dir, 'character', 'elara', await makeSourceImage('old.jpg', FACE))
+
+    const rel = await copyPortrait(
+      dir,
+      'character',
+      'elara',
+      await makeSourceImage('new.png', FACE)
+    )
+
+    expect(rel).toBe('characters/elara.png')
+    // Both left on disk, the reader picks by extension order rather than by
+    // date: the writer chooses a new face and keeps seeing the old one.
+    await expect(fsp.access(join(dir, 'characters', 'elara.jpg'))).rejects.toThrow()
+    await expect(fsp.access(join(dir, 'characters', 'elara.png'))).resolves.toBeUndefined()
+  })
+
+  it('refuses an id that could leave the collection folder', async () => {
+    const dir = await makeProject()
+    const source = await makeSourceImage('face.png', FACE)
+
+    await expect(copyPortrait(dir, 'character', '../escape', source)).rejects.toThrow()
+    await expect(readPortraitDataUrl(dir, 'character', '../escape')).rejects.toThrow()
+    await expect(removePortrait(dir, 'character', '../escape')).rejects.toThrow()
+    // And nothing landed a level up, where `..` would have put it.
+    await expect(fsp.access(join(dir, 'escape.png'))).rejects.toThrow()
+  })
+
+  it('refuses a file that is not an image', async () => {
+    const dir = await makeProject()
+    const source = await makeSourceImage('notes.txt', Buffer.from('not a picture'))
+
+    await expect(copyPortrait(dir, 'character', 'elara', source)).rejects.toThrow()
+    await expect(fsp.access(join(dir, 'characters', 'elara.txt'))).rejects.toThrow()
+  })
+})
+
+describe('readPortraitDataUrl', () => {
+  it('returns a data: URL whose bytes are the file, with the mime of the extension', async () => {
+    const dir = await makeProject()
+    await copyPortrait(dir, 'world', 'harrowgate', await makeSourceImage('city.png', FACE))
+    await copyPortrait(dir, 'character', 'marten', await makeSourceImage('face.JPG', FACE))
+
+    const png = await readPortraitDataUrl(dir, 'world', 'harrowgate')
+    expect(png).toMatch(/^data:image\/png;base64,/)
+    const decoded = Buffer.from(png!.slice('data:image/png;base64,'.length), 'base64')
+    expect(Buffer.compare(decoded, FACE)).toBe(0)
+
+    const jpg = await readPortraitDataUrl(dir, 'character', 'marten')
+    expect(jpg).toMatch(/^data:image\/jpeg;base64,/)
+  })
+
+  it('returns null when the entry has no portrait, folder or no folder', async () => {
+    const dir = await makeProject()
+    // No characters/ at all yet.
+    await expect(readPortraitDataUrl(dir, 'character', 'nobody')).resolves.toBeNull()
+    // The folder exists, but holds only the entry's own file.
+    const entity = makeEntity({ type: 'character', name: 'Marten' })
+    await writeEntity(dir, entity)
+    await expect(readPortraitDataUrl(dir, 'character', entity.id)).resolves.toBeNull()
+  })
+})
+
+describe('removePortrait', () => {
+  it('deletes the image, and is a no-op when there is none', async () => {
+    const dir = await makeProject()
+    await copyPortrait(dir, 'character', 'elara', await makeSourceImage('face.png', FACE))
+
+    await removePortrait(dir, 'character', 'elara')
+
+    await expect(readPortraitDataUrl(dir, 'character', 'elara')).resolves.toBeNull()
+    await expect(removePortrait(dir, 'character', 'elara')).resolves.toBeUndefined()
+    // The collection folder itself stays: the entries live there.
+    await expect(fsp.access(join(dir, 'characters'))).resolves.toBeUndefined()
+  })
+})
+
+describe('deleting an entry that has a portrait', () => {
+  it('takes the portrait with it rather than leaving it orphaned', async () => {
+    // Nothing else would ever list or remove the image: it would sit in the
+    // folder, in every backup and on every synced device, for an entry that
+    // no longer exists.
+    const dir = await makeProject()
+    const entity = makeEntity({ type: 'character', name: 'Elara' })
+    await writeEntity(dir, entity)
+    const src = join(dir, 'face.png')
+    await fsp.writeFile(src, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+    await copyPortrait(dir, 'character', entity.id, src)
+    expect(await readPortraitDataUrl(dir, 'character', entity.id)).not.toBeNull()
+
+    await deleteEntity(dir, 'character', entity.id)
+
+    expect(await readPortraitDataUrl(dir, 'character', entity.id)).toBeNull()
+    expect(await fsp.readdir(join(dir, 'characters'))).toEqual([])
   })
 })

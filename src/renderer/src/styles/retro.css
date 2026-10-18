@@ -3589,3 +3589,61 @@ button {
 .corkboard-board.stringing .scene-card-face {
   cursor: crosshair;
 }
+
+/* Portraits (F-47). On the card, a small square beside the title; in the
+   editor, a larger one with the controls beside it. Both grayscale: a colour
+   photograph on a two-colour page reads as a sticker from another app, while
+   a grey one sits on the cork like a clipping. One line to remove if the
+   writer's own art is meant to be seen in colour. */
+.scene-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.scene-card-portrait {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  object-fit: cover;
+  border: 1px solid var(--ink);
+  filter: grayscale(1);
+}
+
+.entity-portrait {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.entity-portrait-img,
+.entity-portrait-empty {
+  width: 96px;
+  height: 96px;
+  flex: none;
+  box-sizing: border-box;
+}
+
+.entity-portrait-img {
+  object-fit: cover;
+  border: 2px solid var(--ink);
+  outline: 1px solid var(--paper);
+  filter: grayscale(1);
+}
+
+.entity-portrait-empty {
+  border: 1px dashed var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-chrome);
+  font-size: 10px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.entity-portrait-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

@@ -37,6 +37,17 @@ import { author, commitAll, commitMerge } from './git'
  * else, a merge keeps both parents (so either side is restorable), "keep
  * both" shelves the other device's version as a variant, and a conflicted
  * sync changes nothing at all until the writer chooses.
+ *
+ * **Content the engine did not compose travels as bytes.** Every other
+ * route a file takes (push, pull, backup, clone) moves blobs by oid; a
+ * divergent merge is the one place the engine assembles files itself, and
+ * it used to assemble every one as a string. A blob is only intact after a
+ * round trip through a string if it was valid UTF-8 — a PNG decodes with
+ * every bad byte replaced by U+FFFD and is re-encoded that way, so the first
+ * merge after a portrait was added committed a corrupted copy of a file
+ * neither device had touched. The only strings in a merge target are the
+ * frontmatter merges the engine wrote itself; everything else is read with
+ * `blobAt` and written back as the same bytes.
  */
 
 const SYNC_BRANCH = 'main'
@@ -83,14 +94,31 @@ async function resolveOrNull(dir: string, ref: string): Promise<string | null> {
   return git.resolveRef({ fs, dir, ref }).catch(() => null)
 }
 
-/** File text at a commit, or null when the file does not exist there. */
-async function textAt(dir: string, oid: string, filepath: string): Promise<string | null> {
+/** File bytes at a commit, or null when the file does not exist there. */
+async function blobAt(dir: string, oid: string, filepath: string): Promise<Uint8Array | null> {
   try {
     const { blob } = await git.readBlob({ fs, dir, oid, filepath })
-    return new TextDecoder().decode(blob)
+    return blob
   } catch {
     return null
   }
+}
+
+/**
+ * File text at a commit, or null when the file does not exist there. For
+ * files the engine parses (frontmatter, conflict display) only — anything
+ * heading back to disk goes through `blobAt`, since this decode is lossy for
+ * everything that is not UTF-8.
+ */
+async function textAt(dir: string, oid: string, filepath: string): Promise<string | null> {
+  const blob = await blobAt(dir, oid, filepath)
+  return blob == null ? null : new TextDecoder().decode(blob)
+}
+
+/** Byte-exact equality, with absence equal only to absence. */
+function sameBytes(a: Uint8Array | null, b: Uint8Array | null): boolean {
+  if (a == null || b == null) return a === b
+  return Buffer.compare(a, b) === 0
 }
 
 async function localBranches(dir: string): Promise<string[]> {
@@ -306,17 +334,20 @@ async function analyseMerge(
 /**
  * Write the target state of every file into the working directory, then
  * remove tracked files that should no longer exist. `target` maps repo paths
- * to file text; absence means deletion.
+ * to file content — text the engine composed, or the exact bytes of one
+ * side's blob; absence means deletion.
  */
 async function materialize(
   dir: string,
   localHead: string,
-  target: Map<string, string>
+  target: Map<string, string | Uint8Array>
 ): Promise<void> {
-  for (const [filepath, text] of target) {
+  for (const [filepath, content] of target) {
     const absolute = join(dir, filepath)
     await fsp.mkdir(dirname(absolute), { recursive: true })
-    await fsp.writeFile(absolute, text, 'utf8')
+    // Bytes land as they are; a string is encoded once, as UTF-8. Nothing
+    // on this path is ever decoded.
+    await fsp.writeFile(absolute, content)
   }
   for (const filepath of await git.listFiles({ fs, dir, ref: localHead })) {
     if (!target.has(filepath)) await fsp.rm(join(dir, filepath), { force: true })
@@ -385,14 +416,14 @@ async function completeMerge(
     ...(await git.listFiles({ fs, dir, ref: remoteHead }))
   ])
 
-  const target = new Map<string, string>()
+  const target = new Map<string, string | Uint8Array>()
   const variantsAt: string[] = []
 
   for (const filepath of paths) {
     const choice = choices.get(filepath)
     if (choice) {
-      const local = await textAt(dir, localHead, filepath)
-      const remote = await textAt(dir, remoteHead, filepath)
+      const local = await blobAt(dir, localHead, filepath)
+      const remote = await blobAt(dir, remoteHead, filepath)
       if (choice === 'mine') {
         if (local != null) target.set(filepath, local)
       } else if (choice === 'theirs') {
@@ -415,17 +446,22 @@ async function completeMerge(
     }
 
     if (analysis.oracle) {
-      const merged = await textAt(dir, analysis.oracle, filepath)
+      const merged = await blobAt(dir, analysis.oracle, filepath)
       if (merged != null) target.set(filepath, merged)
       continue
     }
 
     // No oracle (delete-conflict case): per-file three-way without diff3.
-    const local = await textAt(dir, localHead, filepath)
-    const remote = await textAt(dir, remoteHead, filepath)
-    const baseText = base ? await textAt(dir, base, filepath) : null
-    const keep =
-      local === remote ? local : remote === baseText ? local : local === baseText ? remote : local
+    const local = await blobAt(dir, localHead, filepath)
+    const remote = await blobAt(dir, remoteHead, filepath)
+    const baseBlob = base ? await blobAt(dir, base, filepath) : null
+    const keep = sameBytes(local, remote)
+      ? local
+      : sameBytes(remote, baseBlob)
+        ? local
+        : sameBytes(local, baseBlob)
+          ? remote
+          : local
     if (keep != null) target.set(filepath, keep)
   }
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { randomBytes } from 'node:crypto'
 import { promises as fsp } from 'node:fs'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -264,6 +265,112 @@ describe('divergence without overlap', () => {
 
     expectStatus(await syncProject(w.a, w.transport), 'merged')
     expect((await readDoc(w.a, w.docId)).body).toBe('The same sentence.\n')
+  })
+})
+
+describe('binary files', () => {
+  // Portraits are PNGs. Pulls, pushes, backups and clones all move blobs by
+  // oid, but a divergent merge is assembled by the engine itself, and it
+  // used to assemble every file as a string: a byte sequence that is not
+  // valid UTF-8 decodes to U+FFFD and is re-encoded as such on write, so the
+  // first two-device merge after a portrait was added committed a corrupted
+  // copy — on a file neither device had touched.
+
+  const PORTRAIT = 'characters/portrait.png'
+
+  /** 512 bytes no UTF-8 decoder can round-trip: a PNG signature, then bytes
+   *  that are invalid in every position, then noise. */
+  function portraitBytes(): Buffer {
+    const head = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe, 0x80, 0xc0])
+    return Buffer.concat([head, randomBytes(512 - head.length)])
+  }
+
+  async function addPortrait(dir: string, bytes: Buffer, message: string): Promise<void> {
+    await fsp.mkdir(join(dir, 'characters'), { recursive: true })
+    await fsp.writeFile(join(dir, PORTRAIT), bytes)
+    await commitAll(dir, message)
+  }
+
+  async function portraitOnDisk(dir: string): Promise<Buffer> {
+    return fsp.readFile(join(dir, PORTRAIT))
+  }
+
+  async function portraitAtHead(dir: string): Promise<Buffer> {
+    const head = await git.resolveRef({ fs, dir, ref: 'HEAD' })
+    const { blob } = await git.readBlob({ fs, dir, oid: head, filepath: PORTRAIT })
+    return Buffer.from(blob)
+  }
+
+  it('a portrait neither device touched survives a divergent merge byte for byte', async () => {
+    const w = await makeWorld()
+    const bytes = portraitBytes()
+
+    // A second scene, so each device can edit a document of its own.
+    const now = new Date().toISOString()
+    const otherId = 'scene0002'
+    await writeDoc(w.a, {
+      meta: { id: otherId, title: 'Second Scene', status: 'draft', created: now, modified: now },
+      body: 'Second scene.\n'
+    })
+    const aInfo = JSON.parse(await fsp.readFile(join(w.a, 'project.json'), 'utf8'))
+    aInfo.binder.push({ id: otherId, type: 'doc', title: 'Second Scene' })
+    await saveProject(w.a, aInfo)
+    await addPortrait(w.a, bytes, 'A adds a portrait and a second scene')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+
+    const b = await cloneB(w)
+    expect((await portraitOnDisk(b)).equals(bytes)).toBe(true)
+
+    await editDoc(w.a, w.docId, 'First scene, polished on A.\n', 'A polishes')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+    await editDoc(b, otherId, 'Second scene, polished on B.\n', 'B polishes')
+
+    const outcome = expectStatus(await syncProject(b, w.transport), 'merged')
+    expect(outcome.pushed).toBe(true)
+    expect((await portraitOnDisk(b)).equals(bytes)).toBe(true)
+    expect((await portraitAtHead(b)).equals(bytes)).toBe(true)
+
+    expectStatus(await syncProject(w.a, w.transport), 'pulled')
+    expect((await portraitOnDisk(w.a)).equals(bytes)).toBe(true)
+    expect((await portraitOnDisk(b)).equals(bytes)).toBe(true)
+  })
+
+  it('a portrait only this device added survives its own divergent merge byte for byte', async () => {
+    const w = await makeWorld()
+    const b = await cloneB(w)
+    const bytes = portraitBytes()
+    await addPortrait(b, bytes, 'B adds a portrait')
+
+    await editDoc(w.a, w.docId, 'First scene, polished on A.\n', 'A polishes')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+
+    const outcome = expectStatus(await syncProject(b, w.transport), 'merged')
+    expect(outcome.pushed).toBe(true)
+    expect((await portraitOnDisk(b)).equals(bytes)).toBe(true)
+    expect((await portraitAtHead(b)).equals(bytes)).toBe(true)
+
+    expectStatus(await syncProject(w.a, w.transport), 'pulled')
+    expect((await portraitOnDisk(w.a)).equals(bytes)).toBe(true)
+    expect((await portraitOnDisk(b)).equals(bytes)).toBe(true)
+  })
+
+  it('a portrait only the other device added arrives through a divergent merge byte for byte', async () => {
+    const w = await makeWorld()
+    const b = await cloneB(w)
+    const bytes = portraitBytes()
+    await addPortrait(b, bytes, 'B adds a portrait')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+
+    await editDoc(w.a, w.docId, 'First scene, polished on A.\n', 'A polishes')
+
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'merged')
+    expect(outcome.pushed).toBe(true)
+    expect((await portraitOnDisk(w.a)).equals(bytes)).toBe(true)
+    expect((await portraitAtHead(w.a)).equals(bytes)).toBe(true)
+
+    expectStatus(await syncProject(b, w.transport), 'pulled')
+    expect((await portraitOnDisk(b)).equals(bytes)).toBe(true)
+    expect((await portraitOnDisk(w.a)).equals(bytes)).toBe(true)
   })
 })
 

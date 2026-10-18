@@ -43,6 +43,23 @@ function id(): string {
 const cloneDoc = (doc: DocFile): DocFile => ({ meta: { ...doc.meta }, body: doc.body })
 const cloneEntity = (entity: Entity): Entity => ({ ...entity, aliases: [...entity.aliases] })
 
+/**
+ * F-47: what every "chosen" portrait is in the browser preview — a 1×1
+ * transparent PNG. It stands in for the native picker, which does not exist
+ * in a browser tab, so the mock has no way to ask for a real file; one real
+ * image is enough for a card and the editor to show that a portrait is set.
+ */
+const DEMO_PORTRAIT =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII='
+
+/** Mirrors main's `ENTITY_DIRS`, which the renderer cannot import: the name
+ *  handed back has to be the one the real import would write on the entry. */
+const PORTRAIT_DIRS: Record<EntityType, string> = {
+  glossary: 'glossary',
+  character: 'characters',
+  world: 'world'
+}
+
 interface MockCommit extends CommitInfo {
   snapshot: Map<string, DocFile>
 }
@@ -57,6 +74,8 @@ interface MockProject {
   relationships: Map<string, Relationship>
   mapPins: Map<string, MapPin>
   boardStrings: Map<string, BoardString>
+  /** F-47: portrait data URLs by entry id — the image files of a project with no disk. */
+  portraits: Map<string, string>
 }
 
 function snapshotOf(docs: Map<string, DocFile>): Map<string, DocFile> {
@@ -117,7 +136,8 @@ function starterProject(title: string): MockProject {
     plotlines: new Map(),
     relationships: new Map(),
     mapPins: new Map(),
-    boardStrings: new Map()
+    boardStrings: new Map(),
+    portraits: new Map()
   }
   commitInto(project, `Create project “${title}”`)
   return project
@@ -258,7 +278,8 @@ function demoProject(): MockProject {
     mapPins,
     // F-46: no strings seeded — the preview's board starts bare, so the
     // first string a reader draws is the first one on it.
-    boardStrings: new Map()
+    boardStrings: new Map(),
+    portraits: new Map()
   }
 
   // Fabricate believable history for the demo: three drafts of scene2.
@@ -516,10 +537,28 @@ export function createMockApi(): WyrmApi {
       })
     },
     async deleteEntity(path: string, _type: EntityType, id: string): Promise<void> {
-      mustGet(path).entities.delete(id)
+      const project = mustGet(path)
+      project.entities.delete(id)
+      // As main does: the portrait goes with the entry.
+      project.portraits.delete(id)
     },
     async readAllDocs(path: string): Promise<DocFile[]> {
       return [...mustGet(path).docs.values()].map(cloneDoc)
+    },
+
+    async importPortrait(path: string, entityId: string): Promise<string | null> {
+      const project = mustGet(path)
+      const entity = project.entities.get(entityId)
+      // Null, as main answers an unknown id: no picker, nothing recorded.
+      if (!entity) return null
+      project.portraits.set(entityId, DEMO_PORTRAIT)
+      return `${PORTRAIT_DIRS[entity.type]}/${entityId}.png`
+    },
+    async readPortrait(path: string, entityId: string): Promise<string | null> {
+      return mustGet(path).portraits.get(entityId) ?? null
+    },
+    async removePortrait(path: string, entityId: string): Promise<void> {
+      mustGet(path).portraits.delete(entityId)
     },
 
     async listPlotlines(path: string): Promise<Plotline[]> {

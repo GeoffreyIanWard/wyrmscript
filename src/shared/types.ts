@@ -175,6 +175,16 @@ export interface Entity {
    */
   boardX?: number
   boardY?: number
+  /**
+   * F-47: the entry's portrait, as a project-relative filename —
+   * `characters/<id>.png`. Relative because the project moves between
+   * machines (sync, backup, restore), and an absolute path would break on
+   * the first one it landed on. Beside the entry rather than in an images
+   * folder of its own: `listEntities` already ignores non-`.md` files in the
+   * collection folders, so the image sits next to the entry it belongs to
+   * and travels with it. Meaningless on `glossary` entities.
+   */
+  portrait?: string
   created: string
   modified: string
 }
@@ -685,6 +695,23 @@ export interface WyrmApi {
   deleteEntity(path: string, type: EntityType, id: string): Promise<void>
   /** All documents with metadata — used to compute backlinks. */
   readAllDocs(path: string): Promise<DocFile[]>
+
+  /**
+   * F-47: pick an image with the native picker and copy it into the project
+   * as the entry's portrait. Resolves to the project-relative filename to
+   * store on the entry, or null when the writer cancels. The renderer names
+   * the entry by id only — main looks its collection up and derives every
+   * path itself, so nothing sent over the bridge is ever used as one.
+   */
+  importPortrait(path: string, entityId: string): Promise<string | null>
+  /**
+   * F-47: the portrait as a `data:` URL, or null when the entry has none. A
+   * `data:` URL rather than `file://`: the shipped CSP already allows
+   * `img-src data:`, and Chromium blocks `file://` from the dev server.
+   */
+  readPortrait(path: string, entityId: string): Promise<string | null>
+  /** F-47: delete the portrait image. A no-op when there is none. */
+  removePortrait(path: string, entityId: string): Promise<void>
 
   /** F-04: plotlines. Scenes belong to one by tag (see `Plotline`'s doc comment). */
   listPlotlines(path: string): Promise<Plotline[]>

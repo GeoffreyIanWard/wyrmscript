@@ -34,6 +34,9 @@ const api: WyrmApi = {
   writeEntity: (path, entity: Entity) => ipcRenderer.invoke('entity:write', path, entity),
   deleteEntity: (path, type: EntityType, id) => ipcRenderer.invoke('entity:delete', path, type, id),
   readAllDocs: (path) => ipcRenderer.invoke('doc:readAll', path),
+  importPortrait: (path, entityId) => ipcRenderer.invoke('portrait:import', path, entityId),
+  readPortrait: (path, entityId) => ipcRenderer.invoke('portrait:read', path, entityId),
+  removePortrait: (path, entityId) => ipcRenderer.invoke('portrait:remove', path, entityId),
 
   listPlotlines: (path) => ipcRenderer.invoke('plotline:list', path),
   writePlotline: (path, plotline: Plotline) => ipcRenderer.invoke('plotline:write', path, plotline),
