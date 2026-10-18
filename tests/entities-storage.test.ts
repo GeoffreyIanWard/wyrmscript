@@ -162,6 +162,53 @@ describe('writeEntity / listEntities', () => {
     const [found] = await listEntities(dir)
     expect(found.parentId).toBeUndefined()
   })
+
+  // F-45: a card on the corkboard. Entity frontmatter is read field by field,
+  // so a field missing from either side of the round trip is silently dropped
+  // — unlike DocMeta, which passes through whole.
+  it('round-trips the corkboard fields, including a position of zero', async () => {
+    const dir = await makeProject()
+    const entity = makeEntity({
+      type: 'character',
+      name: 'Elara',
+      onBoard: true,
+      boardX: 0,
+      boardY: 240
+    })
+    await writeEntity(dir, entity)
+
+    const [found] = await listEntities(dir)
+    expect(found.onBoard).toBe(true)
+    // 0 is a real coordinate: a card at the board's left edge. A truthiness
+    // check on write would have dropped it and the card would wander.
+    expect(found.boardX).toBe(0)
+    expect(found.boardY).toBe(240)
+  })
+
+  it('leaves the corkboard fields out of the file when unset', async () => {
+    const dir = await makeProject()
+    const entity = makeEntity({ type: 'character', name: 'Marten' })
+    await writeEntity(dir, entity)
+
+    const raw = await fsp.readFile(join(dir, 'characters', `${entity.id}.md`), 'utf8')
+    expect(raw).not.toContain('onBoard:')
+    expect(raw).not.toContain('boardX:')
+
+    const [found] = await listEntities(dir)
+    expect(found.onBoard).toBeUndefined()
+    expect(found.boardX).toBeUndefined()
+  })
+
+  it('does not write onBoard: false, which is the same as absent', async () => {
+    const dir = await makeProject()
+    await writeEntity(dir, makeEntity({ type: 'world', name: 'Harrowgate', onBoard: false }))
+
+    const raw = await fsp.readFile(
+      join(dir, 'world', (await listEntities(dir))[0].id + '.md'),
+      'utf8'
+    )
+    expect(raw).not.toContain('onBoard:')
+  })
 })
 
 describe('deleteEntity', () => {

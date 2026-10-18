@@ -1,38 +1,48 @@
-import type { BinderNode, DocFile, DocStatus } from '../../../shared/types'
+import type { BinderNode, DocFile, DocStatus, Entity } from '../../../shared/types'
 import { SCENE_TAG } from '../../../shared/types'
 import { walk } from './tree'
 import { folderPaths, plainTextOf } from './search'
+import { locationChain } from './locations'
 
 /**
- * The corkboard: every scene in the project as an index card.
+ * The corkboard: the story's pieces as index cards.
  *
- * **Binder order, not timeline order**, and that is the whole point of the
- * view existing alongside the timeline. F-02 settled that narrative order and
- * chronology are different things — flashbacks, parallel threads — and gave
- * the timeline its own `timelineOrder`. The corkboard is the *binder* seen as
- * cards, so moving a card moves the scene in the manuscript, which is what a
- * writer means when they rearrange index cards. The timeline keeps answering
- * the other question.
+ * Three kinds of card. **Scenes** are every scene-tagged document, in binder
+ * order, exactly as the board has always shown them. **Characters** and
+ * **locations** are story-bible entries that have been put on the board
+ * deliberately (`entity.onBoard`) — the World Map's "Place on Map" model
+ * rather than the scenes' automatic one, so a big cast does not flood the
+ * board and a card can come off it without deleting the entry behind it
+ * (F-45).
  *
- * A card therefore carries no ordering of its own: the binder is the order.
+ * Scenes are identified the same way everywhere else identifies them — the
+ * `scene` tag, not a document type — so a writer who tags a note as a scene
+ * sees it here, and one who untags it does not. Deciding that twice is how
+ * views drift apart.
  */
-export interface SceneCard {
+export type CardKind = 'scene' | 'character' | 'location'
+
+export interface BoardCard {
+  kind: CardKind
   id: string
   title: string
   status?: DocStatus
   /** Writer's own label, shown as-is. */
   label?: string
-  /** The folder path it lives under, so a card says where it belongs. */
+  /** Where it lives: a scene's folder path, or the book an entry is in. */
   folder: string
   wordCount: number
-  /** The opening of the scene, for a card that has been written into. */
+  /** The opening of the scene or entry, for one that has been written into. */
   excerpt: string
-  /** No prose yet — an outlined scene, or one not started. */
+  /** No prose yet — an outlined scene, or an entry not started. */
   empty: boolean
   /** Stored board position, unset until the writer moves this card. */
   boardX?: number
   boardY?: number
 }
+
+/** The board's original card type; a scene is one kind of card now. */
+export type SceneCard = BoardCard
 
 /**
  * How much of the opening a card shows before it stops being a card.
@@ -138,16 +148,17 @@ export function boardHeight(placed: PlacedCard[]): number {
   return placed.reduce((tallest, c) => Math.max(tallest, c.y + CARD_H), 0)
 }
 
-export function sceneCards(docs: DocFile[], binder: BinderNode[]): SceneCard[] {
+export function sceneCards(docs: DocFile[], binder: BinderNode[]): BoardCard[] {
   const byId = new Map(docs.map((d) => [d.meta.id, d]))
   const folders = folderPaths(binder)
-  const cards: SceneCard[] = []
+  const cards: BoardCard[] = []
   walk(binder, (node) => {
     if (node.type !== 'doc') return
     const doc = byId.get(node.id)
     if (!doc?.meta.tags?.includes(SCENE_TAG)) return
     const text = plainTextOf(doc.body).trim()
     cards.push({
+      kind: 'scene',
       id: doc.meta.id,
       title: doc.meta.title,
       status: doc.meta.status,
@@ -161,4 +172,79 @@ export function sceneCards(docs: DocFile[], binder: BinderNode[]): SceneCard[] {
     })
   })
   return cards
+}
+
+/** The entity types that can be cards, and what the card calls them. */
+const ENTITY_KINDS: Partial<Record<Entity['type'], CardKind>> = {
+  character: 'character',
+  world: 'location'
+}
+
+/**
+ * Story-bible entries that have been put on the board, as cards.
+ *
+ * Alphabetical within a kind: entries have no manuscript order to speak of,
+ * and a cast list is what a writer expects to read in. A location's "folder"
+ * is the chain it is nested in (F-13), so a card for a tavern says which city
+ * it is in, the way a scene card says which part it is in.
+ */
+export function entityCards(entities: Entity[]): BoardCard[] {
+  const cards: BoardCard[] = []
+  for (const kind of ['character', 'location'] as const) {
+    const type = kind === 'character' ? 'character' : 'world'
+    const book = kind === 'character' ? 'Character Book' : 'World Book'
+    const onBoard = entities
+      .filter((e) => e.type === type && e.onBoard && ENTITY_KINDS[e.type] === kind)
+      .sort((a, b) => a.name.localeCompare(b.name))
+    for (const e of onBoard) {
+      const text = plainTextOf(e.body).trim()
+      const within =
+        kind === 'location'
+          ? locationChain(entities, e.id)
+              .slice(0, -1)
+              .map((l) => l.name)
+          : []
+      cards.push({
+        kind,
+        id: e.id,
+        title: e.name,
+        folder: [book, ...within].join(' / '),
+        wordCount: countWords(text),
+        excerpt: excerptOf(e.body),
+        empty: text === '',
+        boardX: e.boardX,
+        boardY: e.boardY
+      })
+    }
+  }
+  return cards
+}
+
+/** Every card on the board: scenes in binder order, then characters, then locations. */
+export function boardCards(docs: DocFile[], binder: BinderNode[], entities: Entity[]): BoardCard[] {
+  return [...sceneCards(docs, binder), ...entityCards(entities)]
+}
+
+/**
+ * Stacking: the cards gathered into piles, one per kind, solitaire style.
+ *
+ * Each pile cascades by `STACK_STEP` so every card's title line shows above
+ * the card on top of it — the tableau in a game of patience, which is the
+ * look a writer reaches for when they say "stack them". Piles sit side by
+ * side in kind order, and a kind with no cards leaves no gap. This is a way
+ * of *looking* at the board, not an arrangement: nothing here is written
+ * anywhere, and unstacking returns every card to wherever it was.
+ */
+export const STACK_STEP = 24
+
+export function stackLayout(cards: BoardCard[]): Map<string, { x: number; y: number }> {
+  const out = new Map<string, { x: number; y: number }>()
+  let pile = 0
+  for (const kind of ['scene', 'character', 'location'] as const) {
+    const inPile = cards.filter((c) => c.kind === kind)
+    if (inPile.length === 0) continue
+    inPile.forEach((c, i) => out.set(c.id, { x: pile * (CARD_W + CARD_GAP), y: i * STACK_STEP }))
+    pile += 1
+  }
+  return out
 }

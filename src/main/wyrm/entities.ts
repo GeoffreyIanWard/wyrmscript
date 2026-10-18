@@ -29,6 +29,9 @@ interface EntityFrontmatter {
   tags?: string[]
   pins?: string[]
   parentId?: string
+  onBoard?: boolean
+  boardX?: number
+  boardY?: number
   created: string
   modified: string
 }
@@ -45,6 +48,9 @@ function parseEntityFile(raw: string): Entity {
     tags: data.tags,
     pins: data.pins,
     parentId: data.parentId,
+    onBoard: data.onBoard,
+    boardX: data.boardX,
+    boardY: data.boardY,
     created: data.created,
     modified: data.modified
   }
@@ -66,6 +72,11 @@ export async function writeEntity(projectPath: string, entity: Entity): Promise<
   if (entity.tags?.length) meta.tags = entity.tags
   if (entity.pins?.length) meta.pins = entity.pins
   if (entity.parentId) meta.parentId = entity.parentId
+  // F-45. `onBoard` only when true; the positions on `!= null`, because 0 is
+  // a real coordinate and truthiness would drop a card at the board's edge.
+  if (entity.onBoard) meta.onBoard = true
+  if (entity.boardX != null) meta.boardX = entity.boardX
+  if (entity.boardY != null) meta.boardY = entity.boardY
   const file = matter.stringify(entity.body.endsWith('\n') ? entity.body : entity.body + '\n', meta)
   await fsp.writeFile(entityPath(projectPath, entity.type, entity.id), file, 'utf8')
 }

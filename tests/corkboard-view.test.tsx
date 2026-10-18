@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { Entity } from '../src/shared/types'
 import { api } from '../src/renderer/src/lib/api'
 import { useWyrm, __disposeAll } from '../src/renderer/src/store'
 import { Corkboard } from '../src/renderer/src/components/Corkboard'
@@ -42,6 +43,28 @@ async function clearScenes(path: string): Promise<void> {
     delete meta.boardY
     await api.writeDoc(path, { ...d, meta })
   }
+  // F-45: entities outlive a test the same way, so a character put on the
+  // board by one test would still be there for the next.
+  for (const e of await api.listEntities(path)) {
+    if (e.onBoard == null && e.boardX == null) continue
+    const clean = { ...e }
+    delete clean.onBoard
+    delete clean.boardX
+    delete clean.boardY
+    await api.writeEntity(path, clean)
+  }
+  await useWyrm.getState().loadEntities()
+}
+
+/** Puts a story-bible entry on the board the way the store would, by name. */
+async function putOnBoard(path: string, name: string): Promise<Entity> {
+  const entity = (await api.listEntities(path)).find((e) => e.name === name)
+  if (!entity) throw new Error(`no entity named ${name} in the demo project`)
+  await api.writeEntity(path, { ...entity, onBoard: true })
+  await act(async () => {
+    await useWyrm.getState().loadEntities()
+  })
+  return entity
 }
 
 /** Tags the project's documents as scenes, which is what puts them on the board. */
@@ -54,7 +77,13 @@ async function tagScenes(path: string, howMany = 3): Promise<string[]> {
   return ids
 }
 
-const tools = { onTimeline: vi.fn(), onPlotGraph: vi.fn(), onWorldMap: vi.fn() }
+const tools = {
+  onTimeline: vi.fn(),
+  onPlotGraph: vi.fn(),
+  onPlotlines: vi.fn(),
+  onCharacterGraph: vi.fn(),
+  onWorldMap: vi.fn()
+}
 
 async function renderBoard(): Promise<void> {
   await act(async () => {
@@ -62,6 +91,8 @@ async function renderBoard(): Promise<void> {
       <Corkboard
         onTimeline={tools.onTimeline}
         onPlotGraph={tools.onPlotGraph}
+        onPlotlines={tools.onPlotlines}
+        onCharacterGraph={tools.onCharacterGraph}
         onWorldMap={tools.onWorldMap}
       />
     )
@@ -99,7 +130,7 @@ describe('the board', () => {
 
     await renderBoard()
 
-    await waitFor(() => expect(screen.getByText(/No scenes yet/i)).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/No cards yet/i)).toBeTruthy())
   })
 
   it('marks an unwritten scene rather than showing a blank card', async () => {
@@ -144,7 +175,7 @@ describe('the pinned tools', () => {
     await openDemo()
     await renderBoard()
 
-    await waitFor(() => expect(screen.getByText(/No scenes yet/i)).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/No cards yet/i)).toBeTruthy())
     expect(screen.getByText('Timeline')).toBeTruthy()
   })
 })
@@ -246,24 +277,20 @@ describe('dragging a card', () => {
     expect(titles()).toEqual(before)
   })
 
-  it('does not capture the pointer until the card actually moves', async () => {
-    // jsdom cannot model pointer capture, so this asserts *when* capture is
-    // taken rather than what it does. It is worth the implementation detail:
-    // capturing on the press redirects the rest of the gesture to the card
-    // wrapper, and the card's own button then never receives pointerup or
-    // click — pressing a card did nothing at all. Only a real click in the
-    // browser showed it.
-    const taken: string[] = []
-    HTMLElement.prototype.setPointerCapture = function () {
-      taken.push('captured')
-    }
+  it('carries the card even when the first move lands nowhere near it', async () => {
+    // A fast flick, or any pointer that jumps further than the card in one
+    // event, delivers its first move to whatever is under the pointer — not
+    // the card. Tracking the gesture on the card meant that move was never
+    // heard and the card never moved; the writer saw a press and nothing
+    // else. The gesture is tracked on the document from the press, so the
+    // move and the release are dispatched here on the body, deliberately
+    // not on the card.
     const cards = cardEls()
-
     await act(async () => pointer(cards[0], 'pointerdown', 50, 50))
-    expect(taken).toEqual([])
+    await act(async () => pointer(document.body, 'pointermove', 600, 50))
+    await act(async () => pointer(document.body, 'pointerup', 600, 50))
 
-    await act(async () => pointer(cards[0], 'pointermove', 600, 50))
-    expect(taken).toEqual(['captured'])
+    expect(posOf(cardEls()[0])).toEqual({ x: '550px', y: '0px' })
   })
 
   it('does not count a press that never moved as a drag', async () => {
@@ -396,5 +423,282 @@ describe('tidying the board', () => {
     const path = useWyrm.getState().project?.path as string
     const docs = await api.readAllDocs(path)
     expect(docs.every((d) => d.meta.boardX == null)).toBe(true)
+  })
+})
+
+const cardByTitle = (title: string): HTMLElement =>
+  [...document.querySelectorAll('.scene-card')].find(
+    (c) => c.querySelector('.scene-card-title')?.textContent === title
+  ) as HTMLElement
+
+const tool = (label: string): HTMLButtonElement =>
+  [...document.querySelectorAll('.board-tool')].find((b) =>
+    b.textContent?.includes(label)
+  ) as HTMLButtonElement
+
+describe('characters and locations on the board (F-45)', () => {
+  let path: string
+  beforeEach(async () => {
+    path = await openDemo()
+    await tagScenes(path, 2)
+    await renderBoard()
+    await waitFor(() => expect(titles().length).toBe(2))
+  })
+
+  it('shows an entry that was put on the board, and says what it is', async () => {
+    await putOnBoard(path, 'Elara Voss')
+    await waitFor(() => expect(cardByTitle('Elara Voss')).toBeTruthy())
+
+    const card = cardByTitle('Elara Voss')
+    expect(card.className).toContain('kind-character')
+    expect(card.querySelector('.scene-card-folder')?.textContent).toBe('Character Book')
+    expect(card.querySelector('.scene-card-kind')?.textContent).toBe('character')
+  })
+
+  it('shows nothing for an entry that was not', async () => {
+    // Membership is deliberate: the demo has six entries and none of them
+    // appear until they are added.
+    expect(titles()).toHaveLength(2)
+    expect(cardByTitle('Marten')).toBeUndefined()
+  })
+
+  it('opens the entry when its card is clicked, as a detour Esc returns from', async () => {
+    await putOnBoard(path, 'Harrowgate')
+    await waitFor(() => expect(cardByTitle('Harrowgate')).toBeTruthy())
+    act(() => useWyrm.getState().showCorkboard())
+
+    await act(async () => {
+      fireEvent.click(cardByTitle('Harrowgate').querySelector('.scene-card-face') as HTMLElement)
+    })
+
+    const { mainView, viewHistory } = useWyrm.getState()
+    expect(mainView.kind).toBe('entity')
+    // Unlike a scene, which is an arrival: the board is still on the stack.
+    expect(viewHistory.at(-1)?.kind).toBe('corkboard')
+  })
+
+  it('drags like any other card, and writes the position to the entry', async () => {
+    await putOnBoard(path, 'Elara Voss')
+    await waitFor(() => expect(cardByTitle('Elara Voss')).toBeTruthy())
+    const card = cardByTitle('Elara Voss')
+
+    await act(async () => pointer(card, 'pointerdown', 50, 50))
+    await act(async () => pointer(card, 'pointermove', 350, 420))
+    await act(async () => pointer(card, 'pointerup', 350, 420))
+
+    await waitFor(async () => {
+      const saved = (await api.listEntities(path)).find((e) => e.name === 'Elara Voss')
+      expect(saved?.boardX).toBe(300)
+      // Third card in jsdom's single column (y = 448), carried 370 further down.
+      expect(saved?.boardY).toBe(818)
+    })
+    expect(posOf(cardByTitle('Elara Voss')).x).toBe('300px')
+  })
+
+  it('can be taken off the board without losing the entry', async () => {
+    await putOnBoard(path, 'Elara Voss')
+    await waitFor(() => expect(cardByTitle('Elara Voss')).toBeTruthy())
+
+    await act(async () => {
+      fireEvent.click(cardByTitle('Elara Voss').querySelector('.scene-card-off') as HTMLElement)
+    })
+
+    await waitFor(() => expect(cardByTitle('Elara Voss')).toBeUndefined())
+    const still = (await api.listEntities(path)).find((e) => e.name === 'Elara Voss')
+    expect(still).toBeTruthy()
+    expect(still?.onBoard).toBeUndefined()
+  })
+
+  it('gives a scene card no way off the board, since scenes are always on it', () => {
+    expect(cardEls()[0].querySelector('.scene-card-off')).toBeNull()
+  })
+})
+
+describe('stacking the board', () => {
+  let path: string
+  beforeEach(async () => {
+    path = await openDemo()
+    await tagScenes(path, 2)
+    await renderBoard()
+    await waitFor(() => expect(titles().length).toBe(2))
+    await putOnBoard(path, 'Elara Voss')
+    await waitFor(() => expect(cardByTitle('Elara Voss')).toBeTruthy())
+  })
+
+  it('gathers the cards into piles by kind, cascading, and puts them back', async () => {
+    // jsdom lays the grid in one column (no width), so the character sits
+    // under the two scenes before stacking.
+    expect(posOf(cardByTitle('Elara Voss'))).toEqual({ x: '0px', y: '448px' })
+
+    await act(async () => {
+      fireEvent.click(tool('Stack'))
+    })
+    expect(posOf(cardEls()[0])).toEqual({ x: '0px', y: '0px' })
+    expect(posOf(cardEls()[1])).toEqual({ x: '0px', y: '24px' })
+    expect(posOf(cardByTitle('Elara Voss'))).toEqual({ x: '234px', y: '0px' })
+    expect(tool('Unstack')).toBeTruthy()
+
+    await act(async () => {
+      fireEvent.click(tool('Unstack'))
+    })
+    expect(posOf(cardEls()[1])).toEqual({ x: '0px', y: '224px' })
+    expect(posOf(cardByTitle('Elara Voss'))).toEqual({ x: '0px', y: '448px' })
+  })
+
+  it('writes nothing while stacked', async () => {
+    const before = await api.listEntities(path)
+    await act(async () => {
+      fireEvent.click(tool('Stack'))
+    })
+    await act(async () => {
+      fireEvent.click(tool('Unstack'))
+    })
+    expect(await api.listEntities(path)).toEqual(before)
+    expect((await api.readAllDocs(path)).every((d) => d.meta.boardX == null)).toBe(true)
+  })
+
+  it('lets a card be pulled out of its pile, and keeps it out until unstacked', async () => {
+    await act(async () => {
+      fireEvent.click(tool('Stack'))
+    })
+    const card = cardByTitle('Elara Voss')
+    await act(async () => pointer(card, 'pointerdown', 50, 50))
+    await act(async () => pointer(card, 'pointermove', 450, 350))
+    await act(async () => pointer(card, 'pointerup', 450, 350))
+
+    // Out of the pile, where it was dropped — not snapped back into it.
+    expect(posOf(cardByTitle('Elara Voss'))).toEqual({ x: '634px', y: '300px' })
+    // The other cards are still stacked.
+    expect(posOf(cardEls()[1])).toEqual({ x: '0px', y: '24px' })
+
+    await act(async () => {
+      fireEvent.click(tool('Unstack'))
+    })
+    // Unstacked, it stays where the writer put it: the pull was a real move.
+    expect(posOf(cardByTitle('Elara Voss'))).toEqual({ x: '634px', y: '300px' })
+  })
+
+  it('is undone by Tidy', async () => {
+    await act(async () => {
+      fireEvent.click(tool('Stack'))
+    })
+    const card = cardEls()[0]
+    await act(async () => pointer(card, 'pointerdown', 50, 50))
+    await act(async () => pointer(card, 'pointermove', 400, 400))
+    await act(async () => pointer(card, 'pointerup', 400, 400))
+    await waitFor(() => expect(tool('Tidy').disabled).toBe(false))
+
+    await act(async () => {
+      fireEvent.click(tool('Tidy'))
+    })
+
+    await waitFor(() => expect(tool('Stack')).toBeTruthy())
+    await waitFor(() => expect(posOf(cardByTitle('Elara Voss'))).toEqual({ x: '0px', y: '448px' }))
+  })
+})
+
+describe('adding a card', () => {
+  let path: string
+  beforeEach(async () => {
+    path = await openDemo()
+    await tagScenes(path, 1)
+    await renderBoard()
+    await waitFor(() => expect(titles().length).toBe(1))
+    await act(async () => {
+      fireEvent.click(tool('Add Card'))
+    })
+    await waitFor(() => expect(document.querySelector('.dialog')).toBeTruthy())
+  })
+
+  const choose = async (kind: string): Promise<void> => {
+    const radio = [...document.querySelectorAll('[role="radio"]')].find((r) =>
+      r.textContent?.includes(kind)
+    ) as HTMLElement
+    await act(async () => {
+      fireEvent.click(radio)
+    })
+  }
+
+  const typeTitle = async (title: string): Promise<void> => {
+    await act(async () => {
+      fireEvent.change(document.querySelector('.dialog .text-field') as HTMLInputElement, {
+        target: { value: title }
+      })
+    })
+  }
+
+  it('makes a new scene as a real document, tagged, without leaving the board', async () => {
+    act(() => useWyrm.getState().showCorkboard())
+    await choose('Scene')
+    await typeTitle('The Long Night')
+    await act(async () => {
+      fireEvent.keyDown(document.querySelector('.dialog .text-field') as HTMLElement, {
+        key: 'Enter'
+      })
+    })
+
+    await waitFor(() => expect(cardByTitle('The Long Night')).toBeTruthy())
+    expect(document.querySelector('.dialog')).toBeNull()
+    expect(useWyrm.getState().mainView.kind).toBe('corkboard')
+    const docs = await api.readAllDocs(path)
+    const made = docs.find((d) => d.meta.title === 'The Long Night')
+    expect(made?.meta.tags).toEqual(['scene'])
+  })
+
+  it('makes a new character in the story bible, already on the board', async () => {
+    await choose('Character')
+    await typeTitle('Old Pell')
+    await act(async () => {
+      fireEvent.click(
+        [...document.querySelectorAll('.dialog .btn')].find(
+          (b) => b.textContent === 'Add'
+        ) as HTMLElement
+      )
+    })
+
+    await waitFor(() => expect(cardByTitle('Old Pell')).toBeTruthy())
+    const made = (await api.listEntities(path)).find((e) => e.name === 'Old Pell')
+    expect(made?.type).toBe('character')
+    expect(made?.onBoard).toBe(true)
+  })
+
+  it('offers the entries not yet on the board, and puts one on', async () => {
+    await choose('Location')
+    const row = [...document.querySelectorAll('.dialog .version-row')].find((r) =>
+      r.textContent?.includes('Harrowgate')
+    ) as HTMLElement
+    expect(row).toBeTruthy()
+
+    await act(async () => {
+      fireEvent.click(row)
+    })
+
+    await waitFor(() => expect(cardByTitle('Harrowgate')).toBeTruthy())
+    expect(cardByTitle('Harrowgate').className).toContain('kind-location')
+    // One Harrowgate, not two: it was put on, not duplicated.
+    expect((await api.listEntities(path)).filter((e) => e.name === 'Harrowgate')).toHaveLength(1)
+  })
+
+  it('does not offer an entry that is already on the board', async () => {
+    await act(async () => {
+      fireEvent.click(document.querySelector('.dialog .close-box') as HTMLElement)
+    })
+    await putOnBoard(path, 'Harrowgate')
+    await act(async () => {
+      fireEvent.click(tool('Add Card'))
+    })
+    await choose('Location')
+
+    const rows = [...document.querySelectorAll('.dialog .version-row')].map((r) => r.textContent)
+    expect(rows).not.toContain('Harrowgate')
+    expect(rows).toContain('Winter Court')
+  })
+
+  it('will not add a card with no name', async () => {
+    await choose('Character')
+    const add = [...document.querySelectorAll('.dialog .btn')].find(
+      (b) => b.textContent === 'Add'
+    ) as HTMLButtonElement
+    expect(add.disabled).toBe(true)
   })
 })
