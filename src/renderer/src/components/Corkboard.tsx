@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX, PointerEvent as ReactPointerEvent } from 'react'
-import type { DocFile } from '../../../shared/types'
+import type { DocFile, StringEnd } from '../../../shared/types'
 import { api } from '../lib/api'
 import { useWyrm } from '../store'
-import { boardCards, boardHeight, CARD_H, CARD_W, layoutCards, stackLayout } from '../lib/corkboard'
-import type { PlacedCard } from '../lib/corkboard'
+import {
+  boardCards,
+  boardHeight,
+  CARD_H,
+  CARD_W,
+  layoutCards,
+  pinOffset,
+  stackLayout,
+  stringPath,
+  stringPoints
+} from '../lib/corkboard'
+import type { PlacedCard, Point } from '../lib/corkboard'
 import { AddCardDialog } from './AddCardDialog'
 
 /**
@@ -39,6 +49,10 @@ export function Corkboard({
   const setEntityPosition = useWyrm((s) => s.setEntityPosition)
   const removeEntityFromBoard = useWyrm((s) => s.removeEntityFromBoard)
   const tidyBoard = useWyrm((s) => s.tidyBoard)
+  const boardStrings = useWyrm((s) => s.boardStrings)
+  const loadBoardStrings = useWyrm((s) => s.loadBoardStrings)
+  const createBoardString = useWyrm((s) => s.createBoardString)
+  const deleteBoardString = useWyrm((s) => s.deleteBoardString)
   const [dragging, setDragging] = useState<string | null>(null)
   // Which project the Add Card dialog was opened for. Derived rather than
   // closed in an effect: the dialog shows only while that is the project in
@@ -107,6 +121,38 @@ export function Corkboard({
       live = false
     }
   }, [project])
+
+  // Strings are a project collection loaded by the view that shows them, the
+  // way the map loads its pins — not on project open.
+  useEffect(() => {
+    void loadBoardStrings()
+  }, [project, loadBoardStrings])
+
+  /**
+   * The string tool (F-46). On, a click on a card pushes a pin in where it
+   * was clicked; the second pin, on a different card, makes the string. Esc
+   * pulls a pin that is waiting for its partner, or puts the tool down. The
+   * pending pin is held here rather than written anywhere, because a pin
+   * with no string is not a thing the board has.
+   */
+  const [stringMode, setStringMode] = useState(false)
+  const [pending, setPending] = useState<StringEnd | null>(null)
+  useEffect(() => {
+    if (!stringMode) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      // Stopped as well as handled: Esc is also "back", and putting the
+      // string tool down should not also walk the writer off the board.
+      e.preventDefault()
+      e.stopPropagation()
+      setPending((p) => {
+        if (p == null) setStringMode(false)
+        return null
+      })
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [stringMode])
 
   // Entities come from the store (they are per-project state already), so a
   // card added or taken off the board shows up without a re-read. Derived
@@ -212,6 +258,22 @@ export function Corkboard({
       <button type="button" className="board-tool" onClick={onWorldMap}>
         <span className="board-tool-pin" aria-hidden="true" />
         <span>World Map</span>
+      </button>
+      {/* The string tool. Toggled, like Stack, so it reads as a thing the
+          board is in rather than a thing that happens once. */}
+      <button
+        type="button"
+        className={`board-tool${stringMode ? ' on' : ''}`}
+        data-help="board-string"
+        aria-pressed={stringMode}
+        onClick={() => {
+          setPending(null)
+          setStringMode((on) => !on)
+        }}
+        disabled={cards.length < 2}
+      >
+        <span className="board-tool-pin" aria-hidden="true" />
+        <span>String</span>
       </button>
       {/* Stack gathers the cards into piles by kind; the same button unstacks.
           A view toggle, so it is never disabled — an unstacked board can
@@ -354,9 +416,30 @@ export function Corkboard({
     }
   }
 
-  const open = (card: PlacedCard): void => {
+  /** A click's position in board pixels, from the board's own box. */
+  const boardPoint = (e: { clientX: number; clientY: number }): Point => {
+    const box = boardEl.current?.getBoundingClientRect()
+    return { x: e.clientX - (box?.left ?? 0), y: e.clientY - (box?.top ?? 0) }
+  }
+
+  const open = (card: PlacedCard, e: { clientX: number; clientY: number }): void => {
     if (suppressClick.current) {
       suppressClick.current = false
+      return
+    }
+    if (stringMode) {
+      // Pin where the card was clicked, not at its centre: a writer pushing
+      // a pin into a corner of a card meant that corner.
+      const end: StringEnd = { cardId: card.id, ...pinOffset(card, boardPoint(e)) }
+      if (pending == null) {
+        setPending(end)
+        return
+      }
+      // The second pin on the same card is a mistake, not a string: it is
+      // ignored and the first pin stays waiting.
+      if (pending.cardId === card.id) return
+      void createBoardString(pending, end)
+      setPending(null)
       return
     }
     // A scene is an arrival, like picking it in the binder. An entry is a
@@ -365,11 +448,31 @@ export function Corkboard({
     else showEntity(card.id)
   }
 
+  // Where every card is right now, including the one being carried — so a
+  // string follows its card through the drag rather than catching up at the
+  // drop.
+  const livePositions = new Map<string, Point>(
+    placed.map((c) => [
+      c.id,
+      dragging === c.id && offset ? { x: c.x + offset.x, y: c.y + offset.y } : { x: c.x, y: c.y }
+    ])
+  )
+  const strings = boardStrings.flatMap((str) => {
+    const pts = stringPoints(str, livePositions)
+    return pts ? [{ id: str.id, a: pts[0], b: pts[1] }] : []
+  })
+  const pendingAt = pending
+    ? (() => {
+        const card = livePositions.get(pending.cardId)
+        return card ? { x: card.x + pending.dx, y: card.y + pending.dy } : null
+      })()
+    : null
+
   return (
     <div className="terminal corkboard" data-help="corkboard">
       {tools}
       <div
-        className={`corkboard-board${stacked ? ' stacked' : ''}`}
+        className={`corkboard-board${stacked ? ' stacked' : ''}${stringMode ? ' stringing' : ''}`}
         ref={boardEl}
         style={{ height: boardHeight(placed) + CARD_H / 2 }}
       >
@@ -420,7 +523,7 @@ export function Corkboard({
                 type="button"
                 className="scene-card-face"
                 data-help="scene-card"
-                onClick={() => open(card)}
+                onClick={(e) => open(card, e)}
                 aria-label={`Open ${card.title}`}
               >
                 <CardFace card={card} />
@@ -430,7 +533,7 @@ export function Corkboard({
                 type="button"
                 className="scene-card-face"
                 data-help="bible-card"
-                onClick={() => open(card)}
+                onClick={(e) => open(card, e)}
                 aria-label={`Open ${card.title}`}
               >
                 <CardFace card={card} />
@@ -438,6 +541,40 @@ export function Corkboard({
             )}
           </div>
         ))}
+        {/* The strings, drawn over the cards. The layer itself takes no
+            pointer events, so cards under it still drag; only the pin heads
+            do, and only while the string tool is up, so a pin can be pulled
+            without a pin being something you can accidentally pull. */}
+        <svg
+          className={`board-strings${stringMode ? ' live' : ''}`}
+          aria-hidden={!stringMode}
+          role={stringMode ? 'list' : undefined}
+          aria-label={stringMode ? 'Strings' : undefined}
+        >
+          {strings.map((str) => (
+            <g key={str.id} className="board-string" role="listitem">
+              <path d={stringPath(str.a, str.b)} />
+              {[str.a, str.b].map((pt, i) => (
+                <circle
+                  key={i}
+                  className="board-pin"
+                  data-help="board-pin"
+                  cx={pt.x}
+                  cy={pt.y}
+                  r={5}
+                  onClick={() => {
+                    if (stringMode) void deleteBoardString(str.id)
+                  }}
+                >
+                  <title>Pull this pin to remove the string</title>
+                </circle>
+              ))}
+            </g>
+          ))}
+          {pendingAt && (
+            <circle className="board-pin pending" cx={pendingAt.x} cy={pendingAt.y} r={5} />
+          )}
+        </svg>
       </div>
       {adding && <AddCardDialog onClose={() => setAdding(false)} />}
     </div>

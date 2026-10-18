@@ -1,4 +1,11 @@
-import type { BinderNode, DocFile, DocStatus, Entity } from '../../../shared/types'
+import type {
+  BinderNode,
+  BoardString,
+  DocFile,
+  DocStatus,
+  Entity,
+  StringEnd
+} from '../../../shared/types'
 import { SCENE_TAG } from '../../../shared/types'
 import { walk } from './tree'
 import { folderPaths, plainTextOf } from './search'
@@ -247,4 +254,81 @@ export function stackLayout(cards: BoardCard[]): Map<string, { x: number; y: num
     pile += 1
   }
   return out
+}
+
+/**
+ * Strings (F-46): a length of red string between two pins, each pin pushed
+ * into a card.
+ *
+ * An end is anchored to a **card**, as an offset from its top-left, rather
+ * than to a point on the board: a string between two cards has to survive
+ * either card being dragged, stacked or tidied, and a point on the cork
+ * would be left behind by all three. The geometry here turns those anchors
+ * into board coordinates for the card positions of the moment, which is
+ * what makes a string follow a card mid-drag.
+ */
+export interface Point {
+  x: number
+  y: number
+}
+
+/** Where a pin sits on the board, given where its card is now. */
+export function pinPoint(end: StringEnd, cards: Map<string, Point>): Point | null {
+  const card = cards.get(end.cardId)
+  if (!card) return null
+  return { x: card.x + end.dx, y: card.y + end.dy }
+}
+
+/**
+ * Both ends of a string, or null if either card is not on the board.
+ *
+ * A string whose card has been taken off the board, trashed or deleted is
+ * **hidden rather than removed**: the card may come back (a bible entry
+ * returns with Add Card; a document can be restored from the trash) and the
+ * string with it. Cascading the delete would turn a reversible action into
+ * one that quietly lost the writer's connections.
+ */
+export function stringPoints(s: BoardString, cards: Map<string, Point>): [Point, Point] | null {
+  const a = pinPoint(s.from, cards)
+  const b = pinPoint(s.to, cards)
+  return a && b ? [a, b] : null
+}
+
+/**
+ * The string's path: a shallow curve rather than a ruled line.
+ *
+ * Real string hangs. The sag is a fraction of the span, capped, so a short
+ * string between neighbours is nearly straight and a long one across the
+ * board droops visibly but never into another row of cards. Pure so the
+ * droop can be tested as a number rather than eyeballed.
+ */
+export const STRING_SAG = 0.08
+export const STRING_MAX_SAG = 36
+
+export function stringPath(a: Point, b: Point): string {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const span = Math.hypot(dx, dy)
+  const sag = Math.min(STRING_MAX_SAG, span * STRING_SAG)
+  // The control point sits below the midpoint: the curve hangs, whichever
+  // way round the pins were placed.
+  const cx = a.x + dx / 2
+  const cy = a.y + dy / 2 + sag
+  return `M ${r(a.x)} ${r(a.y)} Q ${r(cx)} ${r(cy)} ${r(b.x)} ${r(b.y)}`
+}
+
+function r(n: number): number {
+  return Math.round(n * 10) / 10
+}
+
+/**
+ * Where a pin goes when a card is clicked at a board point: the click's
+ * offset within the card, kept inside the card. A pin pushed in at the very
+ * edge is still a pin in that card, not one hanging in the cork beside it.
+ */
+export function pinOffset(card: Point, at: Point): { dx: number; dy: number } {
+  return {
+    dx: Math.round(Math.min(CARD_W, Math.max(0, at.x - card.x))),
+    dy: Math.round(Math.min(CARD_H, Math.max(0, at.y - card.y)))
+  }
 }

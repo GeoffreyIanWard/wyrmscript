@@ -702,3 +702,153 @@ describe('adding a card', () => {
     expect(add.disabled).toBe(true)
   })
 })
+
+describe('strings between cards (F-46)', () => {
+  let path: string
+  const stringsDrawn = (): number => document.querySelectorAll('.board-string').length
+  const faceOf = (title: string): HTMLElement =>
+    cardByTitle(title).querySelector('.scene-card-face') as HTMLElement
+  /** A click at a point: the face handler reads clientX/Y to place the pin. */
+  const clickAt = async (el: HTMLElement, x: number, y: number): Promise<void> => {
+    await act(async () => {
+      fireEvent.click(el, { clientX: x, clientY: y })
+    })
+  }
+
+  beforeEach(async () => {
+    path = await openDemo()
+    for (const str of await api.listBoardStrings(path)) await api.deleteBoardString(path, str.id)
+    await tagScenes(path, 3)
+    await renderBoard()
+    await waitFor(() => expect(titles().length).toBe(3))
+    await act(async () => {
+      fireEvent.click(tool('String'))
+    })
+  })
+
+  it('runs a string from the first pin to the second, where each card was clicked', async () => {
+    const [a, b] = titles()
+    await clickAt(faceOf(a), 40, 30)
+    // One pin waiting: drawn, but no string yet.
+    expect(document.querySelector('.board-pin.pending')).toBeTruthy()
+    expect(stringsDrawn()).toBe(0)
+
+    await clickAt(faceOf(b), 60, 234)
+
+    await waitFor(() => expect(stringsDrawn()).toBe(1))
+    expect(document.querySelector('.board-pin.pending')).toBeNull()
+    const [saved] = await api.listBoardStrings(path)
+    // Card b sits at (0, 224) in jsdom's single column, so a click at y=234
+    // is 10px into it.
+    expect(saved.from).toEqual({ cardId: expect.any(String), dx: 40, dy: 30 })
+    expect(saved.to.dy).toBe(10)
+    // And the string is a curve between those two points.
+    expect(document.querySelector('.board-string path')?.getAttribute('d')).toMatch(/^M 40 30 Q/)
+  })
+
+  it('does not open the card while the tool is up', async () => {
+    const before = useWyrm.getState().mainView
+    await clickAt(faceOf(titles()[0]), 40, 30)
+    expect(useWyrm.getState().mainView).toEqual(before)
+  })
+
+  it('ignores a second pin on the same card, and keeps the first waiting', async () => {
+    const a = titles()[0]
+    await clickAt(faceOf(a), 40, 30)
+    await clickAt(faceOf(a), 100, 100)
+
+    expect(stringsDrawn()).toBe(0)
+    expect(document.querySelector('.board-pin.pending')).toBeTruthy()
+    expect(await api.listBoardStrings(path)).toHaveLength(0)
+  })
+
+  it('pulls a waiting pin on Esc, and puts the tool down on a second Esc', async () => {
+    await clickAt(faceOf(titles()[0]), 40, 30)
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+    })
+    expect(document.querySelector('.board-pin.pending')).toBeNull()
+    expect(tool('String').getAttribute('aria-pressed')).toBe('true')
+
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+    })
+    expect(tool('String').getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('follows a card that is dragged', async () => {
+    const [a, b] = titles()
+    await clickAt(faceOf(a), 40, 30)
+    await clickAt(faceOf(b), 60, 234)
+    await waitFor(() => expect(stringsDrawn()).toBe(1))
+
+    const card = cardByTitle(b)
+    await act(async () => pointer(card, 'pointerdown', 50, 250))
+    await act(async () => pointer(card, 'pointermove', 350, 450))
+    await act(async () => pointer(card, 'pointerup', 350, 450))
+
+    // The second pin moved with its card: 300 right, 200 down.
+    await waitFor(() =>
+      expect(document.querySelector('.board-string path')?.getAttribute('d')).toMatch(/ 360 434$/)
+    )
+  })
+
+  it('comes away when a pin is pulled', async () => {
+    const [a, b] = titles()
+    await clickAt(faceOf(a), 40, 30)
+    await clickAt(faceOf(b), 60, 234)
+    await waitFor(() => expect(stringsDrawn()).toBe(1))
+
+    await act(async () => {
+      fireEvent.click(document.querySelector('.board-string .board-pin') as Element)
+    })
+
+    await waitFor(() => expect(stringsDrawn()).toBe(0))
+    expect(await api.listBoardStrings(path)).toHaveLength(0)
+  })
+
+  it('leaves pins alone when the tool is down', async () => {
+    const [a, b] = titles()
+    await clickAt(faceOf(a), 40, 30)
+    await clickAt(faceOf(b), 60, 234)
+    await waitFor(() => expect(stringsDrawn()).toBe(1))
+    await act(async () => {
+      fireEvent.click(tool('String'))
+    })
+
+    await act(async () => {
+      fireEvent.click(document.querySelector('.board-string .board-pin') as Element)
+    })
+
+    expect(stringsDrawn()).toBe(1)
+  })
+
+  it('hides a string whose card has left the board rather than losing it', async () => {
+    // Strings need two cards; a third scene plus a character give the
+    // character a string, then the character comes off the board.
+    await act(async () => {
+      fireEvent.click(tool('String'))
+    })
+    await putOnBoard(path, 'Elara Voss')
+    await waitFor(() => expect(cardByTitle('Elara Voss')).toBeTruthy())
+    await act(async () => {
+      fireEvent.click(tool('String'))
+    })
+    await clickAt(faceOf(titles()[0]), 40, 30)
+    await clickAt(faceOf('Elara Voss'), 60, 700)
+    await waitFor(() => expect(stringsDrawn()).toBe(1))
+
+    await act(async () => {
+      fireEvent.click(tool('String'))
+    })
+    await act(async () => {
+      fireEvent.click(cardByTitle('Elara Voss').querySelector('.scene-card-off') as HTMLElement)
+    })
+
+    await waitFor(() => expect(cardByTitle('Elara Voss')).toBeUndefined())
+    expect(stringsDrawn()).toBe(0)
+    // Still on disk: Add Card can bring the character back, and the string
+    // with it.
+    expect(await api.listBoardStrings(path)).toHaveLength(1)
+  })
+})

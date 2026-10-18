@@ -5,6 +5,7 @@ import http from 'isomorphic-git/http/node'
 import type {
   AppearanceSettings,
   WindowGeometry,
+  BoardString,
   ConflictResolution,
   DocFile,
   Entity,
@@ -24,6 +25,7 @@ import { deleteEntity, listEntities, readAllDocs, writeEntity } from './entities
 import { deletePlotline, listPlotlines, writePlotline } from './plotlines'
 import { deleteRelationship, listRelationships, writeRelationship } from './relationships'
 import { deleteMapPin, listMapPins, writeMapPin } from './worldMap'
+import { deleteBoardString, listBoardStrings, writeBoardString } from './boardStrings'
 import {
   createProject,
   docRepoPath,
@@ -189,6 +191,14 @@ export function registerIpc(): void {
   ipcMain.handle('mapPin:list', (_e, path: string) => listMapPins(path))
   ipcMain.handle('mapPin:write', (_e, path: string, pin: MapPin) => writeMapPin(path, pin))
   ipcMain.handle('mapPin:delete', (_e, path: string, id: string) => deleteMapPin(path, id))
+
+  ipcMain.handle('boardString:list', (_e, path: string) => listBoardStrings(path))
+  ipcMain.handle('boardString:write', (_e, path: string, s: BoardString) =>
+    writeBoardString(path, s)
+  )
+  ipcMain.handle('boardString:delete', (_e, path: string, id: string) =>
+    deleteBoardString(path, id)
+  )
 
   /* ---------- appearance & page geometry (F-05, F-06) ---------- */
 

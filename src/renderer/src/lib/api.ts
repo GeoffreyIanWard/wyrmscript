@@ -4,6 +4,7 @@ import type {
   WindowGeometry,
   BackupSettings,
   BinderNode,
+  BoardString,
   CommitInfo,
   DeviceCodeInfo,
   SignInPoll,
@@ -55,6 +56,7 @@ interface MockProject {
   plotlines: Map<string, Plotline>
   relationships: Map<string, Relationship>
   mapPins: Map<string, MapPin>
+  boardStrings: Map<string, BoardString>
 }
 
 function snapshotOf(docs: Map<string, DocFile>): Map<string, DocFile> {
@@ -114,7 +116,8 @@ function starterProject(title: string): MockProject {
     entities: new Map(),
     plotlines: new Map(),
     relationships: new Map(),
-    mapPins: new Map()
+    mapPins: new Map(),
+    boardStrings: new Map()
   }
   commitInto(project, `Create project “${title}”`)
   return project
@@ -252,7 +255,10 @@ function demoProject(): MockProject {
     entities,
     plotlines,
     relationships,
-    mapPins
+    mapPins,
+    // F-46: no strings seeded — the preview's board starts bare, so the
+    // first string a reader draws is the first one on it.
+    boardStrings: new Map()
   }
 
   // Fabricate believable history for the demo: three drafts of scene2.
@@ -547,6 +553,22 @@ export function createMockApi(): WyrmApi {
     },
     async deleteMapPin(path: string, id: string): Promise<void> {
       mustGet(path).mapPins.delete(id)
+    },
+
+    async listBoardStrings(path: string): Promise<BoardString[]> {
+      // The ends are copied too: a caller mutating `from` on a listed string
+      // would otherwise edit the mock's stored record in place.
+      return [...mustGet(path).boardStrings.values()].map((s) => ({
+        ...s,
+        from: { ...s.from },
+        to: { ...s.to }
+      }))
+    },
+    async writeBoardString(path: string, s: BoardString): Promise<void> {
+      mustGet(path).boardStrings.set(s.id, { ...s, modified: new Date().toISOString() })
+    },
+    async deleteBoardString(path: string, id: string): Promise<void> {
+      mustGet(path).boardStrings.delete(id)
     },
 
     async getSyncStatus(path: string): Promise<SyncStatus> {

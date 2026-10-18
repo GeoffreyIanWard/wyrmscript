@@ -14,8 +14,13 @@ import {
   excerptOf,
   layoutCards,
   sceneCards,
+  pinOffset,
   STACK_STEP,
-  stackLayout
+  stackLayout,
+  STRING_MAX_SAG,
+  STRING_SAG,
+  stringPath,
+  stringPoints
 } from '../src/renderer/src/lib/corkboard'
 import type { SceneCard } from '../src/renderer/src/lib/corkboard'
 
@@ -377,5 +382,63 @@ describe('stacking', () => {
     const before = JSON.stringify(cards)
     stackLayout(cards)
     expect(JSON.stringify(cards)).toBe(before)
+  })
+})
+
+describe('strings between cards', () => {
+  const cards = new Map([
+    ['a', { x: 0, y: 0 }],
+    ['b', { x: 500, y: 300 }]
+  ])
+  const string = {
+    id: 's1',
+    from: { cardId: 'a', dx: 100, dy: 20 },
+    to: { cardId: 'b', dx: 10, dy: 190 },
+    created: '2026-01-01',
+    modified: '2026-01-01'
+  }
+
+  it('anchors each end to its card, by offset', () => {
+    // The whole point of anchoring to cards: move the card and the pin goes
+    // with it, because the pin is an offset into the card, not a place on
+    // the cork.
+    expect(stringPoints(string, cards)).toEqual([
+      { x: 100, y: 20 },
+      { x: 510, y: 490 }
+    ])
+    const moved = new Map(cards)
+    moved.set('b', { x: 50, y: 50 })
+    expect(stringPoints(string, moved)?.[1]).toEqual({ x: 60, y: 240 })
+  })
+
+  it('is hidden, not broken, when either card is gone', () => {
+    // A card taken off the board or trashed may come back, and the string
+    // with it. Hiding is reversible; cascading a delete is not.
+    expect(stringPoints(string, new Map([['a', { x: 0, y: 0 }]]))).toBeNull()
+  })
+
+  it('hangs: the curve dips below the straight line between its pins', () => {
+    const d = stringPath({ x: 0, y: 100 }, { x: 400, y: 100 })
+    // The control point: midpoint x, and below the pins by the sag.
+    expect(d).toBe(`M 0 100 Q 200 ${100 + 400 * STRING_SAG} 400 100`)
+  })
+
+  it('never sags into the next row of cards', () => {
+    const d = stringPath({ x: 0, y: 0 }, { x: 2000, y: 0 })
+    expect(d).toBe(`M 0 0 Q 1000 ${STRING_MAX_SAG} 2000 0`)
+  })
+
+  it('hangs the same way whichever end was pinned first', () => {
+    const one = stringPath({ x: 0, y: 0 }, { x: 300, y: 0 })
+    const other = stringPath({ x: 300, y: 0 }, { x: 0, y: 0 })
+    expect(one).toContain(`Q 150 ${300 * STRING_SAG}`)
+    expect(other).toContain(`Q 150 ${300 * STRING_SAG}`)
+  })
+
+  it('pins where the card was clicked, and inside the card at the edges', () => {
+    const card = { x: 100, y: 200 }
+    expect(pinOffset(card, { x: 150, y: 260 })).toEqual({ dx: 50, dy: 60 })
+    // A click that lands a pixel outside the card still pins in the card.
+    expect(pinOffset(card, { x: 90, y: 450 })).toEqual({ dx: 0, dy: CARD_H })
   })
 })

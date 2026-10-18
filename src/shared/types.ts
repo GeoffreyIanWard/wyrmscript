@@ -254,6 +254,38 @@ export interface MapPin {
   modified: string
 }
 
+/**
+ * F-46: one end of a red string, anchored to a corkboard card.
+ *
+ * The anchor is a card plus an offset from the card's top-left in board
+ * pixels, never a board coordinate: a string between two cards has to
+ * survive either card being dragged, and a string stored by position would
+ * stay nailed to the cork while the card it was pinned to walked away. The
+ * card id is a scene's `DocMeta.id` or a bible entry's `Entity.id`; the view
+ * never needs the collection to resolve it, so the end does not record one.
+ */
+export interface StringEnd {
+  cardId: string
+  dx: number
+  dy: number
+}
+
+/**
+ * F-46: a red string joining two corkboard cards, pin to pin.
+ *
+ * Stored exactly as `MapPin` is — one gray-matter file per string, empty
+ * body — and for the same reason: two devices each adding or moving a
+ * different string merge silently as two unrelated files, where a single
+ * strings file would be a prose-style conflict on every such edit.
+ */
+export interface BoardString {
+  id: string
+  from: StringEnd
+  to: StringEnd
+  created: string
+  modified: string
+}
+
 export interface CommitInfo {
   oid: string
   message: string
@@ -668,6 +700,11 @@ export interface WyrmApi {
   listMapPins(path: string): Promise<MapPin[]>
   writeMapPin(path: string, pin: MapPin): Promise<void>
   deleteMapPin(path: string, id: string): Promise<void>
+
+  /** F-46: red strings between corkboard cards. */
+  listBoardStrings(path: string): Promise<BoardString[]>
+  writeBoardString(path: string, s: BoardString): Promise<void>
+  deleteBoardString(path: string, id: string): Promise<void>
 
   /** Show a save dialog and write compiled output. Returns the path, or null if cancelled. */
   exportFile(defaultName: string, data: string | Uint8Array): Promise<string | null>
