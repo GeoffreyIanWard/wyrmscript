@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  BoardString,
   DocFile,
   Entity,
   EntityType,
@@ -46,6 +47,10 @@ const api: WyrmApi = {
   listMapPins: (path) => ipcRenderer.invoke('mapPin:list', path),
   writeMapPin: (path, pin: MapPin) => ipcRenderer.invoke('mapPin:write', path, pin),
   deleteMapPin: (path, id) => ipcRenderer.invoke('mapPin:delete', path, id),
+
+  listBoardStrings: (path) => ipcRenderer.invoke('boardString:list', path),
+  writeBoardString: (path, s: BoardString) => ipcRenderer.invoke('boardString:write', path, s),
+  deleteBoardString: (path, id) => ipcRenderer.invoke('boardString:delete', path, id),
 
   exportFile: (defaultName, data) => ipcRenderer.invoke('compile:export', defaultName, data),
   renderPdf: (html) => ipcRenderer.invoke('compile:pdf', html),

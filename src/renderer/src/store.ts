@@ -5,6 +5,8 @@ import type {
   BackupRun,
   BackupSettings,
   BinderNode,
+  BoardString,
+  StringEnd,
   CompileOptions,
   ConflictResolution,
   DeviceCodeInfo,
@@ -67,8 +69,11 @@ function newId(): string {
  * instance belongs to the mounted component, not to the state, and restoring
  * a destroyed one would be worse than rebuilding it. Per-window editor
  * registration is step 3.
+ *
+ * Exported for one test only: nothing typechecks a per-project field left
+ * out of this list, and one that is left out leaks between open projects.
  */
-const SLICE_KEYS = [
+export const SLICE_KEYS = [
   'project',
   'activeId',
   'activeDoc',
@@ -86,6 +91,7 @@ const SLICE_KEYS = [
   'plotlines',
   'relationships',
   'mapPins',
+  'boardStrings',
   'backupSettings',
   'dailyStats',
   'syncStatus',
@@ -203,6 +209,8 @@ interface WyrmState {
   relationships: Relationship[]
   /** F-12: world map pin placements — a `world` entity with none isn't on the map yet. */
   mapPins: MapPin[]
+  /** F-46: red strings between corkboard cards. */
+  boardStrings: BoardString[]
 
   boot(): Promise<void>
   newProject(title: string): Promise<void>
@@ -410,6 +418,16 @@ interface WyrmState {
    *  same drag/drop operation either way. */
   setMapPin(entityId: string, x: number, y: number): Promise<void>
   removeMapPin(pin: MapPin): Promise<void>
+
+  loadBoardStrings(): Promise<void>
+  /**
+   * Null, and nothing written, when both ends are on the same card: a string
+   * from a card to itself is meaningless and would draw as a dot. A string
+   * whose card is later deleted is tolerated and hidden by the view, not
+   * cascaded here.
+   */
+  createBoardString(from: StringEnd, to: StringEnd): Promise<BoardString | null>
+  deleteBoardString(id: string): Promise<void>
 }
 
 /** F-14: how many doc↔entity hops Esc can unwind. */
@@ -503,6 +521,7 @@ function emptySlice(): ProjectSlice {
     plotlines: [],
     relationships: [],
     mapPins: [],
+    boardStrings: [],
     backupSettings: null,
     dailyStats: [],
     syncStatus: null,
@@ -741,6 +760,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     plotlines: [],
     relationships: [],
     mapPins: [],
+    boardStrings: [],
     backupSettings: null,
     appearance: null,
     statsSettings: null,
@@ -1880,6 +1900,33 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) return
       await api.deleteMapPin(project.path, pin.id)
       set({ mapPins: get().mapPins.filter((p) => p.id !== pin.id) })
+      markDirty()
+    },
+
+    /* ---------- red strings (F-46) ---------- */
+
+    async loadBoardStrings() {
+      const { project } = get()
+      if (!project) return
+      set({ boardStrings: await api.listBoardStrings(project.path) })
+    },
+
+    async createBoardString(from, to) {
+      const { project } = get()
+      if (!project || from.cardId === to.cardId) return null
+      const now = new Date().toISOString()
+      const s: BoardString = { id: newId(), from, to, created: now, modified: now }
+      await api.writeBoardString(project.path, s)
+      set({ boardStrings: [...get().boardStrings, s] })
+      markDirty()
+      return s
+    },
+
+    async deleteBoardString(id) {
+      const { project } = get()
+      if (!project) return
+      await api.deleteBoardString(project.path, id)
+      set({ boardStrings: get().boardStrings.filter((s) => s.id !== id) })
       markDirty()
     }
   }

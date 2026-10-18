@@ -86,6 +86,14 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'Add a card',
     body: 'A new scene, character or location — made for real, as a document in the manuscript or an entry in the story bible, with its card here. Or an entry that already exists, put on the board.'
   },
+  'board-string': {
+    title: 'String',
+    body: 'Red string between cards, pin to pin. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go.'
+  },
+  'board-pin': {
+    title: 'A pin',
+    body: 'One end of a string. While the string tool is up, click a pin to pull it and the string comes away with it. Pins stay put when the tool is down, so a card can still be dragged from under one.'
+  },
   'board-stack': {
     title: 'Stack',
     body: 'Gathers the cards into three piles — scenes, characters, locations — each cascading so every title shows, like a hand of patience. A way of looking rather than an arrangement: Unstack puts every card back where it was. Drag a card out of its pile to keep it out.'

@@ -841,6 +841,24 @@ Requested 2026-10-17 as the first of a run of corkboard features (the rest: stri
 
 **Left for later, deliberately.** Collections like map pins never got the structural frontmatter merge either (`isFrontmattered` matches only documents and the three bible folders), so a both-device edit of the same pin reaches the writer as a raw FILE conflict, contrary to what the `MapPin` comment claims; nothing in this PR changes that. Pulling a card out of a stack and dragging in general both write the entry's `modified`, as placing a scene writes the document's.
 
+### F-46 · Red string between cards ✅ shipped
+
+Requested 2026-10-17 with F-45. A **String** tool on the board: with it up, clicking a card pushes a pin in where it was clicked, and a second pin on a different card runs a red string between them. Esc pulls a waiting pin, or puts the tool down; clicking a pin while the tool is up pulls the string away. The strings follow their cards through drags, stacks and tidies.
+
+**An end is anchored to a card, as an offset into it, never to a point on the cork.** A string between two cards has to survive either card being dragged, stacked or tidied, and a point on the board would be left behind by all three. `stringPoints` turns the anchors into board coordinates for the card positions _of the moment_, including a card mid-drag, which is what makes the string move with the card rather than catch up at the drop.
+
+**Stored like map pins: one frontmatter file per string** (`strings/<id>.md`), so two devices adding different strings merge as unrelated files; as with map pins, a both-device edit of the _same_ string reaches the writer as a FILE conflict. Loaded by the board when it opens, not on project open — the pattern every project collection follows. `boardStrings` is in `SLICE_KEYS`, with a one-line test that is the only thing that would catch the omission.
+
+**A string whose card has left the board is hidden, not deleted.** A character taken off the board can come back with Add Card, and a trashed scene can be restored; cascading the delete would turn a reversible action into one that quietly lost the writer's connections. Nothing cascades; the view skips a string it cannot draw.
+
+**The string hangs.** A quadratic rather than a ruled line, with a sag that is a fraction of the span and capped (`STRING_SAG`, `STRING_MAX_SAG`), so neighbours are joined almost straight and a string across the board droops but never into the next row of cards. It hangs the same way whichever pin was placed first. Pure, so the droop is a number in a test rather than an impression in a screenshot.
+
+**The one colour outside the palette's two inks.** `--string` is a red declared at `:root`, deliberately: red string between thumbtacks is the one thing everyone recognises a pinboard by, and an ink-coloured string would read as a ruled line. A palette may restate it (none of the sixteen do), and `tests/palette-fonts.test.ts` deliberately does not check it the way it checks `--cork` — that loop asserts a variable is drawn in the palette's ink, which this one must not be.
+
+**Pins are inert unless the tool is up.** The string layer takes no pointer events, so a card under a string still drags; pin heads take clicks only while the tool is up, so a pin can be pulled without a pin being something you pull by accident. Pinning never opens the card: the face's click places the pin instead, and a drag that ends on a card is still not a click.
+
+Esc in string mode stops propagating, for the reason guided help's does: Esc is also "back", and putting the tool down should not also walk the writer off the board.
+
 ### F-42 · Outline mode 📋 designed, not started
 
 Build a story's shape before writing it: add scenes through a templated form, then work with them exactly like any other scene — on the corkboard, the timeline, the plot graph and the map — and click one to start writing it.
