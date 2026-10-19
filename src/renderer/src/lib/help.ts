@@ -90,6 +90,14 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'Portrait',
     body: "A picture for this character or place, kept inside the project beside the entry so it travels with it — to a backup, to GitHub, to another machine. It shows on the entry's card on the corkboard."
   },
+  'board-order': {
+    title: "Apply the board's order",
+    body: 'Reads the scene cards row by row, left to right, and puts the scenes in that order in the manuscript — within their own folders, never across them. Every scene card ends up pinned where it sits, so the board keeps reading in the order you applied. Not offered while stacked.'
+  },
+  'board-undo': {
+    title: 'Undo the last Apply',
+    body: 'Puts back the order of the folders the last Apply changed — only those, and only the scenes still in them. Anything added, renamed, moved or synced since stays as it is, and the cards stay where they are. One step, kept until you leave the project.'
+  },
   'board-string': {
     title: 'String',
     body: 'Red string between cards, pin to pin. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go.'
@@ -107,8 +115,8 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     body: 'Puts every card back into a grid in binder order and forgets where they were. The way back from an arrangement that has stopped helping.'
   },
   'board-tools': {
-    title: 'The same scenes, seen other ways',
-    body: 'A timeline, a plot graph, your plotlines, your cast and a map — all reading the scenes on this board. They are pinned here rather than buried in a menu because they are the same material, not five separate features.'
+    title: "The board's tools",
+    body: 'The same scenes seen other ways — a timeline, a plot graph, your plotlines, your cast and a map — pinned here because they are the same material, not five separate features. Beside them, the tools for the board itself: Add Card, Apply Order and its Undo, String, Stack and Tidy.'
   }
 }
 

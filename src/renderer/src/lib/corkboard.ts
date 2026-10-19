@@ -48,6 +48,13 @@ export interface BoardCard {
   boardY?: number
   /** A character's or location's portrait, as the project-relative file (F-47). */
   portrait?: string
+  /**
+   * The folder a scene sits in ('' at the binder root). Apply Order reorders
+   * scenes within their own folder and never across, so whether the board
+   * differs from the book is a per-folder question — a Part Two scene placed
+   * above Part One is not an order applying could give the book.
+   */
+  parentId?: string
 }
 
 /** The board's original card type; a scene is one kind of card now. */
@@ -140,15 +147,28 @@ export function tidyColumns(count: number, boardWidth: number): number {
  */
 export function layoutCards(cards: SceneCard[], boardWidth: number): PlacedCard[] {
   const cols = tidyColumns(cards.length, boardWidth)
+  // Dealing never lands a card on one the writer placed, nor on one dealt
+  // before it. After Apply Order every card is pinned at the slots of the
+  // column count the board had then; a scene added afterwards is dealt at
+  // the count the board has now, and once that has changed its slot can be
+  // exactly where a pinned card sits. A dealt card whose slot is covered
+  // takes the next free one, and the cards dealt after it shift along —
+  // as cards do when one is pushed into a row. Covered means more than
+  // half under the other card, so a card nudged off its slot does not
+  // push its neighbours about.
+  const taken: Point[] = cards.flatMap((c) =>
+    c.boardX != null && c.boardY != null ? [{ x: c.boardX, y: c.boardY }] : []
+  )
+  const covered = (slot: Point): boolean =>
+    taken.some((p) => Math.abs(p.x - slot.x) < CARD_W / 2 && Math.abs(p.y - slot.y) < CARD_H / 2)
   return cards.map((card, i) => {
-    const placed = card.boardX != null && card.boardY != null
-    const slot = gridSlot(i, cols)
-    return {
-      ...card,
-      x: placed ? (card.boardX as number) : slot.x,
-      y: placed ? (card.boardY as number) : slot.y,
-      placed
-    }
+    if (card.boardX != null && card.boardY != null)
+      return { ...card, x: card.boardX, y: card.boardY, placed: true }
+    let k = i
+    let slot = gridSlot(k, cols)
+    while (covered(slot)) slot = gridSlot(++k, cols)
+    taken.push(slot)
+    return { ...card, x: slot.x, y: slot.y, placed: false }
   })
 }
 
@@ -160,6 +180,16 @@ export function boardHeight(placed: PlacedCard[]): number {
 export function sceneCards(docs: DocFile[], binder: BinderNode[]): BoardCard[] {
   const byId = new Map(docs.map((d) => [d.meta.id, d]))
   const folders = folderPaths(binder)
+  // `walk` hands out nodes, not parents; the parent is what Apply Order
+  // groups by, so it is carried here.
+  const parents = new Map<string, string>()
+  const note = (nodes: BinderNode[], parent: string): void => {
+    for (const n of nodes) {
+      parents.set(n.id, parent)
+      if (n.children) note(n.children, n.id)
+    }
+  }
+  note(binder, '')
   const cards: BoardCard[] = []
   walk(binder, (node) => {
     if (node.type !== 'doc') return
@@ -168,6 +198,7 @@ export function sceneCards(docs: DocFile[], binder: BinderNode[]): BoardCard[] {
     const text = plainTextOf(doc.body).trim()
     cards.push({
       kind: 'scene',
+      parentId: parents.get(node.id) ?? '',
       id: doc.meta.id,
       title: doc.meta.title,
       status: doc.meta.status,
@@ -334,4 +365,61 @@ export function pinOffset(card: Point, at: Point): { dx: number; dy: number } {
     dx: Math.round(Math.min(CARD_W, Math.max(0, at.x - card.x))),
     dy: Math.round(Math.min(CARD_H, Math.max(0, at.y - card.y)))
   }
+}
+
+/**
+ * The scenes in the order the board *reads*: row by row, left to right.
+ *
+ * This is the other half of free placement. Dragging a card stopped
+ * reordering the manuscript (a card that reordered and then snapped into the
+ * grid never stayed where it was put), which left the board with no way to
+ * write back at all. Arrange, then apply: the board's reading order becomes
+ * the binder's order, on request, never on its own.
+ *
+ * Rows are found by clustering, not by a grid: cards are placed freely, so a
+ * row is any set of cards whose tops lie within `ROW_TOLERANCE` of the first
+ * card in it. Two cards side by side with one a little lower are one row,
+ * which is how a hand lays cards out; a card a full card-height down is the
+ * next row. Only scenes take part — a character or location card has no
+ * place in the manuscript to be given.
+ */
+export const ROW_TOLERANCE = CARD_H * 0.6
+
+export function boardOrder(placed: PlacedCard[]): string[] {
+  const scenes = placed.filter((c) => c.kind === 'scene').sort((a, b) => a.y - b.y || a.x - b.x)
+  const rows: PlacedCard[][] = []
+  for (const card of scenes) {
+    const row = rows[rows.length - 1]
+    if (row && card.y - row[0].y <= ROW_TOLERANCE) row.push(card)
+    else rows.push([card])
+  }
+  return rows.flatMap((row) => row.sort((a, b) => a.x - b.x || a.y - b.y).map((c) => c.id))
+}
+
+/**
+ * Whether applying the board's order would change anything.
+ *
+ * Asked **per folder**, because that is all applying can do: a scene is
+ * reordered among the scenes of its own folder, never moved to another. So
+ * the board's reading order is compared against the binder's (the order
+ * `boardCards` emits scenes in) one folder at a time, and a board that
+ * differs only *across* folders — a Part Two scene set above Part One — is
+ * a board applying would leave exactly as it is. A button that offers to
+ * apply an order the book already has, or one it cannot give it, is a button
+ * that lies about having something to do.
+ */
+export function boardOrderDiffers(placed: PlacedCard[]): boolean {
+  const board = boardOrder(placed)
+  const rank = new Map(board.map((id, i) => [id, i]))
+  const byParent = new Map<string, string[]>()
+  for (const c of placed) {
+    if (c.kind !== 'scene') continue
+    const key = c.parentId ?? ''
+    byParent.set(key, [...(byParent.get(key) ?? []), c.id])
+  }
+  for (const ids of byParent.values()) {
+    const read = [...ids].sort((a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0))
+    if (ids.some((id, i) => id !== read[i])) return true
+  }
+  return false
 }

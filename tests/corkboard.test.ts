@@ -4,6 +4,8 @@ import { SCENE_TAG } from '../src/shared/types'
 import {
   boardCards,
   boardHeight,
+  boardOrder,
+  boardOrderDiffers,
   CARD_GAP,
   CARD_H,
   CARD_W,
@@ -12,9 +14,11 @@ import {
   entityCards,
   tidyColumns,
   excerptOf,
+  gridSlot,
   layoutCards,
   sceneCards,
   pinOffset,
+  ROW_TOLERANCE,
   STACK_STEP,
   stackLayout,
   STRING_MAX_SAG,
@@ -22,7 +26,7 @@ import {
   stringPath,
   stringPoints
 } from '../src/renderer/src/lib/corkboard'
-import type { SceneCard } from '../src/renderer/src/lib/corkboard'
+import type { PlacedCard, SceneCard } from '../src/renderer/src/lib/corkboard'
 
 /**
  * The corkboard's card model (Phase 6).
@@ -266,6 +270,73 @@ function entity(
   }
 }
 
+describe('dealing around placed cards', () => {
+  const card = (id: string, boardX?: number, boardY?: number): SceneCard => ({
+    kind: 'scene',
+    id,
+    title: id,
+    folder: '',
+    wordCount: 0,
+    excerpt: '',
+    empty: true,
+    boardX,
+    boardY
+  })
+  const wide = 6 * (CARD_W + CARD_GAP)
+
+  it('deals a new card past a pinned one sitting on its slot', () => {
+    // After Apply Order every card is pinned at the slots of the column
+    // count the board had then. A scene added afterwards is dealt at the
+    // count the board has now — and at four cards to five the grid goes
+    // from two columns to three, which puts the new card's slot exactly
+    // where the fourth pinned card is.
+    const two = tidyColumns(4, wide)
+    const three = tidyColumns(5, wide)
+    expect([two, three]).toEqual([2, 3])
+    expect(gridSlot(4, three)).toEqual(gridSlot(3, two))
+    const pinned = [0, 1, 2, 3].map((i) => {
+      const s = gridSlot(i, two)
+      return card(`p${i}`, s.x, s.y)
+    })
+
+    const laid = layoutCards([...pinned, card('new')], wide)
+
+    const fresh = laid[4]
+    expect(fresh.placed).toBe(false)
+    expect({ x: fresh.x, y: fresh.y }).toEqual(gridSlot(5, three))
+    // The pinned cards have not moved.
+    expect(laid.slice(0, 4).map((c) => [c.x, c.y])).toEqual(pinned.map((c) => [c.boardX, c.boardY]))
+  })
+
+  it('shifts the cards dealt after a pushed one along by a slot', () => {
+    // Otherwise the pushed card lands on the next dealt card's slot and
+    // two unmoved cards sit on top of each other.
+    const cols = tidyColumns(3, wide)
+    const covering = gridSlot(1, cols)
+    const laid = layoutCards([card('a', covering.x, covering.y), card('b'), card('c')], wide)
+    expect(laid.map((c) => [c.x, c.y])).toEqual([
+      [covering.x, covering.y],
+      [gridSlot(2, cols).x, gridSlot(2, cols).y],
+      [gridSlot(3, cols).x, gridSlot(3, cols).y]
+    ])
+  })
+
+  it('is not pushed by a card merely nudged off its slot', () => {
+    // Covered means more than half under the other card. A card dragged a
+    // little way and dropped should not send its neighbours shuffling.
+    const cols = tidyColumns(2, wide)
+    const own = gridSlot(0, cols)
+    const laid = layoutCards([card('a', own.x + CARD_W / 2, own.y), card('b')], wide)
+    expect([laid[1].x, laid[1].y]).toEqual([gridSlot(1, cols).x, gridSlot(1, cols).y])
+    const closer = layoutCards([card('a', own.x + CARD_W / 2 - 1, own.y), card('b')], wide)
+    expect([closer[1].x, closer[1].y]).toEqual([gridSlot(1, cols).x, gridSlot(1, cols).y])
+    // ...until the *second* slot is the one covered.
+    const second = gridSlot(1, cols)
+    const pushed = layoutCards([card('a', second.x + 10, second.y - 10), card('b')], wide)
+    expect([pushed[1].x, pushed[1].y]).toEqual([gridSlot(2, cols).x, gridSlot(2, cols).y])
+  })
+})
+
 describe('characters and locations as cards', () => {
   it('shows only the entries that were put on the board', () => {
     // The World Map's model, not the scenes': membership is deliberate, so a
@@ -440,5 +511,100 @@ describe('strings between cards', () => {
     expect(pinOffset(card, { x: 150, y: 260 })).toEqual({ dx: 50, dy: 60 })
     // A click that lands a pixel outside the card still pins in the card.
     expect(pinOffset(card, { x: 90, y: 450 })).toEqual({ dx: 0, dy: CARD_H })
+  })
+})
+
+describe('the order the board reads in', () => {
+  const at = (
+    id: string,
+    x: number,
+    y: number,
+    kind: 'scene' | 'character' | 'location' = 'scene',
+    parentId = 'ms'
+  ): PlacedCard => ({
+    kind,
+    id,
+    title: id,
+    folder: '',
+    wordCount: 0,
+    excerpt: '',
+    empty: true,
+    x,
+    y,
+    placed: true,
+    parentId: kind === 'scene' ? parentId : undefined
+  })
+
+  it('reads row by row, left to right', () => {
+    // Laid out as a 2x2 but listed in a scrambled order, as cards dragged
+    // one at a time would be.
+    const placed = [at('d', 234, 224), at('b', 234, 0), at('c', 0, 224), at('a', 0, 0)]
+    expect(boardOrder(placed)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('treats cards laid out by hand, a little uneven, as one row', () => {
+    // A hand does not place cards on a grid. Three cards across, the middle
+    // one 40px lower, are one row to the eye and must be one row here —
+    // otherwise the middle card would read as its own row and jump to the end.
+    const placed = [at('a', 0, 0), at('b', 240, 40), at('c', 480, 10)]
+    expect(boardOrder(placed)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('starts a new row once a card is a card-height down', () => {
+    const placed = [at('a', 0, 0), at('b', 240, 0), at('c', 0, CARD_H)]
+    expect(boardOrder(placed)).toEqual(['a', 'b', 'c'])
+    // And the lower card reads after the higher ones however far left it is.
+    expect(boardOrder([at('c', 0, 300), at('a', 500, 0)])).toEqual(['a', 'c'])
+  })
+
+  it('measures a row from its first card, not from the card before', () => {
+    // A staircase: each card 100px lower than the last. Measured from the
+    // row's first card, b joins a's row and c starts a new one; measured
+    // from the previous card, all three would chain into one row and the
+    // order would come out backwards. Every other fixture here reads the
+    // same under both rules, so this one is the whole guard.
+    const placed = [at('a', 480, 0), at('b', 240, 100), at('c', 0, 200)]
+    expect(boardOrder(placed)).toEqual(['b', 'a', 'c'])
+  })
+
+  it('counts a card exactly on the tolerance as the same row, and pins the tolerance', () => {
+    expect(ROW_TOLERANCE).toBe(CARD_H * 0.6)
+    expect(boardOrder([at('a', 240, 0), at('b', 0, ROW_TOLERANCE)])).toEqual(['b', 'a'])
+    expect(boardOrder([at('a', 240, 0), at('b', 0, ROW_TOLERANCE + 1)])).toEqual(['a', 'b'])
+  })
+
+  it('leaves characters and locations out — they have no place in the manuscript', () => {
+    const placed = [
+      at('e', 0, 0, 'character'),
+      at('w', 120, 0, 'location'),
+      at('a', 240, 0),
+      at('b', 0, 224)
+    ]
+    expect(boardOrder(placed)).toEqual(['a', 'b'])
+  })
+
+  it('asks whether the order differs folder by folder, never across them', () => {
+    // A Part Two scene set above Part One is not an order applying could
+    // give the book: scenes are reordered within their own folder only. So
+    // the board does not differ, and the button must not offer to apply.
+    // Listed in binder order p1a, p1b, p2; placed with p2 above them, so the
+    // board as a whole reads p2 first — which a reading that ignored folders
+    // would call a difference, and which applying could do nothing about.
+    const across = [at('p1a', 0, 224), at('p1b', 234, 224), at('p2', 0, 0, 'scene', 'part2')]
+    expect(boardOrderDiffers(across)).toBe(false)
+    // Whereas two scenes of the same folder swapped on the board do differ,
+    // whatever the other folder's scenes are doing.
+    // Listed in binder order p1a, p1b; placed so that p1b reads first.
+    const within = [at('p2', 0, 0, 'scene', 'part2'), at('p1a', 234, 224), at('p1b', 0, 224)]
+    expect(boardOrderDiffers(within)).toBe(true)
+  })
+
+  it('knows when the board already agrees with the book', () => {
+    // Cards in binder order sit in binder order: nothing to apply.
+    expect(boardOrderDiffers([at('a', 0, 0), at('b', 240, 0)])).toBe(false)
+    // Swap them on the board and there is.
+    expect(boardOrderDiffers([at('a', 240, 0), at('b', 0, 0)])).toBe(true)
+    // A character moved anywhere changes nothing about the book.
+    expect(boardOrderDiffers([at('a', 0, 0), at('e', 700, 0, 'character')])).toBe(false)
   })
 })

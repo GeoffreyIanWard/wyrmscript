@@ -73,6 +73,15 @@ function newId(): string {
  * Exported for one test only: nothing typechecks a per-project field left
  * out of this list, and one that is left out leaks between open projects.
  */
+/**
+ * What Apply Order changed and what it was before: one entry per folder it
+ * reordered, with that folder's scenes in their pre-apply order. Only the
+ * folders that changed, so Undo restores exactly those and nothing else.
+ */
+export type BoardUndo = { parentId: string; ids: string[] }[]
+/** A card and where it sits, for `applyBoardOrder` to write. */
+export type CardPin = { id: string; x: number; y: number }
+
 export const SLICE_KEYS = [
   'project',
   'activeId',
@@ -92,6 +101,7 @@ export const SLICE_KEYS = [
   'relationships',
   'mapPins',
   'boardStrings',
+  'boardUndo',
   'backupSettings',
   'dailyStats',
   'syncStatus',
@@ -357,6 +367,53 @@ interface WyrmState {
   moveToTrash(id: string): Promise<void>
   restoreFromTrash(id: string): Promise<void>
   moveBinderNode(dragId: string, targetId: string, position: DropPosition): Promise<void>
+  /**
+   * F-45: write the board's arrangement back into the binder. Dragging a card
+   * places it and nothing else, so this is the one deliberate step by which
+   * the board becomes the book's order. `orderedIds` is the scenes' reading
+   * order as the board computes it (`boardOrder`). Within each folder, the
+   * docs named are re-dealt into the slots they already occupy, in that
+   * order; everything else — sub-folders, notes, docs the board does not
+   * show — keeps its exact index. A doc never changes parent: the board does
+   * not show chapter structure, and silently carrying a scene into another
+   * chapter is not something arranging cards asked for. Ids no binder node
+   * carries are ignored (a card can outlive its node within one session; the
+   * trash is not searched). Resolves null, having written nothing, when the
+   * binder is already in that order — the button disables on that, and a
+   * no-op save would still mark the project dirty for the next checkpoint.
+   *
+   * `pins` are written after the binder, to the same project: Apply pins
+   * every unmoved scene where it sat, so the board keeps reading in the
+   * order just applied. One call for the whole operation rather than one
+   * per card, because the save is an await a writer can click another
+   * window across, and anything that read `project` afresh after it would
+   * follow that click into the wrong novel — which, for a clone or a
+   * restored backup sharing this project's ids, means writing the other
+   * novel's open document into this one's file.
+   */
+  applyBoardOrder(orderedIds: string[], pins?: CardPin[]): Promise<BoardUndo | null>
+  /**
+   * The way back from Apply Order: the scenes' order as it was before the
+   * last Apply, or null when there is nothing to undo. **An order, not a
+   * snapshot of the binder.** Undo re-applies it through `applyBoardOrder`,
+   * which only reorders the listed scenes within whatever folder each is in
+   * now — so a scene added, renamed or trashed in between, or a chapter
+   * another device synced in, is left exactly as it is. A snapshot put back
+   * wholesale dropped every one of those, and a document in neither binder
+   * nor trash is a document lost. Per project (`SLICE_KEYS`), so it survives
+   * leaving the board to look at what Apply did, which is the first thing a
+   * writer does.
+   */
+  boardUndo: BoardUndo | null
+  setBoardUndo(undo: BoardUndo | null): void
+  /**
+   * Put back the order of every folder the last Apply changed — only those
+   * folders, and within each only the scenes still in it. A folder the
+   * writer reordered by hand since, or another device synced in, was not
+   * part of the Apply and is not part of its undo; a scene moved to another
+   * folder since stays where it was put. Then forget it.
+   */
+  undoBoardOrder(): Promise<void>
   /** F-32/F-33: per-collection, persisted with the project. */
   setEntitySort(type: EntityType, mode: EntitySortMode): Promise<void>
 
@@ -530,6 +587,7 @@ function emptySlice(): ProjectSlice {
     relationships: [],
     mapPins: [],
     boardStrings: [],
+    boardUndo: null,
     backupSettings: null,
     dailyStats: [],
     syncStatus: null,
@@ -568,7 +626,40 @@ export const useWyrm = create<WyrmState>((set, get) => {
     const { project } = get()
     if (!project) return
     await api.saveProject(project.path, project.data)
-    markDirty()
+    // The project that was saved, not whichever is in front once the save
+    // resolves: a focus change across that await is exactly when the two
+    // differ, and the checkpoint dirt belongs with the write.
+    runtimeFor(project.path).commitDirty = true
+  }
+
+  /**
+   * Writes card positions to `path`, whether or not that project is still
+   * focused. The open document is the one exception to reading from disk —
+   * its in-memory copy is the fresh one — and it lives in the flat fields
+   * while the project is focused but in its parked slice once it is not, so
+   * a focus change mid-loop moves it from one to the other. Each entry looks
+   * it up where it is *now*: the flat `activeDoc` after a switch belongs to
+   * a different project, and with shared ids would be written into this one.
+   */
+  async function writePositions(path: string, pins: CardPin[]): Promise<void> {
+    const openDoc = (): DocFile | null => {
+      const now = get()
+      return (now.project?.path === path ? now : now.parked[path])?.activeDoc ?? null
+    }
+    const setOpenDoc = (doc: DocFile): void => {
+      const now = get()
+      if (now.project?.path === path) set({ activeDoc: doc })
+      else if (now.parked[path])
+        set({ parked: { ...now.parked, [path]: { ...now.parked[path], activeDoc: doc } } })
+    }
+    for (const { id, x, y } of pins) {
+      const open = openDoc()
+      const doc = open?.meta.id === id ? open : await api.readDoc(path, id)
+      const updated: DocFile = { ...doc, meta: { ...doc.meta, boardX: x, boardY: y } }
+      await api.writeDoc(path, updated)
+      if (open?.meta.id === id) setOpenDoc(updated)
+    }
+    if (pins.length) runtimeFor(path).commitDirty = true
   }
 
   function setProject(project: ProjectInfo | null): void {
@@ -710,7 +801,13 @@ export const useWyrm = create<WyrmState>((set, get) => {
       viewHistory: [],
       syncStatus: null,
       syncConflicts: null,
-      syncNeedsAttention: false
+      syncNeedsAttention: false,
+      // A different project is a different undo, as it is a different view
+      // history. Left out, the last project's record came along and lit the
+      // button in a novel nothing had been applied to — and in a restored
+      // backup or a clone, which share the original's ids, pressing it would
+      // have rewritten that copy's binder to an order it never had.
+      boardUndo: null
     })
     const runtime = runtimeFor(info.path)
     if (runtime.commitTimer) clearInterval(runtime.commitTimer)
@@ -769,6 +866,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     relationships: [],
     mapPins: [],
     boardStrings: [],
+    boardUndo: null,
     backupSettings: null,
     appearance: null,
     statsSettings: null,
@@ -1621,6 +1719,89 @@ export const useWyrm = create<WyrmState>((set, get) => {
         setProject({ ...project })
         await persistProject()
       }
+    },
+
+    setBoardUndo(undo) {
+      set({ boardUndo: undo })
+    },
+
+    async undoBoardOrder() {
+      const { boardUndo, project } = get()
+      if (!boardUndo || !project) return
+      // Forgotten before the apply, not after: if the apply throws, offering
+      // the same undo again would re-run the same failure.
+      set({ boardUndo: null })
+      // Each folder's old order, kept to the scenes still in that folder.
+      const ids: string[] = []
+      for (const { parentId, ids: was } of boardUndo) {
+        const parent =
+          parentId === '' ? project.data.binder : findNode(project.data.binder, parentId)?.children
+        if (!parent) continue
+        const present = new Set(parent.filter((n) => n.type === 'doc').map((n) => n.id))
+        ids.push(...was.filter((id) => present.has(id)))
+      }
+      // The apply records its own undo — which would make this a redo. One
+      // step is the promise, so it is forgotten again whether or not the
+      // save landed — and forgotten on *this* project's state, wherever
+      // that is by then: the save is an await a writer can click another
+      // window across, and the flat field would then be another novel's.
+      try {
+        await get().applyBoardOrder(ids)
+      } finally {
+        const now = get()
+        const { path } = project
+        if (now.project?.path === path) set({ boardUndo: null })
+        else if (now.parked[path])
+          set({ parked: { ...now.parked, [path]: { ...now.parked[path], boardUndo: null } } })
+      }
+    },
+
+    async applyBoardOrder(orderedIds, pins = []) {
+      const { project } = get()
+      if (!project) return null
+      // First mention wins, so a duplicated id cannot rank a scene twice.
+      const rank = new Map<string, number>()
+      orderedIds.forEach((id, i) => {
+        if (!rank.has(id)) rank.set(id, i)
+      })
+      const record: BoardUndo = []
+      // Per parent: the movable docs are lifted out of their slots and dealt
+      // back into those same slots in board order. Slots, not a sort of the
+      // whole array, is what keeps a sub-folder or a note at its exact index
+      // and keeps every doc inside the parent it started in. A parent whose
+      // deal changes nothing is not recorded, so Undo later touches only
+      // what this call touched.
+      const deal = (siblings: BinderNode[], parentId: string): void => {
+        const slots: number[] = []
+        siblings.forEach((node, i) => {
+          if (node.type === 'doc' && rank.has(node.id)) slots.push(i)
+          if (node.children) deal(node.children, node.id)
+        })
+        const before = slots.map((i) => siblings[i])
+        const movable = [...before].sort((a, b) => rank.get(a.id)! - rank.get(b.id)!)
+        let changed = false
+        slots.forEach((slot, k) => {
+          if (siblings[slot] === movable[k]) return
+          siblings[slot] = movable[k]
+          changed = true
+        })
+        if (changed) record.push({ parentId, ids: before.map((n) => n.id) })
+      }
+      deal(project.data.binder, '')
+      // Nothing moved means nothing written: the save would be a no-op on
+      // disk but would still bump the checkpoint dirt.
+      if (record.length === 0) return null
+      // Recorded before the write, not after: a save that throws leaves the
+      // binder reordered in memory, and that is precisely when the way back
+      // must already exist.
+      set({ boardUndo: record })
+      setProject({ ...project })
+      await persistProject()
+      // After the binder, so a save that throws pins nothing for an order
+      // that never landed; to the path captured above, for the reason the
+      // interface gives.
+      await writePositions(project.path, pins)
+      return record
     },
 
     async setEntitySort(type, mode) {
