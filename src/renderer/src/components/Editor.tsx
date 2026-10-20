@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { JSX, MouseEvent } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
+import { TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import Highlight from '@tiptap/extension-highlight'
 import type { Entity } from '../../../shared/types'
@@ -278,10 +279,21 @@ export function Editor(): JSX.Element {
     setEditor(editor ?? null)
     // Focus the page on doc switch — but never steal focus from an active
     // inline rename (the field would blur and the rename silently cancel).
-    if (editor && !useWyrm.getState().renamingId) {
-      editor.commands.focus('end')
+    // The focus waits a frame, as TipTap's own `focus` does for React, and
+    // the rename is checked when it lands, not now: `commands.focus` defers
+    // its `view.focus()` to a frame of its own, so a rename started in
+    // between (F2 straight after opening a card) lost its field anyway.
+    let frame = 0
+    if (editor) {
+      frame = requestAnimationFrame(() => {
+        if (editor.isDestroyed || useWyrm.getState().renamingId) return
+        const { state, view } = editor
+        view.dispatch(state.tr.setSelection(TextSelection.atEnd(state.doc)).scrollIntoView())
+        view.focus()
+      })
     }
     return () => {
+      cancelAnimationFrame(frame)
       // Save on the way out, before the editor is let go. Typing schedules
       // the save 800ms later, and that save reads the text from the editor —
       // so leaving the page inside that window (⌥⌘B, Esc back to the board,
