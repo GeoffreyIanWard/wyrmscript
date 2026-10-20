@@ -82,6 +82,14 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'Take off the board',
     body: 'Removes this card from the board and nothing else — the character or location stays in its book, and Add Card can bring it back.'
   },
+  'card-turn': {
+    title: 'Turn the card over',
+    body: 'The folded corner turns a scene card over to its back: synopsis, act, scene type, where it happens, the conflict and who is in it — the scene outlined before a word of it is written. The corner stays dark on a card whose back has something on it.'
+  },
+  'card-back': {
+    title: 'The back of the card',
+    body: 'Every field is optional. Enter saves and turns to the next scene in the book; Shift+Enter starts a new line in the synopsis. There is no Cancel — however you close it, what you wrote is kept, and only what you changed is written, so a card you turn past leaves the scene as it was. If a save fails you can try again or close without saving. An unwritten scene shows its synopsis on the front.'
+  },
   'board-add': {
     title: 'Add a card',
     body: 'A new scene, character or location — made for real, as a document in the manuscript or an entry in the story bible, with its card here. Or an entry that already exists, put on the board.'

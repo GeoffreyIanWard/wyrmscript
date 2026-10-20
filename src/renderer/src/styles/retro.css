@@ -3294,6 +3294,11 @@ button {
   display: flex;
   flex-direction: column;
   width: 210px;
+  /* Each card its own stacking context, so its corner controls (the dog-ear,
+     the take-off box) layer within the card. Without it a buried card's
+     dog-ear painted over — and took the clicks of — the card on top of it,
+     in a pile or wherever one card is dropped partly over another. */
+  isolation: isolate;
   background: var(--paper);
   border: 2px solid var(--ink);
   outline: 1px solid var(--paper);
@@ -3458,6 +3463,183 @@ button {
 .scene-card-off:active {
   background: var(--ink);
   color: var(--paper);
+}
+
+/* F-42: the corner that turns a scene card over — a dog-ear, drawn as the
+   paper folded back along a diagonal, so it reads as "this card has another
+   side" without a word or an icon. Faint until the card is hovered, like the
+   take-off box; solid on a card with something written on its back, so an
+   outlined board shows at a glance which cards have been thought about. */
+.scene-card-turn {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: linear-gradient(
+    315deg,
+    transparent 50%,
+    var(--ink) 50%,
+    var(--ink) calc(50% + 1px),
+    var(--paper) calc(50% + 1px)
+  );
+  opacity: 0.35;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.scene-card:hover .scene-card-turn,
+.scene-card-turn:focus-visible,
+.scene-card-turn.written {
+  opacity: 1;
+}
+
+.scene-card-turn:focus-visible {
+  outline: 1px dotted var(--ink);
+}
+
+/* The act and scene type, from the back. One line, like the folder. */
+.scene-card-outline {
+  font-size: 12px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* An unwritten scene's synopsis, in the prose face where its opening will
+   be — set upright, unlike "Not written yet.", because it is the writer's
+   own words rather than the app's. */
+.scene-card-synopsis {
+  font-style: normal;
+}
+
+/* The back of the card: a ruled index card. The rules are dotted, in ink —
+   a full ink line every row would be louder than the writing on it — drawn
+   as a rule every 22px with paper painted over two pixels in every three.
+   The heading's rule is the string's colour: the red line across the top of
+   an index card, in whatever red (or phosphor) this palette's string is. */
+.dialog.card-back {
+  width: 520px;
+}
+
+.card-back-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card-back-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--string);
+}
+
+.card-back-title {
+  flex: 1;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.card-back-count {
+  opacity: 0.65;
+}
+
+.card-back-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.card-back-field > span {
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.card-back-pair {
+  display: flex;
+  gap: 12px;
+}
+
+.card-back-ruled {
+  font-family: var(--font-prose);
+  font-size: 14px;
+  line-height: 22px;
+  padding: 0 4px;
+  resize: vertical;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(to right, var(--paper) 2px, transparent 2px),
+    linear-gradient(to bottom, transparent 21px, var(--ink) 21px);
+  background-size:
+    3px 22px,
+    100% 22px;
+  background-attachment: local;
+  outline: none;
+}
+
+.card-back-ruled:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.card-back-add {
+  display: flex;
+  gap: 8px;
+}
+
+.card-back-add select {
+  flex: 1;
+}
+
+.card-back-cast {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-back-character {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px dotted var(--ink);
+}
+
+.card-back-character-head {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  text-transform: uppercase;
+}
+
+/* The note is the free line: it gets the full width. */
+.card-back-character > input:last-child {
+  grid-column: 1 / -1;
+}
+
+.card-back-remove {
+  font: inherit;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  line-height: 1;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+}
+
+.corkboard-board.stringing .scene-card-turn {
+  display: none;
 }
 
 /* Stacked: cards overlap in piles, so the face stops clipping its own

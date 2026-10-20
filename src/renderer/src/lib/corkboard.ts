@@ -10,6 +10,7 @@ import { SCENE_TAG } from '../../../shared/types'
 import { walk } from './tree'
 import { folderPaths, plainTextOf } from './search'
 import { locationChain } from './locations'
+import { hasBack, outlineLine } from './cardBack'
 
 /**
  * The corkboard: the story's pieces as index cards.
@@ -55,6 +56,16 @@ export interface BoardCard {
    * above Part One is not an order applying could give the book.
    */
   parentId?: string
+  /**
+   * F-42, from the back of the card: the synopsis, cut like an excerpt, and
+   * the act and scene type as one line. An unwritten scene shows its
+   * synopsis where the opening would be, so an outlined board reads as an
+   * outline rather than a wall of "Not written yet."
+   */
+  synopsis?: string
+  outline?: string
+  /** Something is written on the back. */
+  back?: boolean
 }
 
 /** The board's original card type; a scene is one kind of card now. */
@@ -208,7 +219,10 @@ export function sceneCards(docs: DocFile[], binder: BinderNode[]): BoardCard[] {
       excerpt: excerptOf(doc.body),
       empty: text === '',
       boardX: doc.meta.boardX,
-      boardY: doc.meta.boardY
+      boardY: doc.meta.boardY,
+      synopsis: doc.meta.synopsis ? excerptOf(doc.meta.synopsis) : undefined,
+      outline: outlineLine(doc.meta) || undefined,
+      back: hasBack(doc.meta)
     })
   })
   return cards
