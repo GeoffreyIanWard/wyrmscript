@@ -44,13 +44,15 @@ const cloneDoc = (doc: DocFile): DocFile => ({ meta: { ...doc.meta }, body: doc.
 const cloneEntity = (entity: Entity): Entity => ({ ...entity, aliases: [...entity.aliases] })
 
 /**
- * F-47: what every "chosen" portrait is in the browser preview — a 1×1
- * transparent PNG. It stands in for the native picker, which does not exist
- * in a browser tab, so the mock has no way to ask for a real file; one real
- * image is enough for a card and the editor to show that a portrait is set.
+ * F-47: what every "chosen" portrait is in the browser preview. It stands in
+ * for the native picker, which does not exist in a browser tab. A colour
+ * head-and-shoulders silhouette over a gradient rather than a single pixel:
+ * the palettes print portraits in their own two inks, and judging that needs
+ * an image with colour, shadows and highlights in it. Base64, the shape main
+ * hands back for a real file.
  */
 const DEMO_PORTRAIT =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII='
+  'data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc5NicgaGVpZ2h0PSc5Nic+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSdnJyB4Mj0nMScgeTI9JzEnPjxzdG9wIG9mZnNldD0nMCcgc3RvcC1jb2xvcj0nI2Y2ZDM2NScvPjxzdG9wIG9mZnNldD0nMScgc3RvcC1jb2xvcj0nIzJiNTg3NicvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSc5NicgaGVpZ2h0PSc5NicgZmlsbD0ndXJsKCNnKScvPjxjaXJjbGUgY3g9JzQ4JyBjeT0nMzgnIHI9JzE4JyBmaWxsPScjYzAzOTJiJy8+PHBhdGggZD0nTTE0IDk2YzQtMjQgMTgtMzQgMzQtMzRzMzAgMTAgMzQgMzR6JyBmaWxsPScjNDAyMDIwJy8+PC9zdmc+'
 
 /** Mirrors main's `ENTITY_DIRS`, which the renderer cannot import: the name
  *  handed back has to be the one the real import would write on the entry. */

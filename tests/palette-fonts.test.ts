@@ -102,3 +102,87 @@ describe('palette fonts', () => {
     expect(overrides).toEqual(['manuscript'])
   })
 })
+
+/**
+ * The board's string and portraits, per palette. Both are judged against the
+ * palette's own colours, so the test resolves them the way the cascade does:
+ * every top-level rule naming the palette exactly (grouped or not), last
+ * declaration wins, `var(--ink)`/`var(--paper)` followed one step, `:root`
+ * where the palette says nothing.
+ */
+describe('the board, per palette', () => {
+  const palettes = [...bare.matchAll(/\[data-palette='(\w+)'\][^{]*\{([^}]*)\}/g)]
+    .filter(([, , body]) => body.includes('--dither-25:'))
+    .map(([, name]) => name)
+
+  const declared = (selector: string, prop: string): string | undefined => {
+    let value: string | undefined
+    for (const [, selectors, body] of bare.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (!selectors.split(',').some((s) => s.trim() === selector)) continue
+      const hit = [...body.matchAll(new RegExp(`${prop}:\\s*([^;]+);`, 'g'))].pop()
+      if (hit) value = hit[1].trim()
+    }
+    return value
+  }
+
+  const resolve = (palette: string, prop: string): string => {
+    const raw = declared(`[data-palette='${palette}']`, prop) ?? declared(':root', prop)
+    expect(raw, `${palette} has no ${prop}`).toBeTruthy()
+    const ref = /^var\((--[\w-]+)\)$/.exec(raw!)
+    return ref ? resolve(palette, ref[1]) : raw!
+  }
+
+  const luminance = (hex: string): number => {
+    const h = hex.replace('#', '')
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    const lin = (c: number): number => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+  }
+  const contrast = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (hi + 0.05) / (lo + 0.05)
+  }
+
+  it('finds every palette', () => {
+    expect(palettes.length).toBe(16)
+  })
+
+  it("draws every palette's string at 3:1 or better against its paper", () => {
+    // WCAG's floor for graphics. The root red is 6.5:1 on white and under
+    // 2:1 on Blueprint's blue, where it all but vanished into the cork.
+    for (const name of palettes) {
+      const string = resolve(name, '--string')
+      expect(string, `${name}'s string is not a colour`).toMatch(/^#[0-9a-f]{6}$/i)
+      expect(
+        contrast(string, resolve(name, '--paper')),
+        `${name}'s string (${string}) against its paper`
+      ).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  it('prints portraits with the darker ink in the shadows, never as a negative', () => {
+    for (const name of palettes) {
+      const lo = resolve(name, '--duo-lo')
+      const hi = resolve(name, '--duo-hi')
+      expect(luminance(lo), `${name}'s portrait would print as a negative`).toBeLessThan(
+        luminance(hi)
+      )
+      // And in the palette's own two inks, nothing else.
+      expect([lo, hi].sort()).toEqual([resolve(name, '--ink'), resolve(name, '--paper')].sort())
+    }
+  })
+
+  it('gives the one-colour screens no red, and makes their string glow', () => {
+    for (const name of ['green', 'amber', 'vaporwave', 'virtualwyrm']) {
+      expect(resolve(name, '--string')).toBe(resolve(name, '--ink'))
+      expect(resolve(name, '--string-glow')).toContain('drop-shadow')
+    }
+  })
+
+  it('draws the string, dash and glow from the variables, so a palette can restate them', () => {
+    const path = ruleBody('.board-string path')
+    expect(path).toContain('stroke: var(--string)')
+    expect(path).toContain('stroke-dasharray: var(--string-dash)')
+    expect(path).toContain('filter: var(--string-glow)')
+  })
+})
