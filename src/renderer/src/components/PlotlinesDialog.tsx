@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { DocFile, Plotline } from '../../../shared/types'
 import { PLOTLINE_COLOURS, SCENE_TAG } from '../../../shared/types'
 import { api } from '../lib/api'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { plotlineNameProblem } from '../lib/plotlineName'
 import { useWyrm } from '../store'
 
 /**
@@ -58,6 +59,7 @@ function PlotlineRow({
         </div>
         <input
           className="text-field plotline-name"
+          aria-label="Plotline name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => {
@@ -156,9 +158,25 @@ export function PlotlinesDialog({ onClose }: { onClose: () => void }): JSX.Eleme
     void selectDoc(id)
   }
 
+  // Add is never disabled. It used to be, on an empty field — and the field
+  // empties after every add, so the second press was dead with no sign why.
+  // Now a press it cannot act on says what is missing, beside the field, and
+  // puts the caret back in it.
+  const [problem, setProblem] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+
   const add = (): void => {
-    if (!name.trim()) return
-    void createPlotline(name)
+    const why = plotlineNameProblem(
+      name,
+      plotlines.map((p) => p.name)
+    )
+    if (why) {
+      setProblem(why)
+      nameRef.current?.focus()
+      return
+    }
+    setProblem(null)
+    void createPlotline(name.trim())
     setName('')
   }
 
@@ -176,18 +194,31 @@ export function PlotlinesDialog({ onClose }: { onClose: () => void }): JSX.Eleme
         <div className="dialog-body">
           <div className="entry-field plotline-add">
             <input
+              ref={nameRef}
               className="text-field"
               placeholder="New plotline name…"
+              aria-label="New plotline name"
+              aria-invalid={problem != null}
+              aria-describedby={problem != null ? 'plotline-add-problem' : undefined}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value)
+                // Typing is the answer to the warning, so it goes.
+                setProblem(null)
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') add()
               }}
             />
-            <button type="button" className="btn small" disabled={!name.trim()} onClick={add}>
+            <button type="button" className="btn small" onClick={add}>
               + Add
             </button>
           </div>
+          {problem != null && (
+            <div id="plotline-add-problem" className="dialog-hint add-card-error" role="alert">
+              {problem}
+            </div>
+          )}
 
           {plotlines.length === 0 && (
             <div className="dialog-hint">

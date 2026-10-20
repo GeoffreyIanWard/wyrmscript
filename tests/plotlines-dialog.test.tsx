@@ -5,6 +5,9 @@ import type { DocFile, Plotline, ProjectInfo } from '../src/shared/types'
 import { api } from '../src/renderer/src/lib/api'
 import { useWyrm } from '../src/renderer/src/store'
 import { PlotlinesDialog } from '../src/renderer/src/components/PlotlinesDialog'
+import { plotlineNameProblem } from '../src/renderer/src/lib/plotlineName'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 /**
  * F-04: a plotline is a lightweight record scenes join by tag (matching the
@@ -104,14 +107,68 @@ describe('PlotlinesDialog', () => {
     expect(createPlotline).toHaveBeenCalledWith('Romance')
   })
 
-  it('does not create a blank plotline', async () => {
+  /** A createPlotline that does what the store does: add the row. */
+  const realisticCreate = (): ReturnType<typeof vi.fn> =>
+    vi.fn(async (name: string) => {
+      const made = plotline({ id: `pl-${useWyrm.getState().plotlines.length + 1}`, name })
+      useWyrm.setState({ plotlines: [...useWyrm.getState().plotlines, made] })
+      return made
+    })
+
+  it('says a name is needed when Add is pressed with none, rather than doing nothing', async () => {
+    // Reported: add a plotline, change its colour, toggle Resolved, then
+    // press Add again — nothing happened. The field empties after every add,
+    // and Add was disabled on an empty field while looking exactly like a
+    // live button, so the press was dead with no sign of why.
+    const createPlotline = realisticCreate()
+    await renderDialog([], [], { createPlotline })
+    const input = screen.getByLabelText('New plotline name')
+    fireEvent.change(input, { target: { value: 'Romance' } })
+    const add = screen.getByRole('button', { name: '+ Add' })
+    await act(async () => {
+      fireEvent.click(add)
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Set colour #3f7a3f' }))
+    })
+
+    // The second press, with the field empty again.
+    expect(add).toHaveProperty('disabled', false)
+    await act(async () => {
+      fireEvent.click(add)
+    })
+    expect(createPlotline).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('alert').textContent).toBe('Give the plotline a name first.')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(document.activeElement).toBe(input)
+
+    // Typing answers the warning; Add then adds.
+    fireEvent.change(input, { target: { value: 'Revenge' } })
+    expect(screen.queryByRole('alert')).toBeNull()
+    await act(async () => {
+      fireEvent.click(add)
+    })
+    expect(createPlotline.mock.calls.map(([n]) => n)).toEqual(['Romance', 'Revenge'])
+  })
+
+  it('says the same on Enter in an empty field', async () => {
     const createPlotline = vi.fn(async () => null)
     await renderDialog([], [], { createPlotline })
-
-    const input = screen.getByPlaceholderText('New plotline name…')
-    fireEvent.keyDown(input, { key: 'Enter' })
-
+    fireEvent.keyDown(screen.getByLabelText('New plotline name'), { key: 'Enter' })
     expect(createPlotline).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toBe('Give the plotline a name first.')
+  })
+
+  it('refuses a name another plotline already has, and says why', async () => {
+    const createPlotline = vi.fn(async () => null)
+    await renderDialog([plotline({ name: 'Romance' })], [], { createPlotline })
+    const input = screen.getByLabelText('New plotline name')
+    fireEvent.change(input, { target: { value: ' romance ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(createPlotline).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toContain('already a plotline called “Romance”')
+    // What was typed stays, to be corrected rather than retyped.
+    expect((input as HTMLInputElement).value).toBe(' romance ')
   })
 
   it('renames a plotline on blur, only when the name changed', async () => {
@@ -178,5 +235,34 @@ describe('PlotlinesDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'First Kiss' }))
     expect(showDoc).toHaveBeenCalled()
     expect(selectDoc).toHaveBeenCalledWith('a')
+  })
+})
+
+describe("why a plotline name can't be used", () => {
+  it('is fine for a new name, trimmed', () => {
+    expect(plotlineNameProblem('  Romance ', ['Revenge'])).toBeNull()
+  })
+
+  it('asks for a name when there is none', () => {
+    expect(plotlineNameProblem('   ', [])).toBe('Give the plotline a name first.')
+  })
+
+  it('refuses a name already taken, case-insensitively', () => {
+    expect(plotlineNameProblem('ROMANCE', [' Romance'])).toContain('“Romance”')
+  })
+})
+
+describe('a disabled button', () => {
+  it("looks disabled — every .btn, not only this dialog's", () => {
+    // jsdom has no cascade worth asserting through, so this reads the
+    // stylesheet: there was no `.btn:disabled` rule at all, which is how
+    // Add could be dead while looking live.
+    const css = readFileSync(join(__dirname, '../src/renderer/src/styles/retro.css'), 'utf8')
+    const rule = /\n\.btn:disabled \{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(rule).toContain('background-clip: text')
+    expect(rule).toContain('var(--dither-50)')
+    expect(rule).toContain('color: transparent')
+    // ...and pressing one does not invert it as if it had been pressed.
+    expect(css).toContain('.btn:active:not(:disabled)')
   })
 })

@@ -1923,9 +1923,27 @@ button {
   white-space: nowrap;
 }
 
-.btn:active {
+.btn:active:not(:disabled) {
   background: var(--ink);
   color: var(--paper);
+}
+
+/* A disabled button looks disabled. There was no rule for this at all, so
+   every disabled .btn in every dialog — a dozen of them — looked exactly
+   like a live one, and pressing it did nothing with no sign why (a plotline
+   could not be added a second time, as far as anyone could tell). The same
+   two-ink dither through the label that every other disabled control uses,
+   rather than an opacity, which would blend ink and paper into a third
+   colour. Clipping the background to the text takes the paper fill with it,
+   which is fine here — a .btn sits on a dialog's paper — and the border is
+   dotted so the box reads as inactive too. */
+.btn:disabled {
+  color: transparent;
+  background: var(--dither-50) 0 0 / 2px 2px;
+  -webkit-background-clip: text;
+  background-clip: text;
+  border-style: dotted;
+  cursor: default;
 }
 
 .btn.default {
