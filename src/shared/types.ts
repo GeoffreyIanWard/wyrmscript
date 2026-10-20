@@ -77,8 +77,37 @@ export interface DocMeta {
    */
   boardX?: number
   boardY?: number
+  /*
+   * F-42: the back of the card — a scene outlined before any prose exists.
+   * Every field optional and absent until written; a cleared field is a
+   * deleted key, never an empty one (`lib/cardBack.ts` is the one writer).
+   */
+  /** What happens, in a line or three. */
+  synopsis?: string
+  /** Which act the scene falls in. A free label ("II", "Act Two") — an
+   *  annotation like `tension`, never a container in the binder. */
+  act?: string
+  /** Free text with remembered suggestions, like tags. */
+  sceneType?: string
+  /** A World Book entry's id: where the scene happens. */
+  location?: string
+  /** What is at stake between whom. */
+  conflict?: string
+  /** Who is in the scene — the first stored link from a scene to the
+   *  story bible, which otherwise is only ever derived from the prose. */
+  cast?: CastEntry[]
   created: string
   modified: string
+}
+
+/** F-42: one character in a scene, and what they bring to it. */
+export interface CastEntry {
+  /** A Character Book entry's id. */
+  entityId: string
+  motivation?: string
+  goal?: string
+  /** Anything scene-specific the other two do not cover. */
+  note?: string
 }
 
 /**

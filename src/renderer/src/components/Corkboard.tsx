@@ -18,6 +18,7 @@ import {
 } from '../lib/corkboard'
 import type { PlacedCard, Point } from '../lib/corkboard'
 import { AddCardDialog } from './AddCardDialog'
+import { CardBack } from './CardBack'
 
 /**
  * The corkboard: the story's pieces as index cards, placed where the writer
@@ -67,6 +68,11 @@ export function Corkboard({
   const [addingFor, setAddingFor] = useState<string | null>(null)
   const adding = addingFor != null && addingFor === project?.path
   const setAdding = (on: boolean): void => setAddingFor(on ? (project?.path ?? null) : null)
+  // F-42: the card turned over, and the project it was turned in. Derived
+  // the same way as Add Card, for the same reason: the back writes to the
+  // project in front, so it must not outlive that project being in front.
+  const [turned, setTurned] = useState<{ path: string; id: string } | null>(null)
+  const turnedId = turned != null && turned.path === project?.path ? turned.id : null
 
   /**
    * Dragging is **pointer events, not HTML5 drag-and-drop.**
@@ -604,6 +610,20 @@ export function Corkboard({
             {/* The pin. Decorative, so it is hidden from assistive tech — the
                 card's own button carries the name and the action. */}
             <span className="scene-card-pin" aria-hidden="true" />
+            {card.kind === 'scene' && !stringMode && (
+              // Turns the card over to its back (F-42). A sibling of the face
+              // for the same reason as the take-off box, and it swallows the
+              // press so turning a card over never starts a drag.
+              <button
+                type="button"
+                className={`scene-card-turn${card.back ? ' written' : ''}`}
+                data-help="card-turn"
+                aria-label={`Turn ${card.title} over${card.back ? ', outlined' : ''}`}
+                title="Turn over"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => project && setTurned({ path: project.path, id: card.id })}
+              />
+            )}
             {card.kind !== 'scene' && (
               // Takes the card off the board and nothing else: the entry stays
               // in its book. A sibling of the face, not a child — a button
@@ -632,6 +652,16 @@ export function Corkboard({
                 data-help="scene-card"
                 onClick={(e) => open(card, e)}
                 aria-label={`Open ${card.title}`}
+                // What the front says from the back — the act and type, and
+                // an unwritten scene's synopsis — is otherwise only seen.
+                aria-describedby={
+                  [
+                    card.outline != null && `card-${card.id}-outline`,
+                    card.empty && card.synopsis != null && `card-${card.id}-synopsis`
+                  ]
+                    .filter(Boolean)
+                    .join(' ') || undefined
+                }
               >
                 <CardFace card={card} />
               </button>
@@ -684,6 +714,16 @@ export function Corkboard({
         </svg>
       </div>
       {adding && <AddCardDialog onClose={() => setAdding(false)} />}
+      {turned != null && turnedId != null && docs != null && (
+        <CardBack
+          path={turned.path}
+          sceneIds={cards.filter((c) => c.kind === 'scene').map((c) => c.id)}
+          startId={turnedId}
+          docs={docs}
+          onWritten={reloadDocs}
+          onClose={() => setTurned(null)}
+        />
+      )}
     </div>
   )
 }
@@ -701,8 +741,22 @@ function CardFace({ card, portrait }: { card: PlacedCard; portrait?: string }): 
         <span className="scene-card-title">{card.title}</span>
       </span>
       {card.folder !== '' && <span className="scene-card-folder">{card.folder}</span>}
+      {card.outline != null && (
+        <span className="scene-card-outline" id={`card-${card.id}-outline`}>
+          {card.outline}
+        </span>
+      )}
       <span className="scene-card-excerpt">
-        {card.empty ? <em>Not written yet.</em> : card.excerpt}
+        {!card.empty ? (
+          card.excerpt
+        ) : card.synopsis != null ? (
+          // An outlined scene shows what it will be, from the back of the card.
+          <span className="scene-card-synopsis" id={`card-${card.id}-synopsis`}>
+            {card.synopsis}
+          </span>
+        ) : (
+          <em>Not written yet.</em>
+        )}
       </span>
       <span className="scene-card-foot">
         <span>{card.wordCount.toLocaleString()} words</span>

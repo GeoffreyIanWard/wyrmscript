@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
 import type {
+  DocMeta,
   AppearanceSettings,
   BackupRun,
   BackupSettings,
@@ -38,6 +39,7 @@ import { docToMarkdown, markdownToDoc, countWords } from './lib/markdown'
 import { buildEntityIndex, type EntityIndex } from './lib/entities'
 import { refreshEntityLinks } from './lib/entityLinks'
 import { findNode, firstDoc, moveNode, removeNode, type DropPosition } from './lib/tree'
+import { withPatch, type BackPatch } from './lib/cardBack'
 
 export type SaveState = 'saved' | 'dirty' | 'saving'
 
@@ -271,6 +273,15 @@ interface WyrmState {
   /** F-03: a scene's tension, set by dragging its node on the plot graph.
    *  Same doc-id-not-active-doc reasoning as setTimelineOrder. */
   setTension(docId: string, tension: number): Promise<void>
+  /**
+   * F-42: write the fields of a scene card's back that the writer changed,
+   * over the document as it is now — so a field another device synced in
+   * meanwhile survives an edit to a different one. Addressed by project
+   * path, never "the project in front": the card back saves as it is torn
+   * down, and by then another novel (perhaps a clone sharing these ids)
+   * may be in front. Resolves the document as written.
+   */
+  setCardBack(path: string, docId: string, patch: BackPatch): Promise<DocFile>
   /** Palette, accents and page geometry (F-05, F-06); null until loaded. */
   appearance: AppearanceSettings | null
   loadAppearance(): Promise<void>
@@ -642,24 +653,49 @@ export const useWyrm = create<WyrmState>((set, get) => {
    * a different project, and with shared ids would be written into this one.
    */
   async function writePositions(path: string, pins: CardPin[]): Promise<void> {
+    for (const { id, x, y } of pins)
+      await updateDocAt(path, id, (meta) => ({ ...meta, boardX: x, boardY: y }))
+  }
+
+  /**
+   * Rewrites one document's metadata in the project at `path`, whether or not
+   * that project is still in front. The open document is the one exception
+   * to reading from disk — its in-memory copy is the fresh one, and the next
+   * autosave writes that copy, so it must carry the change too — and it lives
+   * in the flat fields while its project is focused but in the parked slice
+   * once it is not. It is looked up where it is *now*: after a focus change
+   * the flat `activeDoc` belongs to a different project, and a clone shares
+   * this one's ids, so taking it would write the other novel's text here.
+   */
+  async function updateDocAt(
+    path: string,
+    id: string,
+    change: (meta: DocMeta) => DocMeta
+  ): Promise<DocFile> {
     const openDoc = (): DocFile | null => {
       const now = get()
       return (now.project?.path === path ? now : now.parked[path])?.activeDoc ?? null
     }
-    const setOpenDoc = (doc: DocFile): void => {
+    const open = openDoc()
+    const doc = open?.meta.id === id ? open : await api.readDoc(path, id)
+    const updated: DocFile = { ...doc, meta: change(doc.meta) }
+    await api.writeDoc(path, updated)
+    if (openDoc()?.meta.id === id) {
       const now = get()
-      if (now.project?.path === path) set({ activeDoc: doc })
+      if (now.project?.path === path) set({ activeDoc: { ...now.activeDoc!, meta: updated.meta } })
       else if (now.parked[path])
-        set({ parked: { ...now.parked, [path]: { ...now.parked[path], activeDoc: doc } } })
+        set({
+          parked: {
+            ...now.parked,
+            [path]: {
+              ...now.parked[path],
+              activeDoc: { ...now.parked[path].activeDoc!, meta: updated.meta }
+            }
+          }
+        })
     }
-    for (const { id, x, y } of pins) {
-      const open = openDoc()
-      const doc = open?.meta.id === id ? open : await api.readDoc(path, id)
-      const updated: DocFile = { ...doc, meta: { ...doc.meta, boardX: x, boardY: y } }
-      await api.writeDoc(path, updated)
-      if (open?.meta.id === id) setOpenDoc(updated)
-    }
-    if (pins.length) runtimeFor(path).commitDirty = true
+    runtimeFor(path).commitDirty = true
+    return updated
   }
 
   function setProject(project: ProjectInfo | null): void {
@@ -1294,6 +1330,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await api.writeDoc(project.path, updated)
       if (docId === activeId) set({ activeDoc: updated })
       markDirty()
+    },
+
+    async setCardBack(path, docId, patch) {
+      return updateDocAt(path, docId, (meta) => withPatch(meta, patch))
     },
 
     async setTension(docId, tension) {
