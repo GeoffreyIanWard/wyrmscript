@@ -24,9 +24,21 @@
   /* F-46: the corkboard's string. Deliberately a third colour on a two-colour
      palette — red string between thumbtacks is the one thing everyone
      recognises a pinboard by, and an ink-coloured string would read as a
-     ruled line. A palette may restate it; none of the sixteen do, and
-     `tests/palette-fonts.test.ts` deliberately does not check it. */
+     ruled line. A palette restates it when this red cannot hold its own
+     against the palette's paper, or when the palette's medium has no red
+     to give (see "The board, per palette"). `tests/palette-fonts.test.ts`
+     holds every palette's string to 3:1 against its paper. */
   --string: #b3261e;
+  /* How the string is drawn: a dash pattern (none is a solid string) and a
+     glow. Blueprint draughts it; the phosphor screens make it glow. */
+  --string-dash: none;
+  --string-glow: none;
+  /* F-47: portraits are printed in the palette's two inks — dark tones in
+     --duo-lo, light in --duo-hi — so a photograph sits on the page as the
+     palette would have printed it. Lo is the darker of ink and paper, so a
+     palette with light ink on dark paper swaps them. */
+  --duo-lo: var(--ink);
+  --duo-hi: var(--paper);
   --cork: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cpath d='M6 60h1v1h-1zM70 43h2v2h-2zM50 33h1v1h-1zM89 14h2v2h-2zM30 55h1v1h-1zM24 72h2v2h-2zM9 28h1v1h-1zM86 83h1v1h-1zM34 94h1v1h-1zM65 76h1v1h-1zM57 11h2v2h-2zM16 7h1v1h-1zM27 37h1v1h-1zM47 50h1v1h-1zM78 65h1v1h-1zM38 19h1v1h-1zM75 2h1v1h-1zM13 86h1v1h-1zM43 69h1v1h-1zM53 90h1v1h-1zM92 40h1v1h-1z' fill='%23000'/%3E%3C/svg%3E");
 
   /* Scrollbar arrow glyphs (recolored by phosphor themes) */
@@ -3589,6 +3601,8 @@ button {
   stroke: var(--string);
   stroke-width: 2px;
   stroke-linecap: round;
+  stroke-dasharray: var(--string-dash);
+  filter: var(--string-glow);
 }
 
 /* A thumbtack head: red, with a paper highlight so it reads as a dome on
@@ -3616,23 +3630,53 @@ button {
 }
 
 /* Portraits (F-47). On the card, a small square beside the title; in the
-   editor, a larger one with the controls beside it. Both grayscale: a colour
-   photograph on a two-colour page reads as a sticker from another app, while
-   a grey one sits on the cork like a clipping. One line to remove if the
-   writer's own art is meant to be seen in colour. */
+   editor, a larger one with the controls beside it. Both printed in the
+   palette's two inks: a colour photograph on a two-colour page reads as a
+   sticker from another app, while a duotone sits on the cork like a
+   clipping from the same press.
+
+   The print is three layers, isolated so nothing blends with the card
+   behind: the frame is --duo-hi; the image, in greys, multiplies onto it
+   (white keeps hi, black goes black); --duo-lo over the top with `lighten`
+   lifts the black to lo. Dark tones in one ink, light in the other. */
+.portrait-print {
+  position: relative;
+  display: block;
+  flex: none;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--duo-hi);
+}
+
+.portrait-print img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(1) contrast(1.15);
+  mix-blend-mode: multiply;
+}
+
+.portrait-print::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--duo-lo);
+  mix-blend-mode: lighten;
+  pointer-events: none;
+}
+
 .scene-card-head {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
 
-.scene-card-portrait {
+.scene-card-portrait-frame {
   width: 36px;
   height: 36px;
-  flex: none;
-  object-fit: cover;
+  box-sizing: border-box;
   border: 1px solid var(--ink);
-  filter: grayscale(1);
 }
 
 .entity-portrait {
@@ -3641,7 +3685,7 @@ button {
   align-items: flex-start;
 }
 
-.entity-portrait-img,
+.entity-portrait-frame,
 .entity-portrait-empty {
   width: 96px;
   height: 96px;
@@ -3649,11 +3693,9 @@ button {
   box-sizing: border-box;
 }
 
-.entity-portrait-img {
-  object-fit: cover;
+.entity-portrait-frame {
   border: 2px solid var(--ink);
   outline: 1px solid var(--paper);
-  filter: grayscale(1);
 }
 
 .entity-portrait-empty {
@@ -3671,4 +3713,83 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* ---------- The board, per palette ---------- */
+
+/* Light ink on dark paper: the portrait's dark tones print in the paper and
+   its light tones in the ink, or the print comes out as a negative. */
+[data-palette='dark'],
+[data-palette='blueprint'],
+[data-palette='bios'],
+[data-palette='collegiate'],
+[data-palette='green'],
+[data-palette='amber'],
+[data-palette='vaporwave'],
+[data-palette='virtualwyrm'],
+[data-palette='arcade'],
+[data-palette='famicom'] {
+  --duo-lo: var(--paper);
+  --duo-hi: var(--ink);
+}
+
+/* A one-colour tube has no red to give. The string is drawn in the phosphor
+   and glows like everything else on the screen. */
+[data-palette='green'],
+[data-palette='amber'],
+[data-palette='vaporwave'],
+[data-palette='virtualwyrm'] {
+  --string: var(--ink);
+  --string-glow: drop-shadow(0 0 2px var(--ink));
+}
+
+/* A blueprint has no red either: the string is a draughtsman's construction
+   line, white and dashed, which is how a connection is drawn on a plan. */
+[data-palette='blueprint'] {
+  --string: var(--ink);
+  --string-dash: 7 3;
+}
+
+/* Reds that hold their own on the paper — this red falls under 3:1 on a dark
+   ground. Each from its machine where it had one: CGA light red on the BIOS
+   blue, the NES palette's red on the Famicom. */
+[data-palette='dark'] {
+  --string: #e5483d;
+}
+
+[data-palette='bios'] {
+  --string: #ff5555;
+}
+
+[data-palette='collegiate'] {
+  --string: #ff6b5b;
+}
+
+[data-palette='arcade'] {
+  --string: #ff3b30;
+}
+
+[data-palette='famicom'] {
+  --string: #f83800;
+}
+
+/* Win95's own dark red, from the sixteen system colours. */
+[data-palette='win95'] {
+  --string: #800000;
+}
+
+/* Bookkeeper's red ink. */
+[data-palette='ledger'] {
+  --string: #a3201a;
+}
+
+/* Halftone screens the portrait too: a sheet of paper with a regular grid
+   of holes over the print, so the picture comes through as dots. */
+[data-palette='halftone'] .portrait-print::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: radial-gradient(circle, transparent 0 0.9px, var(--paper) 1.4px) 0 0 / 3px 3px;
+  pointer-events: none;
 }

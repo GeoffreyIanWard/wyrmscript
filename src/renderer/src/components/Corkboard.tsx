@@ -693,7 +693,11 @@ function CardFace({ card, portrait }: { card: PlacedCard; portrait?: string }): 
   return (
     <>
       <span className="scene-card-head">
-        {portrait && <img className="scene-card-portrait" src={portrait} alt="" />}
+        {portrait && (
+          <span className="portrait-print scene-card-portrait-frame">
+            <img className="scene-card-portrait" src={portrait} alt="" />
+          </span>
+        )}
         <span className="scene-card-title">{card.title}</span>
       </span>
       {card.folder !== '' && <span className="scene-card-folder">{card.folder}</span>}

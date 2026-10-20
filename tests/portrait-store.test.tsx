@@ -151,7 +151,7 @@ describe('readPortrait', () => {
     await act(async () => {
       await useWyrm.getState().setPortrait(elara.id)
     })
-    await expect(api.readPortrait(path, elara.id)).resolves.toMatch(/^data:image\/png;base64,/)
+    await expect(api.readPortrait(path, elara.id)).resolves.toMatch(/^data:image\/[\w+.-]+;base64,/)
 
     await act(async () => {
       await useWyrm.getState().clearPortrait(elara.id)

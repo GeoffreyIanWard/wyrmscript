@@ -142,7 +142,9 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
             <div className="field-name">PORTRAIT</div>
             <div className="entity-portrait" data-help="entity-portrait">
               {portrait ? (
-                <img className="entity-portrait-img" src={portrait} alt="" />
+                <span className="portrait-print entity-portrait-frame">
+                  <img className="entity-portrait-img" src={portrait} alt="" />
+                </span>
               ) : (
                 <div className="entity-portrait-empty" aria-hidden="true">
                   none
