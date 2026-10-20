@@ -303,6 +303,15 @@ describe('Esc that something else has used', () => {
     // The scene finishes opening before its row is renamed — read too early,
     // activeId is still the document that was open before.
     await waitFor(() => expect(useWyrm.getState().activeDoc?.meta.title).toBe(first))
+    // And the editor has mounted and taken its focus: a rename started
+    // before then loses its field to the editor's deferred focus, which
+    // blurs and cancels it — a separate race, not what this test is about.
+    await waitFor(() =>
+      expect(document.activeElement?.classList.contains('ProseMirror')).toBe(true)
+    )
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
     const id = useWyrm.getState().activeId!
     await act(async () => {
       useWyrm.getState().startRename(id)

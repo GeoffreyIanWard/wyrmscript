@@ -48,6 +48,17 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ]
   },
   {
+    title: 'On the corkboard',
+    items: [
+      { keys: '⌥⌘N', what: 'Add a card' },
+      { keys: '← → ↑ ↓', what: 'To the nearest card that way' },
+      { keys: '⌥ + arrows', what: 'Nudge the card (⇧ for a bigger step)' },
+      { keys: 'Return', what: 'Open the card, or pin it with the string tool up' },
+      { keys: '⇧Return', what: 'Turn a scene card over' },
+      { keys: 'Delete', what: 'Pull the focused pin, with the string tool up' }
+    ]
+  },
+  {
     title: 'The page',
     items: [
       { keys: '⌥⌘F', what: 'Focus mode' },

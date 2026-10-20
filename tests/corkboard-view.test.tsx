@@ -735,7 +735,9 @@ describe('strings between cards (F-46)', () => {
   /** A click at a point: the face handler reads clientX/Y to place the pin. */
   const clickAt = async (el: HTMLElement, x: number, y: number): Promise<void> => {
     await act(async () => {
-      fireEvent.click(el, { clientX: x, clientY: y })
+      // detail: 1 is what a real mouse click carries; 0 is a keyboard press,
+      // which pins at the card's top instead of where it was clicked.
+      fireEvent.click(el, { clientX: x, clientY: y, detail: 1 })
     })
   }
 

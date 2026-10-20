@@ -312,6 +312,17 @@ export function MenuBar({
           disabled: !hasProject,
           action: () => useWyrm.getState().toggleCorkboard()
         },
+        {
+          kind: 'item',
+          label: 'Add Card…',
+          shortcut: '⌥⌘N',
+          disabled: !hasProject,
+          // The menu bar sits above dialogs, so this can be chosen with one
+          // open; Add Card would then take focus behind it.
+          action: () => {
+            if (!document.querySelector('.dialog-overlay')) useWyrm.getState().openAddCard()
+          }
+        },
         { kind: 'sep' },
         { kind: 'item', label: 'Timeline…', disabled: !hasProject, action: onTimeline },
         { kind: 'item', label: 'Plot Graph…', disabled: !hasProject, action: onPlotGraph },

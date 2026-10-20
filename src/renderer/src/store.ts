@@ -476,6 +476,16 @@ interface WyrmState {
   showStats(): void
   /** The corkboard: every scene as an index card, in binder order. */
   showCorkboard(): void
+  /**
+   * Add Card is open for this project — kept in the store, not the board,
+   * so the menu, the command palette and ⌥⌘N can open it from anywhere. The
+   * board shows it only while this is the project in front, so a change of
+   * focus dismisses it rather than letting it add to another novel.
+   */
+  addCardFor: string | null
+  /** Show the board, with Add Card open on it. */
+  openAddCard(): void
+  closeAddCard(): void
   /** Switch between the corkboard and the manuscript (⌥⌘B). */
   toggleCorkboard(): void
   /**
@@ -872,7 +882,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // button in a novel nothing had been applied to — and in a restored
       // backup or a clone, which share the original's ids, pressing it would
       // have rewritten that copy's binder to an order it never had.
-      boardUndo: null
+      boardUndo: null,
+      addCardFor: null
     })
     const runtime = runtimeFor(info.path)
     if (runtime.commitTimer) clearInterval(runtime.commitTimer)
@@ -920,6 +931,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     renamingId: null,
     typewriterMode: false,
     helpMode: false,
+    addCardFor: null,
     recentProjects: [],
     entities: [],
     entityIndex: buildEntityIndex([]),
@@ -1078,7 +1090,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // the end of openPaths and therefore renders in front, while every
       // window stays exactly where the writer put it.
       const openPaths = [...get().openPaths.filter((p) => p !== path), path]
-      set({ ...target, parked, openPaths })
+      // A dialog belongs to the window that was in front when it opened.
+      set({ ...target, parked, openPaths, addCardFor: null })
       if (target.stale) {
         // Its files changed under a background sync while it sat parked, so
         // the state just swapped in describes the project as it was before
@@ -2038,6 +2051,17 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({ mainView: { kind: 'corkboard' }, viewHistory: [] })
     },
 
+    openAddCard() {
+      const path = get().project?.path
+      if (!path) return
+      get().showCorkboard()
+      set({ addCardFor: path })
+    },
+
+    closeAddCard() {
+      set({ addCardFor: null })
+    },
+
     setHelpMode(on) {
       set({ helpMode: on })
     },
@@ -2246,4 +2270,17 @@ window.addEventListener('online', () => {
   if (state.syncStatus?.mode === 'github' && state.syncStatus.pendingSync) {
     void state.syncNow(false).catch(() => {})
   }
+})
+
+// Add Card is a dialog on the board: leaving the board ends it. The state
+// lives in the store (so ⌥⌘N, the menu and the palette can open it), which
+// means nothing unmounts it — left set, it popped open again uninvited the
+// next time the board was shown. A subscription rather than a line in every
+// action that changes the view, of which there are many; not a cleanup on
+// the board's unmount, which StrictMode runs on the very first mount and
+// would close the dialog the moment ⌥⌘N opened it.
+useWyrm.subscribe((now, before) => {
+  if (now.addCardFor == null) return
+  if (before.mainView.kind === 'corkboard' && now.mainView.kind !== 'corkboard')
+    useWyrm.setState({ addCardFor: null })
 })

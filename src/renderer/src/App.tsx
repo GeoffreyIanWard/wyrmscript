@@ -732,10 +732,10 @@ function App(): JSX.Element {
       } else if (e.key === 'y' && state.activeDoc) {
         e.preventDefault()
         void state.flushSave().then(() => setVersionDialog('history'))
-      } else if (e.key === 'n' && !e.shiftKey && state.project) {
+      } else if (e.key === 'n' && !e.shiftKey && !e.altKey && state.project) {
         e.preventDefault()
         void state.addDoc(null)
-      } else if ((e.key === 'N' || (e.key === 'n' && e.shiftKey)) && state.project) {
+      } else if ((e.key === 'N' || (e.key === 'n' && e.shiftKey)) && !e.altKey && state.project) {
         e.preventDefault()
         void state.addFolder(null)
       } else if ((e.key === 'E' || (e.key === 'e' && e.shiftKey)) && state.project) {
@@ -758,6 +758,14 @@ function App(): JSX.Element {
         // entry above: Option remaps e.key, so this must not check 'f'.
         e.preventDefault()
         setFocusMode((v) => !v)
+      } else if (e.altKey && e.metaKey && !e.shiftKey && e.code === 'KeyN' && state.project) {
+        // ⌥⌘N — Add Card, from anywhere: it brings the board up with the
+        // dialog open. e.code for the same reason as ⌥⌘B below. Not over
+        // another dialog: its trap would take focus into a form hidden
+        // behind the one the writer is looking at.
+        e.preventDefault()
+        if (document.querySelector('.dialog-overlay')) return
+        state.openAddCard()
       } else if (e.altKey && e.metaKey && !e.shiftKey && e.code === 'KeyB' && state.project) {
         // ⌥⌘B — between the corkboard and the manuscript, the two places a
         // writer works. Same `e.code` reasoning as ⌥⌘F and ⌥⌘T: Option
@@ -1046,6 +1054,12 @@ function App(): JSX.Element {
                   title: 'Corkboard',
                   subtitle: 'Corkboard',
                   run: () => useWyrm.getState().toggleCorkboard()
+                },
+                {
+                  id: 'add-card',
+                  title: 'Add Card…',
+                  subtitle: 'Corkboard',
+                  run: () => useWyrm.getState().openAddCard()
                 },
                 {
                   id: 'timeline',
