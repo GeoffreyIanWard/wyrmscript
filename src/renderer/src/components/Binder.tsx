@@ -46,7 +46,13 @@ function RowTitle({ node }: { node: BinderNode }): JSX.Element {
       onBlur={(e) => void finishRename(node.id, e.target.value)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') void finishRename(node.id, e.currentTarget.value)
-        if (e.key === 'Escape') void finishRename(node.id, node.title)
+        if (e.key === 'Escape') {
+          // Used here, so stopped here: App's Esc-as-back listens on the
+          // window, and cancelling a rename must not also walk the writer off
+          // their scene.
+          e.stopPropagation()
+          void finishRename(node.id, node.title)
+        }
       }}
     />
   )

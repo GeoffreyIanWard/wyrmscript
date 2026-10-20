@@ -281,7 +281,17 @@ export function Editor(): JSX.Element {
     if (editor && !useWyrm.getState().renamingId) {
       editor.commands.focus('end')
     }
-    return () => setEditor(null)
+    return () => {
+      // Save on the way out, before the editor is let go. Typing schedules
+      // the save 800ms later, and that save reads the text from the editor —
+      // so leaving the page inside that window (⌥⌘B, Esc back to the board,
+      // opening an entry) used to find no editor and drop the last words
+      // typed. `flushSave` reads the text synchronously, before its first
+      // await, which is what makes calling it here, still holding the
+      // editor, enough.
+      if (editor && useWyrm.getState().editor === editor) void useWyrm.getState().flushSave()
+      setEditor(null)
+    }
   }, [editor, setEditor])
 
   useEffect(() => {

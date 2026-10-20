@@ -683,6 +683,21 @@ function App(): JSX.Element {
       // rather than Esc changing what's on screen twice in one keypress.
       if (e.key === 'Escape') {
         if (document.querySelector('.dialog-overlay')) return
+        // A control that uses Esc for itself — cancelling a rename, closing a
+        // menu — stops it from reaching here, so one keypress never does two
+        // things. Not `defaultPrevented`: ProseMirror prevents the default of
+        // every Esc pressed in the editor, used or not, so that would stop
+        // Esc from ever going back from the page.
+        // On the page in Focus Mode, Esc leaves Focus Mode before it goes
+        // anywhere: a scene opened from a corkboard card remembers the board,
+        // and drafting in it for an hour must not end with Esc swapping the
+        // text for the board. A story-bible detour inside Focus Mode still
+        // unwinds first, as it always has — that view is not the page.
+        if (focusMode && useWyrm.getState().mainView.kind === 'doc') {
+          e.preventDefault()
+          setFocusMode(false)
+          return
+        }
         if (useWyrm.getState().goBack()) {
           e.preventDefault()
           return
