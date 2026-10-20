@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { JSX, PointerEvent as ReactPointerEvent } from 'react'
+import type {
+  JSX,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent
+} from 'react'
 import type { DocFile, StringEnd } from '../../../shared/types'
 import { api } from '../lib/api'
 import { useWyrm } from '../store'
@@ -11,12 +15,47 @@ import {
   CARD_H,
   CARD_W,
   layoutCards,
+  nearestCard,
+  NUDGE,
+  NUDGE_BIG,
+  NUDGE_SETTLE,
   pinOffset,
   stackLayout,
   stringPath,
   stringPoints
 } from '../lib/corkboard'
-import type { PlacedCard, Point } from '../lib/corkboard'
+import type { Direction, PlacedCard, Point } from '../lib/corkboard'
+
+/** Keys held right now, for `afterKeysUp`. One listener for the app's life:
+ *  cheap, and a component-scoped one would miss a key pressed before it
+ *  mounted — exactly the Return that opened what is now closing. */
+const keysDown = new Set<string>()
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e) => keysDown.add(e.code), true)
+  window.addEventListener('keyup', (e) => keysDown.delete(e.code), true)
+  window.addEventListener('blur', () => keysDown.clear())
+}
+
+/** Runs `fn` once no key is held, and after the current event has finished. */
+function afterKeysUp(fn: () => void): void {
+  if (keysDown.size === 0) {
+    setTimeout(fn, 0)
+    return
+  }
+  const onUp = (): void => {
+    if (keysDown.size > 0) return
+    window.removeEventListener('keyup', onUp)
+    setTimeout(fn, 0)
+  }
+  window.addEventListener('keyup', onUp)
+}
+
+const ARROWS: Record<string, Direction | undefined> = {
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right'
+}
 import { AddCardDialog } from './AddCardDialog'
 import { CardBack } from './CardBack'
 
@@ -65,9 +104,22 @@ export function Corkboard({
   // front, so a change of project dismisses it the way App's own dialogs are
   // dismissed — otherwise it would stay open and quietly add its card to
   // whichever novel came to the front.
-  const [addingFor, setAddingFor] = useState<string | null>(null)
+  const addingFor = useWyrm((s) => s.addCardFor)
+  const openAddCard = useWyrm((s) => s.openAddCard)
+  const closeAddCard = useWyrm((s) => s.closeAddCard)
   const adding = addingFor != null && addingFor === project?.path
-  const setAdding = (on: boolean): void => setAddingFor(on ? (project?.path ?? null) : null)
+  const setAdding = (on: boolean): void => (on ? openAddCard() : closeAddCard())
+  // Where the keyboard goes when Add Card closes: the card it made, once that
+  // card is on the board, or back to the Add Card tool. Without this, a
+  // dialog opened by ⌥⌘N from the page — whose focus had nowhere to return
+  // to, the page being gone — left focus on <body>, where none of the
+  // board's keys do anything.
+  const focusAfterAdd = useRef<string | null>(null)
+  const addToolRef = useRef<HTMLButtonElement | null>(null)
+  const closeAdding = (cardId?: string): void => {
+    focusAfterAdd.current = cardId ?? ''
+    closeAddCard()
+  }
   // F-42: the card turned over, and the project it was turned in. Derived
   // the same way as Add Card, for the same reason: the back writes to the
   // project in front, so it must not outlive that project being in front.
@@ -105,6 +157,20 @@ export function Corkboard({
   // hook React sees on some renders and not others, and the whole view dies.
   const stopTracking = useRef<(() => void) | null>(null)
   useEffect(() => () => stopTracking.current?.(), [])
+  // Keyboard nudges waiting to be written, by card. Written at once if the
+  // board goes away first — a nudge is never lost to leaving the board.
+  const pendingWrites = useRef(
+    new Map<string, { timer: ReturnType<typeof setTimeout>; write: () => void }>()
+  )
+  useEffect(
+    () => () => {
+      for (const { timer, write } of pendingWrites.current.values()) {
+        clearTimeout(timer)
+        write()
+      }
+    },
+    []
+  )
 
   /**
    * Re-read the documents.
@@ -152,6 +218,10 @@ export function Corkboard({
     if (!stringMode) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
+      // A dialog over the board (Add Card, the back of a card) has the Esc:
+      // this listener runs first, in the capture phase, and would otherwise
+      // take it, leaving the dialog impossible to close from the keyboard.
+      if (document.querySelector('.dialog-overlay')) return
       // Stopped as well as handled: Esc is also "back", and putting the
       // string tool down should not also walk the writer off the board.
       e.preventDefault()
@@ -285,6 +355,34 @@ export function Corkboard({
   }, [cards, boardWidth, localPos, stacked, pulled])
 
   useEffect(() => {
+    const want = focusAfterAdd.current
+    if (want == null || adding) return
+    if (want === '') {
+      // Nothing made: back to the tool, unless focus already went somewhere.
+      focusAfterAdd.current = null
+      const at = document.activeElement
+      if (!at || at === document.body || !at.isConnected) addToolRef.current?.focus()
+      return
+    }
+    // The card made: wait for it to be on the board — a new scene arrives
+    // with the next read of the documents — then go to it.
+    const face = boardEl.current?.querySelector<HTMLElement>(
+      `[data-card="${want}"] .scene-card-face`
+    )
+    if (!face) return
+    focusAfterAdd.current = null
+    // Not while the key that closed the dialog is still down. Return made
+    // the card, and moving focus onto the card's button while that Return
+    // was still being delivered let Chromium activate the button with it —
+    // the new card opened itself and the board was gone. Space activates on
+    // release, so it is the release that is waited for.
+    afterKeysUp(() => {
+      face.focus()
+      face.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    })
+  }, [placed, adding])
+
+  useEffect(() => {
     if (docs == null || returnedTo?.cardId == null) return
     // Wait until the board has measured its width, or unplaced cards are
     // still in the one-column layout of the first render and the scroll
@@ -356,10 +454,19 @@ export function Corkboard({
     // where that is true. The binder is hidden in this view, so these are also
     // what replaces it.
     <div className="corkboard-tools" data-help="board-tools">
+      {/* Said aloud, not shown: the waiting pin is on screen already, but a
+          keyboard writer who pinned with Return has nothing else telling
+          them the board is waiting for a second card. */}
+      <span className="sr-only" role="status">
+        {stringMode && pending
+          ? `Pinned to ${placed.find((c) => c.id === pending.cardId)?.title ?? 'a card'}. Choose a second card to run the string, or Esc to pull the pin.`
+          : ''}
+      </span>
       <button
         type="button"
         className="board-tool"
         data-help="board-add"
+        ref={addToolRef}
         onClick={() => setAdding(true)}
       >
         <span className="board-tool-pin" aria-hidden="true" />
@@ -488,7 +595,7 @@ export function Corkboard({
             tagged <strong>scene</strong> appears here on its own.
           </div>
         </div>
-        {adding && <AddCardDialog onClose={() => setAdding(false)} />}
+        {adding && <AddCardDialog onClose={closeAdding} />}
       </div>
     )
   }
@@ -553,15 +660,7 @@ export function Corkboard({
       // Clamped at the top-left corner only: a board scrolls, so a card
       // dragged past the right edge is a card further along the wall, not a
       // mistake.
-      const x = Math.round(Math.max(0, d.originX + (ev.clientX - d.startX)))
-      const y = Math.round(Math.max(0, d.originY + (ev.clientY - d.startY)))
-      setLocalPos((p) => ({ ...p, [d.id]: { x, y } }))
-      // Pulled out of its pile: it stays where it was dropped until the board
-      // is unstacked, rather than snapping back into the stack.
-      if (stacked) setPulled((p) => new Set(p).add(d.id))
-      // Which file holds the position depends on what the card is.
-      if (card.kind === 'scene') void setCardPosition(d.id, x, y)
-      else void setEntityPosition(d.id, x, y)
+      placeCard(card, d.originX + (ev.clientX - d.startX), d.originY + (ev.clientY - d.startY))
     }
 
     document.addEventListener('pointermove', onMove)
@@ -575,13 +674,90 @@ export function Corkboard({
     }
   }
 
+  /**
+   * Put a card down here — the one way a card is placed, by a drag or by
+   * the keyboard. Clamped at the top-left corner only: a board scrolls, so a
+   * card past the right edge is a card further along the wall, not a
+   * mistake. A card moved out of a pile stays out until the board is
+   * unstacked, rather than snapping back into the stack.
+   */
+  const placeCard = (card: PlacedCard, toX: number, toY: number, settle = 0): void => {
+    const x = Math.round(Math.max(0, toX))
+    const y = Math.round(Math.max(0, toY))
+    setLocalPos((p) => ({ ...p, [card.id]: { x, y } }))
+    if (stacked) setPulled((p) => new Set(p).add(card.id))
+    // Which file holds the position depends on what the card is.
+    const write = (): void => {
+      pendingWrites.current.delete(card.id)
+      if (card.kind === 'scene') void setCardPosition(card.id, x, y)
+      else void setEntityPosition(card.id, x, y)
+    }
+    clearTimeout(pendingWrites.current.get(card.id)?.timer)
+    if (settle === 0) {
+      write()
+      return
+    }
+    // A held ⌥+arrow is dozens of nudges a second. The card moves on every
+    // one; the file is written once it stops, so writes cannot pile up and
+    // land out of order, leaving an older position on disk.
+    pendingWrites.current.set(card.id, { timer: setTimeout(write, settle), write })
+  }
+
+  /** The face of a card, to move the keyboard's focus to. */
+  const faceOf = (id: string): HTMLElement | null =>
+    boardEl.current?.querySelector<HTMLElement>(`[data-card="${id}"] .scene-card-face`) ?? null
+
+  /**
+   * The board from the keyboard. Arrows go to the nearest card that way, as
+   * the eye reads the board (Tab goes in binder order, which on a free-form
+   * board can be anywhere on screen); ⌥+arrows nudge the card, ⇧⌥ a bigger
+   * step; ⇧Return turns a scene card over. Return still opens, as a button.
+   */
+  const onCardKey = (e: ReactKeyboardEvent<HTMLDivElement>, card: PlacedCard): void => {
+    const dir = ARROWS[e.key]
+    if (dir) {
+      if (e.metaKey || e.ctrlKey) return
+      e.preventDefault()
+      if (e.altKey) {
+        const step = e.shiftKey ? NUDGE_BIG : NUDGE
+        const [dx, dy] =
+          dir === 'left'
+            ? [-step, 0]
+            : dir === 'right'
+              ? [step, 0]
+              : dir === 'up'
+                ? [0, -step]
+                : [0, step]
+        placeCard(card, card.x + dx, card.y + dy, NUDGE_SETTLE)
+        // The view follows the card, or a nudge off the edge loses it.
+        requestAnimationFrame(() =>
+          faceOf(card.id)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+        )
+        return
+      }
+      if (e.shiftKey) return
+      const to = nearestCard(placed, card.id, dir)
+      const face = to ? faceOf(to) : null
+      face?.focus()
+      face?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+      return
+    }
+    if (e.key === 'Enter' && e.shiftKey && card.kind === 'scene' && !stringMode && project) {
+      e.preventDefault()
+      setTurned({ path: project.path, id: card.id })
+    }
+  }
+
   /** A click's position in board pixels, from the board's own box. */
   const boardPoint = (e: { clientX: number; clientY: number }): Point => {
     const box = boardEl.current?.getBoundingClientRect()
     return { x: e.clientX - (box?.left ?? 0), y: e.clientY - (box?.top ?? 0) }
   }
 
-  const open = (card: PlacedCard, e: { clientX: number; clientY: number }): void => {
+  const open = (
+    card: PlacedCard,
+    e: { clientX: number; clientY: number; detail?: number }
+  ): void => {
     if (suppressClick.current) {
       suppressClick.current = false
       return
@@ -589,7 +765,11 @@ export function Corkboard({
     if (stringMode) {
       // Pin where the card was clicked, not at its centre: a writer pushing
       // a pin into a corner of a card meant that corner.
-      const end: StringEnd = { cardId: card.id, ...pinOffset(card, boardPoint(e)) }
+      // From the keyboard there is no "where": a click with no pointer
+      // (detail 0) pins at the card's own pin, top centre, where a hand
+      // would push one in without thinking about it.
+      const at = e.detail === 0 ? { x: card.x + CARD_W / 2, y: card.y + 10 } : boardPoint(e)
+      const end: StringEnd = { cardId: card.id, ...pinOffset(card, at) }
       if (pending == null) {
         setPending(end)
         return
@@ -626,7 +806,19 @@ export function Corkboard({
   )
   const strings = boardStrings.flatMap((str) => {
     const pts = stringPoints(str, livePositions)
-    return pts ? [{ id: str.id, a: pts[0], b: pts[1] }] : []
+    if (!pts) return []
+    const titleOf = (id: string): string => placed.find((c) => c.id === id)?.title ?? 'a card'
+    return [
+      {
+        id: str.id,
+        a: pts[0],
+        b: pts[1],
+        fromId: str.from.cardId,
+        // Named for the keyboard and screen readers: a pin is otherwise only
+        // a dot, and "pull this pin" says nothing about which string it is.
+        label: `Pull the string from ${titleOf(str.from.cardId)} to ${titleOf(str.to.cardId)}`
+      }
+    ]
   })
   const pendingAt = pending
     ? (() => {
@@ -661,6 +853,7 @@ export function Corkboard({
                   : undefined
             }}
             onPointerDown={(e) => onPointerDown(e, card)}
+            onKeyDown={(e) => onCardKey(e, card)}
           >
             {/* The pin. Decorative, so it is hidden from assistive tech — the
                 card's own button carries the name and the action. */}
@@ -754,8 +947,23 @@ export function Corkboard({
                   cx={pt.x}
                   cy={pt.y}
                   r={5}
+                  // Reachable from the keyboard only while the tool is up, as
+                  // they are clickable only then: with it down, pins are
+                  // decoration and a card under one must stay easy to reach.
+                  tabIndex={stringMode ? 0 : undefined}
+                  role={stringMode ? 'button' : undefined}
+                  aria-label={stringMode ? str.label : undefined}
                   onClick={() => {
                     if (stringMode) void deleteBoardString(str.id)
+                  }}
+                  onKeyDown={(e) => {
+                    if (!stringMode) return
+                    if (!['Enter', ' ', 'Delete', 'Backspace'].includes(e.key)) return
+                    e.preventDefault()
+                    // The pin is about to go, and focus with it to <body>:
+                    // land on the card the string ran from instead.
+                    faceOf(str.fromId)?.focus()
+                    void deleteBoardString(str.id)
                   }}
                 >
                   <title>Pull this pin to remove the string</title>
@@ -768,7 +976,7 @@ export function Corkboard({
           )}
         </svg>
       </div>
-      {adding && <AddCardDialog onClose={() => setAdding(false)} />}
+      {adding && <AddCardDialog onClose={closeAdding} />}
       {turned != null && turnedId != null && docs != null && (
         <CardBack
           path={turned.path}

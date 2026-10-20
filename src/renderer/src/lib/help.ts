@@ -72,7 +72,7 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'scene-card': {
     title: 'A scene card',
-    body: 'The scene, its folder, its opening and its length. Click it to start writing, and Esc brings you back to the board, to this card. Drag it to move it on the board. Moving a card does not reorder the manuscript; Apply Order does that, when you ask.'
+    body: 'The scene, its folder, its opening and its length. Click it to start writing, and Esc brings you back to the board, to this card. Drag it to move it on the board, or from the keyboard: arrows go to the nearest card, ⌥+arrows nudge it, ⇧Return turns it over. Moving a card does not reorder the manuscript; Apply Order does that, when you ask.'
   },
   'bible-card': {
     title: 'A character or location card',
@@ -92,7 +92,7 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'board-add': {
     title: 'Add a card',
-    body: 'A new scene, character or location — made for real, as a document in the manuscript or an entry in the story bible, with its card here. Or an entry that already exists, put on the board.'
+    body: 'A new scene, character or location — made for real, as a document in the manuscript or an entry in the story bible, with its card here. Or an entry that already exists, put on the board. ⌥⌘N opens this from anywhere.'
   },
   'entity-portrait': {
     title: 'Portrait',
@@ -108,11 +108,11 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'board-string': {
     title: 'String',
-    body: 'Red string between cards, pin to pin. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go.'
+    body: 'Red string between cards, pin to pin. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string — or press Return on each, which pins at the top. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go.'
   },
   'board-pin': {
     title: 'A pin',
-    body: 'One end of a string. While the string tool is up, click a pin to pull it and the string comes away with it. Pins stay put when the tool is down, so a card can still be dragged from under one.'
+    body: 'One end of a string. While the string tool is up, click a pin to pull it and the string comes away with it — or Tab to it and press Delete. Pins stay put when the tool is down, so a card can still be dragged from under one.'
   },
   'board-stack': {
     title: 'Stack',

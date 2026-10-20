@@ -3215,6 +3215,19 @@ button {
   flex: none;
 }
 
+/* Read by screen readers, never drawn. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .board-tool {
   position: relative;
   flex: none;
@@ -3816,6 +3829,23 @@ button {
 .board-strings.live .board-pin {
   pointer-events: auto;
   cursor: pointer;
+}
+
+/* Which pin the keyboard is on, drawn by the SVG itself — an outline on a
+   <circle> varies by engine — and the string it would pull, thickened, so
+   Delete never pulls a string the writer could not see was chosen. */
+.board-strings.live .board-pin:focus {
+  outline: none;
+}
+
+.board-strings.live .board-pin:focus-visible {
+  stroke: var(--ink);
+  stroke-width: 3px;
+  stroke-dasharray: 2 1.5;
+}
+
+.board-string:has(.board-pin:focus-visible) path {
+  stroke-width: 4px;
 }
 
 .board-pin.pending {

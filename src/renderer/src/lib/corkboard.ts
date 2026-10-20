@@ -437,3 +437,43 @@ export function boardOrderDiffers(placed: PlacedCard[]): boolean {
   }
   return false
 }
+
+export type Direction = 'up' | 'down' | 'left' | 'right'
+
+/**
+ * The card an arrow key goes to from this one: the nearest in that
+ * direction, as the eye reads the board — not the next in the list, which
+ * on a free-form board is binder order and can be anywhere on screen.
+ *
+ * Centres are compared. A card counts as being in the direction only if it
+ * is further along that axis than it is off to the side (a 90° cone), so ↓
+ * from a card does not land on the one beside it; among those, distance
+ * along the axis plus twice the sideways offset decides, so a card straight
+ * below beats a nearer one far to the side. Null at the edge of the board.
+ */
+export function nearestCard(
+  cards: { id: string; x: number; y: number }[],
+  fromId: string,
+  dir: Direction
+): string | null {
+  const from = cards.find((c) => c.id === fromId)
+  if (!from) return null
+  let best: { id: string; score: number } | null = null
+  for (const c of cards) {
+    if (c.id === fromId) continue
+    const dx = c.x - from.x
+    const dy = c.y - from.y
+    const along = dir === 'right' ? dx : dir === 'left' ? -dx : dir === 'down' ? dy : -dy
+    const aside = Math.abs(dir === 'left' || dir === 'right' ? dy : dx)
+    if (along <= 0 || aside > along) continue
+    const score = along + 2 * aside
+    if (!best || score < best.score) best = { id: c.id, score }
+  }
+  return best?.id ?? null
+}
+
+/** How far one press of ⌥+arrow moves a card, and ⇧⌥+arrow. */
+export const NUDGE = 8
+export const NUDGE_BIG = CARD_GAP + 16
+/** How long after the last nudge the card's position is written, in ms. */
+export const NUDGE_SETTLE = 300

@@ -26,8 +26,17 @@ const KIND_LABEL: Record<CardKind, string> = {
  * an ordinary tagged document with an empty body, an entry is an ordinary
  * entry. The board never has a card that is only a card.
  */
-export function AddCardDialog({ onClose }: { onClose: () => void }): JSX.Element {
-  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
+export function AddCardDialog({
+  onClose
+}: {
+  /** Called with the id of the card made or put on the board, if any. */
+  onClose: (cardId?: string) => void
+}): JSX.Element {
+  // Closing without making anything. Wrapped, not passed straight through:
+  // as a click or mousedown handler, onClose would be handed the event as
+  // its card id.
+  const cancel = (): void => onClose()
+  const trapRef = useFocusTrap<HTMLDivElement>(cancel)
   const entities = useWyrm((s) => s.entities)
   const addSceneDoc = useWyrm((s) => s.addSceneDoc)
   const createEntity = useWyrm((s) => s.createEntity)
@@ -62,8 +71,8 @@ export function AddCardDialog({ onClose }: { onClose: () => void }): JSX.Element
     setBusy(true)
     setError(null)
     try {
-      await work()
-      onClose()
+      const made = await work()
+      onClose(typeof made === 'string' ? made : undefined)
     } catch (err) {
       setError(errorMessage(err))
       setBusy(false)
@@ -74,16 +83,16 @@ export function AddCardDialog({ onClose }: { onClose: () => void }): JSX.Element
     const name = title.trim()
     if (name === '') return
     void finish(async () => {
-      if (kind === 'scene') await addSceneDoc(name)
-      else await createEntity(entityType as 'character' | 'world', name, { onBoard: true })
+      if (kind === 'scene') return (await addSceneDoc(name)) ?? undefined
+      return (await createEntity(entityType as 'character' | 'world', name, { onBoard: true }))?.id
     })
   }
 
   return (
-    <div className="dialog-overlay" onMouseDown={onClose}>
+    <div className="dialog-overlay" onMouseDown={cancel}>
       <div className="dialog" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
-          <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
+          <button type="button" aria-label="Close" className="close-box" onClick={cancel} />
           <span className="title">Add Card</span>
         </div>
         <div className="dialog-body">
@@ -151,7 +160,7 @@ export function AddCardDialog({ onClose }: { onClose: () => void }): JSX.Element
                       type="button"
                       className="version-row"
                       disabled={busy}
-                      onClick={() => void finish(() => addEntityToBoard(e.id))}
+                      onClick={() => void finish(() => addEntityToBoard(e.id).then(() => e.id))}
                     >
                       <span className="row-title">{e.name}</span>
                     </button>
@@ -163,7 +172,7 @@ export function AddCardDialog({ onClose }: { onClose: () => void }): JSX.Element
           {error != null && <div className="dialog-hint add-card-error">{error}</div>}
         </div>
         <div className="dialog-buttons">
-          <button className="btn" onClick={onClose} disabled={busy}>
+          <button className="btn" onClick={cancel} disabled={busy}>
             Cancel
           </button>
         </div>
