@@ -496,6 +496,9 @@ export function MenuBar({
       }
       case 'Escape':
         e.preventDefault()
+        // Closing a menu is all this Esc is for; it must not also reach
+        // App's Esc-as-back and take the writer off their page.
+        e.stopPropagation()
         setOpen(null)
         setActiveItem(-1)
         break

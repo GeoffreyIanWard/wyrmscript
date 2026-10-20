@@ -169,21 +169,43 @@ export function Corkboard({
   // card added or taken off the board shows up without a re-read. Derived
   // during render rather than selected, per the house rule against returning
   // fresh objects from a zustand selector.
-  const cards = useMemo(
-    () => (project && docs ? boardCards(docs, project.data.binder, entities) : []),
-    [docs, project, entities]
-  )
+  // The open scene's text as the store holds it, not as it was read: the
+  // board reads every document once, as it appears, and the editor's last
+  // save can still be landing then — the card of the scene just left would
+  // show the text from before it. Only the body: positions and the back of
+  // the card are the board's own writes and are already in `docs`.
+  const activeDoc = useWyrm((s) => s.activeDoc)
+  const cards = useMemo(() => {
+    if (!project || !docs) return []
+    const fresh =
+      activeDoc == null
+        ? docs
+        : docs.map((d) => (d.meta.id === activeDoc.meta.id ? { ...d, body: activeDoc.body } : d))
+    return boardCards(fresh, project.data.binder, entities)
+  }, [docs, project, entities, activeDoc])
 
   // The board's own width decides how many columns an untouched card falls
   // into. Measured rather than assumed, and guarded because jsdom has no
   // ResizeObserver — a bare `new ResizeObserver` throws there and would take
   // the whole view down in tests rather than failing one.
   const boardEl = useRef<HTMLDivElement | null>(null)
+
+  // Coming back from a scene or entry opened from a card (Esc): put the board
+  // back where it was and the focus on that card, so the next card is one
+  // keystroke or glance away. Once, when the cards first exist: the restore
+  // clears the place from the view as it uses it (`settleBoardReturn`), so a
+  // later re-read of the documents, or a later remount, finds nothing to do.
+  const scrollEl = useRef<HTMLDivElement | null>(null)
+  const returnedTo = useWyrm((s) => (s.mainView.kind === 'corkboard' ? s.mainView : null))
   const [boardWidth, setBoardWidth] = useState(0)
+  // Whether the width above has been read from the board at all — 0 is a
+  // real answer in some environments, so it cannot stand for "not yet".
+  const [measured, setMeasured] = useState(false)
   useEffect(() => {
     const el = boardEl.current
     if (!el) return
     setBoardWidth(el.clientWidth)
+    setMeasured(true)
     if (typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver((entries) => setBoardWidth(entries[0].contentRect.width))
     ro.observe(el)
@@ -211,8 +233,10 @@ export function Corkboard({
    * move it, so it is placed like any other drop and stays out until the
    * board is unstacked.
    */
-  const [stacked, setStacked] = useState(false)
-  const [pulled, setPulled] = useState<Set<string>>(() => new Set())
+  // Seeded from the view being returned to, so a card opened from a stacked
+  // board comes back to the same piles — the layout its scroll was taken in.
+  const [stacked, setStacked] = useState(() => returnedTo?.stacked ?? false)
+  const [pulled, setPulled] = useState<Set<string>>(() => new Set(returnedTo?.pulled ?? []))
 
   /**
    * Portraits for the cards that have one (F-47), as data: URLs keyed by
@@ -259,6 +283,28 @@ export function Corkboard({
       return at ? { ...c, x: at.x, y: at.y } : c
     })
   }, [cards, boardWidth, localPos, stacked, pulled])
+
+  useEffect(() => {
+    if (docs == null || returnedTo?.cardId == null) return
+    // Wait until the board has measured its width, or unplaced cards are
+    // still in the one-column layout of the first render and the scroll
+    // lands somewhere else.
+    if (!measured) return
+    // A one-off: once used, the view forgets it, or the next remount of the
+    // board (after stats, after another window) would snap back here again.
+    useWyrm.getState().settleBoardReturn()
+    const el = scrollEl.current
+    if (!el) return
+    el.scrollTop = returnedTo.scrollTop ?? 0
+    const face = el.querySelector<HTMLElement>(
+      `[data-card="${returnedTo.cardId}"] .scene-card-face`
+    )
+    // Gone since (untagged, trashed, taken off the board): the scroll alone
+    // is still the right place to come back to.
+    if (!face) return
+    face.focus({ preventScroll: true })
+    face.scrollIntoView?.({ block: 'nearest' })
+  }, [docs, measured, returnedTo])
 
   const unstack = (): void => {
     setStacked(false)
@@ -555,10 +601,18 @@ export function Corkboard({
       setPending(null)
       return
     }
-    // A scene is an arrival, like picking it in the binder. An entry is a
-    // detour, like opening it from anywhere else — so Esc comes back here.
-    if (card.kind === 'scene') void selectDoc(card.id)
-    else showEntity(card.id)
+    // Both are detours from the board: Esc comes back here, to this card,
+    // scrolled to where the board was — the board→scene→board loop an
+    // outline is worked through. (A scene used to be an arrival, like
+    // picking it in the binder, which left Esc doing nothing.)
+    const here = {
+      kind: 'corkboard' as const,
+      cardId: card.id,
+      scrollTop: scrollEl.current?.scrollTop ?? 0,
+      ...(stacked ? { stacked, pulled: [...pulled] } : {})
+    }
+    if (card.kind === 'scene') void selectDoc(card.id, here)
+    else showEntity(card.id, here)
   }
 
   // Where every card is right now, including the one being carried — so a
@@ -582,7 +636,7 @@ export function Corkboard({
     : null
 
   return (
-    <div className="terminal corkboard" data-help="corkboard">
+    <div className="terminal corkboard" data-help="corkboard" ref={scrollEl}>
       {tools}
       <div
         className={`corkboard-board${stacked ? ' stacked' : ''}${stringMode ? ' stringing' : ''}`}
@@ -593,6 +647,7 @@ export function Corkboard({
           <div
             key={card.id}
             className={`scene-card kind-${card.kind}${dragging === card.id ? ' dragging' : ''}`}
+            data-card={card.id}
             // Positioned on the board rather than flowed: a card sits where
             // the writer put it, and an unmoved one sits in its slot.
             style={{

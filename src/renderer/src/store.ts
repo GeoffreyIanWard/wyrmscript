@@ -52,7 +52,21 @@ export type MainView =
   | { kind: 'folder'; id: string }
   | { kind: 'stats' }
   | { kind: 'tags' }
-  | { kind: 'corkboard' }
+  | {
+      kind: 'corkboard'
+      /**
+       * Where to pick up when coming back: the card a scene or entry was
+       * opened from, and how far down the board was scrolled. Set only on
+       * the board view remembered in `viewHistory`, so Esc from the scene
+       * lands on the same card rather than the top of a fresh board.
+       */
+      cardId?: string
+      scrollTop?: number
+      /** Whether the board was stacked, and which cards had been pulled out
+       *  of their piles — the layout `scrollTop` was measured in. */
+      stacked?: boolean
+      pulled?: string[]
+    }
 
 function newId(): string {
   return Math.random().toString(36).slice(2, 10)
@@ -229,7 +243,13 @@ interface WyrmState {
   openProject(): Promise<void>
   /** F-24: open a project from the Welcome screen's recents list. */
   openRecentProject(path: string): Promise<void>
-  selectDoc(id: string): Promise<void>
+  /**
+   * Open a document in the manuscript view. An arrival: Esc's history is
+   * cleared — unless `returnTo` is given, in which case it becomes the one
+   * step Esc goes back to. The corkboard passes itself, so a scene opened
+   * from a card is a detour from the board rather than a departure.
+   */
+  selectDoc(id: string, returnTo?: MainView): Promise<void>
   setEditor(editor: Editor | null): void
   editorChanged(): void
   flushSave(): Promise<void>
@@ -446,7 +466,9 @@ interface WyrmState {
   /** F-47: delete the image and the entry's record of it. */
   clearPortrait(entityId: string): Promise<void>
   openEntityPanel(id: string | null): void
-  showEntity(id: string): void
+  /** Open an entry. A detour: Esc comes back to `from`, or to what was on
+   *  screen — `from` lets the board remember which card it came from. */
+  showEntity(id: string, from?: MainView): void
   showDoc(): void
   /** F-08: open a folder-view listing in place of the writing terminal. */
   showFolder(id: string): void
@@ -476,6 +498,13 @@ interface WyrmState {
    */
   tagFilter: string | null
   setTagFilter(tag: string | null): void
+  /**
+   * The board has used the card and scroll it was told to come back to:
+   * drop them from the view, so they are a one-off. Left in place, every
+   * later remount of the board — after Writing Stats, after another
+   * project's window was in front — snapped back to that old card.
+   */
+  settleBoardReturn(): void
   /** F-14: pop one step of `viewHistory`. True if it actually went anywhere. */
   goBack(): boolean
 
@@ -1108,7 +1137,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       }
     },
 
-    async selectDoc(id) {
+    async selectDoc(id, returnTo) {
       const { project, activeId } = get()
       if (!project) return
       // Picking a document in the binder always brings the manuscript back to
@@ -1116,8 +1145,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // guard below, because the commonest way to hit it is clicking back to
       // the document you were already on from a story-bible entry (I-05).
       // Choosing a scene also resets Esc's history (F-14): binder navigation
-      // is deliberately not part of the back-stack.
-      set({ mainView: { kind: 'doc' }, viewHistory: [] })
+      // is deliberately not part of the back-stack. The one exception is a
+      // caller that names where the writer came from — the corkboard, whose
+      // board→scene→board loop is how an outline is worked through.
+      set({ mainView: { kind: 'doc' }, viewHistory: returnTo ? [returnTo] : [] })
       if (id === activeId) return
       await get().flushSave()
       const doc = await api.readDoc(project.path, id)
@@ -1948,7 +1979,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({ panelEntityId: id })
     },
 
-    showEntity(id) {
+    showEntity(id, from) {
       // Opening the full entry makes the reference panel redundant — showing the
       // same entry twice side by side just eats the writing pane.
       const { panelEntityId, mainView, viewHistory } = get()
@@ -1960,7 +1991,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
         // Capped: a writer clicking around the bible for an hour should not
         // grow this without bound. Losing the oldest steps is fine — nobody
         // presses Esc thirty times expecting an exact trail.
-        viewHistory: [...viewHistory, mainView].slice(-VIEW_HISTORY_LIMIT),
+        viewHistory: [...viewHistory, from ?? mainView].slice(-VIEW_HISTORY_LIMIT),
         panelEntityId: panelEntityId === id ? null : panelEntityId
       })
     },
@@ -1996,11 +2027,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // is a place to work from, so it clears the history the way showFolder
       // does.
       //
-      // Clicking a card is likewise an arrival: it behaves exactly like
-      // picking a scene in the binder, and Esc does not come back here. Once
-      // outline mode exists (F-42) the board→scene→board loop may be worth a
-      // dedicated path, but inventing one now would mean Esc behaving
-      // differently depending on how a scene was opened.
+      // Clicking a card is *not* an arrival, though: since outline mode
+      // (F-42) the board is where a story is worked through card by card, so
+      // a scene opened from a card remembers the board and Esc goes back to
+      // it, onto the same card (`selectDoc`'s `returnTo`). Picking a scene in
+      // the binder from there is still an arrival and clears that trail, so
+      // Esc never drags a writer back to a board they have moved on from.
       const { mainView } = get()
       if (mainView.kind === 'corkboard') return
       set({ mainView: { kind: 'corkboard' }, viewHistory: [] })
@@ -2035,6 +2067,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
         mainView: { kind: 'tags' },
         viewHistory: [...viewHistory, mainView].slice(-VIEW_HISTORY_LIMIT)
       })
+    },
+
+    settleBoardReturn() {
+      const { mainView } = get()
+      if (mainView.kind !== 'corkboard' || Object.keys(mainView).length === 1) return
+      set({ mainView: { kind: 'corkboard' } })
     },
 
     goBack() {

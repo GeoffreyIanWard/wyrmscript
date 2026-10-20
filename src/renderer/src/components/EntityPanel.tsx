@@ -190,7 +190,11 @@ export function NewEntityDialog({
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') save()
-                if (e.key === 'Escape') onClose()
+                if (e.key === 'Escape') {
+                  // Used, so stopped (see Binder's rename).
+                  e.stopPropagation()
+                  onClose()
+                }
               }}
             />
           </div>

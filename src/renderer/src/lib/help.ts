@@ -72,7 +72,7 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'scene-card': {
     title: 'A scene card',
-    body: 'The scene, its folder, its opening and its length. Click it to start writing; drag it to move it on the board. Moving a card does not reorder the manuscript — the binder does that.'
+    body: 'The scene, its folder, its opening and its length. Click it to start writing, and Esc brings you back to the board, to this card. Drag it to move it on the board. Moving a card does not reorder the manuscript; Apply Order does that, when you ask.'
   },
   'bible-card': {
     title: 'A character or location card',
