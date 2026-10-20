@@ -6,6 +6,8 @@ import { useWyrm } from '../store'
 import {
   boardCards,
   boardHeight,
+  boardOrder,
+  boardOrderDiffers,
   CARD_H,
   CARD_W,
   layoutCards,
@@ -49,6 +51,9 @@ export function Corkboard({
   const setEntityPosition = useWyrm((s) => s.setEntityPosition)
   const removeEntityFromBoard = useWyrm((s) => s.removeEntityFromBoard)
   const tidyBoard = useWyrm((s) => s.tidyBoard)
+  const applyBoardOrder = useWyrm((s) => s.applyBoardOrder)
+  const boardUndo = useWyrm((s) => s.boardUndo)
+  const undoBoardOrder = useWyrm((s) => s.undoBoardOrder)
   const boardStrings = useWyrm((s) => s.boardStrings)
   const loadBoardStrings = useWyrm((s) => s.loadBoardStrings)
   const createBoardString = useWyrm((s) => s.createBoardString)
@@ -254,6 +259,45 @@ export function Corkboard({
     setPulled(new Set())
   }
 
+  /**
+   * Apply the board's order, and freeze the board as it was when the writer
+   * looked at it. Unmoved cards sit in grid slots dealt by binder position,
+   * so once the binder changes they would be re-dealt and the board would
+   * read differently from the order just applied — and the button would
+   * light up again at once. Every unplaced scene is therefore placed at the
+   * slot it was in, which is also what "apply this arrangement" means.
+   */
+  const applyOrder = async (): Promise<void> => {
+    if (!project) return
+    const frozen = placed.filter((c) => c.kind === 'scene' && !c.placed)
+    // Pinned *before* the binder changes, not after the save lands: the new
+    // project identity re-deals every unplaced card the moment it is set,
+    // and a save is a real write, so otherwise there is a committed frame
+    // in which every unmoved card has jumped to its new slot and back.
+    setLocalPos((p) => {
+      const next = { ...p }
+      for (const c of frozen) next[c.id] = { x: c.x, y: c.y }
+      return next
+    })
+    // One store call, binder and pins together: it captures the project
+    // once, so the pins land in the novel the order was applied to even if
+    // another window is focused before the save resolves. The store records
+    // the way back itself, before it writes.
+    const changed = await applyBoardOrder(
+      boardOrder(placed),
+      frozen.map((c) => ({ id: c.id, x: c.x, y: c.y }))
+    )
+    // Nothing applied (the binder changed under the board between the look
+    // and the click), so nothing was pinned: let the cards go again.
+    if (!changed) {
+      setLocalPos((p) => {
+        const next = { ...p }
+        for (const c of frozen) delete next[c.id]
+        return next
+      })
+    }
+  }
+
   const tools = (
     // Pinned to the board rather than left in a menu: the timeline, the plot
     // graph and the map are the same scenes seen other ways, and the board is
@@ -289,6 +333,25 @@ export function Corkboard({
         <span className="board-tool-pin" aria-hidden="true" />
         <span>World Map</span>
       </button>
+      {/* The board's order, written back to the book — the other half of
+          free placement. Arrange, then apply; never on its own. Disabled when
+          the board already reads in binder order, because a button that
+          offers to apply an order the book already has is a button that lies
+          about having something to do. */}
+      <button
+        type="button"
+        className="board-tool"
+        data-help="board-order"
+        onClick={() => void applyOrder()}
+        // Never while stacked: the piles are a way of looking and nothing
+        // about them is written anywhere, and the order they would read in
+        // is the cascade's geometry, not the writer's arrangement.
+        disabled={stacked || !boardOrderDiffers(placed)}
+      >
+        <span className="board-tool-pin" aria-hidden="true" />
+        <span>Apply Order</span>
+      </button>
+
       {/* The string tool. Toggled, like Stack, so it reads as a thing the
           board is in rather than a thing that happens once. */}
       <button
@@ -341,6 +404,20 @@ export function Corkboard({
       >
         <span className="board-tool-pin" aria-hidden="true" />
         <span>Tidy</span>
+      </button>
+      {/* Always present and disabled until there is something to undo, like
+          Stack and Tidy: a button that appears on Apply would push the strip
+          onto a new row and the whole board down with it at the moment of
+          the click. */}
+      <button
+        type="button"
+        className="board-tool"
+        data-help="board-undo"
+        onClick={() => void undoBoardOrder()}
+        disabled={boardUndo == null}
+      >
+        <span className="board-tool-pin" aria-hidden="true" />
+        <span>Undo Apply</span>
       </button>
     </div>
   )

@@ -18,14 +18,32 @@ import { Corkboard } from '../src/renderer/src/components/Corkboard'
  */
 
 let demoPath: string | null = null
+let seededBinder: string | null = null
 
 async function openDemo(): Promise<string> {
   demoPath ??= (await api.getLastProjectPath())!
+  // Everything is put back BEFORE the project is opened, so the store loads
+  // clean state rather than a copy that the reset then mutates underneath.
+  // The mock hands out the same ProjectData object it holds, and the binder
+  // outlives a test the way documents do: a test that applies the board's
+  // order would leave the book reordered for every test after it, so the
+  // seeded binder is snapshotted on first open and put back on every open.
+  const info = (await api.openProjectPath(demoPath))!
+  if (seededBinder == null) seededBinder = JSON.stringify(info.data.binder)
+  else {
+    info.data.binder.splice(0, info.data.binder.length, ...JSON.parse(seededBinder))
+    await api.saveProject(demoPath, info.data)
+  }
+  await clearScenes(demoPath)
   await act(async () => {
     await useWyrm.getState().openRecentProject(demoPath!)
   })
-  await clearScenes(demoPath!)
-  return demoPath!
+  // No active document. Opening selects the first doc and keeps its own copy
+  // of it; a test that then tags or positions that doc through the api and
+  // drags its card would have the store write the stale copy back — losing
+  // the tag, and the card with it. The board does not need an active doc.
+  useWyrm.setState({ activeId: null, activeDoc: null })
+  return demoPath
 }
 
 /**
@@ -53,7 +71,6 @@ async function clearScenes(path: string): Promise<void> {
     delete clean.boardY
     await api.writeEntity(path, clean)
   }
-  await useWyrm.getState().loadEntities()
 }
 
 /** Puts a story-bible entry on the board the way the store would, by name. */
@@ -109,7 +126,14 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  useWyrm.setState({ project: null, booted: false, parked: {}, openPaths: [], editor: null })
+  useWyrm.setState({
+    project: null,
+    booted: false,
+    parked: {},
+    openPaths: [],
+    editor: null,
+    boardUndo: null
+  })
   __disposeAll()
 })
 
@@ -889,5 +913,276 @@ describe('portraits on cards (F-47)', () => {
 
     expect(cardByTitle('Marten').querySelector('.scene-card-portrait')).toBeNull()
     expect(read).not.toHaveBeenCalled()
+  })
+})
+
+describe('applying the board order to the manuscript', () => {
+  let path: string
+  beforeEach(async () => {
+    path = await openDemo()
+    await tagScenes(path, 3)
+    await renderBoard()
+    await waitFor(() => expect(titles().length).toBe(3))
+  })
+
+  const carry = async (el: HTMLElement, toX: number, toY: number): Promise<void> => {
+    await act(async () => pointer(el, 'pointerdown', 50, 50))
+    await act(async () => pointer(el, 'pointermove', toX, toY))
+    await act(async () => pointer(el, 'pointerup', toX, toY))
+  }
+
+  it('is offered only when the board reads differently from the book', async () => {
+    // Untouched cards sit in binder order: nothing to apply.
+    expect(tool('Apply Order').disabled).toBe(true)
+
+    // A card moved but still reading in its place is still nothing to
+    // apply — "something was dragged" is not the question.
+    await carry(cardEls()[1], 110, 60)
+    expect(posOf(cardEls()[1])).toEqual({ x: '60px', y: '234px' })
+    expect(tool('Apply Order').disabled).toBe(true)
+
+    // Carry the first card below the others: it now reads last.
+    await carry(cardEls()[0], 50, 900)
+
+    await waitFor(() => expect(tool('Apply Order').disabled).toBe(false))
+  })
+
+  it('puts the scenes in the order the board reads, and then has nothing left to do', async () => {
+    const [a, b, c] = titles()
+    await carry(cardEls()[0], 50, 900)
+    await waitFor(() => expect(tool('Apply Order').disabled).toBe(false))
+
+    await act(async () => {
+      fireEvent.click(tool('Apply Order'))
+    })
+
+    // Cards are emitted in binder order, so the DOM order is the book's
+    // order: the carried card now comes last.
+    await waitFor(() => expect(titles()).toEqual([b, c, a]))
+    // And it stayed where it was put — applying the order is not Tidy.
+    expect(posOf(cardByTitle(a)).y).toBe('850px')
+    await waitFor(() => expect(tool('Apply Order').disabled).toBe(true))
+  })
+
+  it('freezes the board as it was looked at, so the order just applied is the order it reads', async () => {
+    // Unmoved cards sit in slots dealt by binder position; once the binder
+    // changes they would be re-dealt, the board would read differently from
+    // what was just applied, and the button would light up again at once.
+    const [a, b, c] = titles()
+    const before = { b: posOf(cardByTitle(b)), c: posOf(cardByTitle(c)) }
+    await carry(cardEls()[0], 50, 900)
+    await waitFor(() => expect(tool('Apply Order').disabled).toBe(false))
+
+    // The save is held open, because the pin has to land BEFORE it: the
+    // binder changes (and re-deals every unmoved card) the moment the store
+    // sets the new project, and a real save takes long enough to paint. A
+    // pin applied after the save would leave a frame of every card jumped
+    // to its new slot and back — invisible to a test that only looks once
+    // the handler has drained.
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const realSave = api.saveProject.bind(api)
+    vi.spyOn(api, 'saveProject').mockImplementation(async (path, data) => {
+      await held
+      await realSave(path, data)
+    })
+    await act(async () => {
+      fireEvent.click(tool('Apply Order'))
+    })
+    // Binder already reordered in memory, save still pending: nothing moved.
+    await waitFor(() => expect(titles()).toEqual([b, c, a]))
+    expect(posOf(cardByTitle(b))).toEqual(before.b)
+    expect(posOf(cardByTitle(c))).toEqual(before.c)
+    await act(async () => {
+      release()
+      await held
+    })
+    // Nothing moved on screen...
+    expect(posOf(cardByTitle(b))).toEqual(before.b)
+    expect(posOf(cardByTitle(c))).toEqual(before.c)
+    // ...and the unmoved cards now have those positions on disk too.
+    await waitFor(async () => {
+      const docs = await api.readAllDocs(path)
+      expect(docs.find((d) => d.meta.title === b)?.meta.boardY).toBe(224)
+      expect(docs.find((d) => d.meta.title === c)?.meta.boardY).toBe(448)
+    })
+    expect(tool('Apply Order').disabled).toBe(true)
+  })
+
+  it('can be undone, once', async () => {
+    const [a, b, c] = titles()
+    // Present but inert until there is something to undo, like Tidy.
+    expect(tool('Undo Apply').disabled).toBe(true)
+    await carry(cardEls()[0], 50, 900)
+    await waitFor(() => expect(tool('Apply Order').disabled).toBe(false))
+    await act(async () => {
+      fireEvent.click(tool('Apply Order'))
+    })
+    await waitFor(() => expect(titles()).toEqual([b, c, a]))
+    expect(tool('Undo Apply').disabled).toBe(false)
+
+    await act(async () => {
+      fireEvent.click(tool('Undo Apply'))
+    })
+
+    // The book is back as it was; the cards are where they were put.
+    await waitFor(() => expect(titles()).toEqual([a, b, c]))
+    expect(posOf(cardByTitle(a)).y).toBe('850px')
+    expect(tool('Undo Apply').disabled).toBe(true)
+  })
+
+  it('undoes the order only: a scene added in between survives', async () => {
+    // The first version put back a snapshot of the whole binder, and a
+    // scene added with Add Card between Apply and Undo vanished from binder
+    // and trash both, its file orphaned on disk. Undo is an order now.
+    const [a, b, c] = titles()
+    await carry(cardEls()[0], 50, 900)
+    await waitFor(() => expect(tool('Apply Order').disabled).toBe(false))
+    await act(async () => {
+      fireEvent.click(tool('Apply Order'))
+    })
+    await waitFor(() => expect(titles()).toEqual([b, c, a]))
+
+    await act(async () => {
+      await useWyrm.getState().addSceneDoc('Added Between')
+    })
+    await waitFor(() => expect(cardByTitle('Added Between')).toBeTruthy())
+
+    await act(async () => {
+      fireEvent.click(tool('Undo Apply'))
+    })
+
+    await waitFor(() => expect(titles().slice(0, 3)).toEqual([a, b, c]))
+    expect(cardByTitle('Added Between')).toBeTruthy()
+    const binderIds = new Set<string>()
+    const collect = (nodes: { id: string; children?: unknown[] }[]): void => {
+      for (const n of nodes) {
+        binderIds.add(n.id)
+        if (n.children) collect(n.children as { id: string; children?: unknown[] }[])
+      }
+    }
+    collect(useWyrm.getState().project!.data.binder)
+    const added = (await api.readAllDocs(path)).find((d) => d.meta.title === 'Added Between')!
+    expect(binderIds.has(added.meta.id)).toBe(true)
+  })
+
+  it('still offers Undo after leaving the board and coming back', async () => {
+    // The first thing a writer does after applying is leave the board to
+    // look at the book. Component state would have gone with it.
+    const [a, b, c] = titles()
+    await carry(cardEls()[0], 50, 900)
+    await waitFor(() => expect(tool('Apply Order').disabled).toBe(false))
+    await act(async () => {
+      fireEvent.click(tool('Apply Order'))
+    })
+    await waitFor(() => expect(titles()).toEqual([b, c, a]))
+
+    cleanup()
+    await renderBoard()
+    await waitFor(() => expect(titles()).toEqual([b, c, a]))
+
+    expect(tool('Undo Apply').disabled).toBe(false)
+    await act(async () => {
+      fireEvent.click(tool('Undo Apply'))
+    })
+    await waitFor(() => expect(titles()).toEqual([a, b, c]))
+  })
+
+  it('ignores where the characters are', async () => {
+    await putOnBoard(path, 'Elara Voss')
+    await putOnBoard(path, 'Marten')
+    await waitFor(() => expect(cardByTitle('Marten')).toBeTruthy())
+    // Two characters swapped on the board — a reading that counted them
+    // would see a difference here. Marten (below Elara in the grid) goes
+    // to the top-right; Elara stays. Neither position ties with a scene.
+    await carry(cardByTitle('Marten'), 350, -2000)
+    expect(posOf(cardByTitle('Marten'))).toEqual({ x: '300px', y: '0px' })
+    await carry(cardByTitle('Elara Voss'), 650, -2000)
+    expect(posOf(cardByTitle('Elara Voss'))).toEqual({ x: '600px', y: '0px' })
+
+    // Characters anywhere change nothing about the book.
+    expect(tool('Apply Order').disabled).toBe(true)
+  })
+
+  it('lets the frozen cards go again when nothing was applied', async () => {
+    // The button is only offered when the board reads differently from the
+    // book, so this branch is reached only when the binder changed under the
+    // board between the look and the click — a sync landing, say. Nothing
+    // was written, so nothing is pinned: the cards must not be left frozen
+    // at slots that the next binder change would have re-dealt.
+    const [a, b, c] = titles()
+    await carry(cardEls()[0], 50, 900)
+    await waitFor(() => expect(tool('Apply Order').disabled).toBe(false))
+    const real = useWyrm.getState().applyBoardOrder
+    // Inside act, or the click runs against the render that still holds
+    // the real action.
+    await act(async () => useWyrm.setState({ applyBoardOrder: async () => null }))
+    const writes = vi.spyOn(api, 'writeDoc')
+    try {
+      await act(async () => {
+        fireEvent.click(tool('Apply Order'))
+      })
+      expect(writes).not.toHaveBeenCalled()
+      expect(titles()).toEqual([a, b, c])
+      expect(posOf(cardByTitle(b)).y).toBe('224px')
+      expect(posOf(cardByTitle(c)).y).toBe('448px')
+    } finally {
+      useWyrm.setState({ applyBoardOrder: real })
+    }
+    // The binder changes by hand: unpinned cards follow it into new slots.
+    const docs = await api.readAllDocs(path)
+    const idOf = (t: string): string => docs.find((d) => d.meta.title === t)!.meta.id
+    await act(() => useWyrm.getState().moveBinderNode(idOf(c), idOf(b), 'before'))
+    await waitFor(() => expect(titles()).toEqual([a, c, b]))
+    expect(posOf(cardByTitle(c)).y).toBe('224px')
+    expect(posOf(cardByTitle(b)).y).toBe('448px')
+    // The carried card is placed, and stays put.
+    expect(posOf(cardByTitle(a)).y).toBe('850px')
+  })
+
+  it('starts every test from the seeded order, whatever the last one applied', () => {
+    // Makes the harness's binder restore load-bearing: the apply tests
+    // above leave the book reordered in the mock, and this runs after them.
+    expect(titles()).toEqual(['The Wyrmlight Fades', 'A Knock at Night', 'Ashes on the Tide'])
+  })
+
+  it('is never offered while the board is stacked', async () => {
+    // The piles are a way of looking; the order they would read in is the
+    // cascade's geometry, not the writer's arrangement. Even a card pulled
+    // out of its pile does not make the piles an order to apply.
+    await act(async () => {
+      fireEvent.click(tool('Stack'))
+    })
+    expect(tool('Apply Order').disabled).toBe(true)
+    // The FIRST card pulled well below the pile: the piles would then read
+    // b, c, a — a difference the order check alone would offer to apply.
+    // Only the stacked guard keeps the button off.
+    await carry(cardEls()[0], 700, 400)
+    expect(tool('Apply Order').disabled).toBe(true)
+
+    await act(async () => {
+      fireEvent.click(tool('Unstack'))
+    })
+    await waitFor(() => expect(tool('Apply Order').disabled).toBe(false))
+  })
+
+  it('is not offered for an arrangement that differs only across folders', async () => {
+    // The demo's fourth document lives in Notes. As a scene it is a card in
+    // another folder; set above Part One it reads first, but applying can
+    // only reorder scenes within their own folder, so there is nothing it
+    // could do — and it must not pretend otherwise.
+    cleanup()
+    await tagScenes(path, 4)
+    await renderBoard()
+    await waitFor(() => expect(titles().length).toBe(4))
+    // To the top row, beside the first Part One scene (not on top of it, so
+    // no sort tie decides anything): the board as a whole now reads a,
+    // Timeline, b, c — a difference, read without regard to folders.
+    await carry(cardEls()[3], 350, -2000)
+    expect(posOf(cardEls()[3])).toEqual({ x: '300px', y: '0px' })
+
+    expect(tool('Apply Order').disabled).toBe(true)
   })
 })

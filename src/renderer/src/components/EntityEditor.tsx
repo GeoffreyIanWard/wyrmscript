@@ -168,8 +168,8 @@ export function EntityEditor({ entityId }: { entityId: string }): JSX.Element {
               </div>
             </div>
             <div className="dialog-hint">
-              Kept inside the project, beside the entry, so it travels with it. Shown on the entry&apos;s
-              card on the corkboard.
+              Kept inside the project, beside the entry, so it travels with it. Shown on the
+              entry&apos;s card on the corkboard.
             </div>
           </div>
         )}
