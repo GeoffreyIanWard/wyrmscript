@@ -108,7 +108,11 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'board-string': {
     title: 'String',
-    body: 'Red string between cards, pin to pin. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string — or press Return on each, which pins at the top. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go.'
+    body: 'Red string between cards, pin to pin. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string — or press Return on each, which pins at the top. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go. After the second pin, give it a label, or Return to leave it plain. Between two characters it is a relationship, and goes in the Character Graph — so it needs a name.'
+  },
+  'string-label': {
+    title: "A string's label",
+    body: 'What the string means, on a tag at its middle. Click it with the string tool up to change it. Between two characters a string is a relationship from the Character Graph, labelled with what one is to the other, and the arrow shows which way it reads; change it here and it changes there.'
   },
   'board-pin': {
     title: 'A pin',

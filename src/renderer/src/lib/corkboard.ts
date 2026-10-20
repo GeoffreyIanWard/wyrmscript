@@ -4,6 +4,7 @@ import type {
   DocFile,
   DocStatus,
   Entity,
+  Relationship,
   StringEnd
 } from '../../../shared/types'
 import { SCENE_TAG } from '../../../shared/types'
@@ -477,3 +478,158 @@ export const NUDGE = 8
 export const NUDGE_BIG = CARD_GAP + 16
 /** How long after the last nudge the card's position is written, in ms. */
 export const NUDGE_SETTLE = 300
+
+/**
+ * Where a string's label sits: halfway along the hanging curve — the
+ * midpoint of the span, lowered by half the sag (a quadratic curve at its
+ * middle is a quarter of the way from the chord to its control point, and
+ * the control point is a full sag below).
+ */
+export function stringMidpoint(a: Point, b: Point): Point {
+  const span = Math.hypot(b.x - a.x, b.y - a.y)
+  const sag = Math.min(STRING_MAX_SAG, span * STRING_SAG)
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 + sag / 2 }
+}
+
+/** Where a string meets a card when nobody chose the spot: its own pin. */
+export function cardPin(card: Point): Point {
+  return { x: card.x + CARD_W / 2, y: card.y + 10 }
+}
+
+export interface RelationshipString {
+  relationship: Relationship
+  a: Point
+  b: Point
+  /** Which side its tag goes on a short string: -1 for the one drawn first
+   *  of a pair, so two tags beside two close strings face away from each
+   *  other rather than landing on top of one another. */
+  side: -1 | 1
+}
+
+/**
+ * The Character Graph's relationships, as string on the board: one for every
+ * relationship whose two characters both have a card here, pin to pin. Not
+ * stored as board strings — they are the relationships themselves, seen a
+ * second way, so a change in either place is a change in both. A
+ * relationship with a character off the board is hidden, never removed.
+ */
+export function relationshipStrings(
+  relationships: Relationship[],
+  cards: { id: string; kind: CardKind; x: number; y: number }[]
+): RelationshipString[] {
+  const at = new Map(cards.filter((c) => c.kind === 'character').map((c) => [c.id, c]))
+  const shown = relationships.filter((r) => {
+    const from = at.get(r.fromId)
+    const to = at.get(r.toId)
+    return from && to && from !== to
+  })
+  // Two characters can be joined more than once — "sister of" one way and
+  // "brother of" the other is the ordinary case for a cast. Drawn on the same
+  // two points they were one string with stacked tags, only the top one
+  // reachable; each is moved off the shared line by its place in the pair,
+  // so every string, pin and tag has its own spot.
+  const pairOf = (r: Relationship): string => [r.fromId, r.toId].sort().join('|')
+  const groups = new Map<string, Relationship[]>()
+  for (const r of shown) groups.set(pairOf(r), [...(groups.get(pairOf(r)) ?? []), r])
+  return shown.map((relationship) => {
+    const from = at.get(relationship.fromId)!
+    const to = at.get(relationship.toId)!
+    const [a, b] = facingPins(from, to)
+    const group = groups.get(pairOf(relationship))!
+    const k = group.indexOf(relationship) - (group.length - 1) / 2
+    const side: -1 | 1 = k < 0 ? -1 : 1
+    if (k === 0) return { relationship, a, b, side }
+    // Sideways to the line between the cards — not to this string's own
+    // direction, which flips for the reverse relationship and would send
+    // the two strings back onto each other.
+    const across = Math.abs(b.y - a.y) >= Math.abs(b.x - a.x) ? { x: 1, y: 0 } : { x: 0, y: 1 }
+    const d = k * PARALLEL_SPACING
+    return {
+      relationship,
+      a: { x: a.x + across.x * d, y: a.y + across.y * d },
+      b: { x: b.x + across.x * d, y: b.y + across.y * d },
+      side
+    }
+  })
+}
+
+/** How far apart two strings joining the same two cards are drawn. */
+export const PARALLEL_SPACING = 40
+
+/** Below this span a tag at the middle would cover the pins at either end. */
+export const SHORT_SPAN = 100
+
+export interface TagPlace {
+  x: number
+  y: number
+  /** Which point of the tag sits at (x, y): its centre, or the middle of
+   *  the edge nearest the string. */
+  anchor: 'centre' | 'left' | 'right' | 'bottom' | 'top'
+}
+
+/**
+ * Where a string's tag goes. At the middle of the string, normally — but a
+ * short string between neighbouring cards has its two pins only a gap apart,
+ * and a tag centred there covered both: with the tool up, clicking a pin
+ * opened the label instead of pulling the string, and with it down the tag
+ * sat on both cards' text. A short string that runs down gets its tag beside
+ * it; one that runs across gets it above the cards' tops.
+ */
+export function tagPlace(a: Point, b: Point, side: -1 | 1 = 1): TagPlace {
+  const mid = stringMidpoint(a, b)
+  if (Math.hypot(b.x - a.x, b.y - a.y) >= SHORT_SPAN) return { ...mid, anchor: 'centre' }
+  if (Math.abs(b.y - a.y) >= Math.abs(b.x - a.x))
+    return side > 0
+      ? { x: mid.x + 10, y: mid.y, anchor: 'left' }
+      : { x: mid.x - 10, y: mid.y, anchor: 'right' }
+  return side > 0
+    ? { x: mid.x, y: Math.min(a.y, b.y) - CARD_H / 2 - 4, anchor: 'bottom' }
+    : { x: mid.x, y: Math.max(a.y, b.y) + CARD_H / 2 + 4, anchor: 'top' }
+}
+
+/**
+ * Where a string between two cards meets each one when nobody chose the
+ * spot: the middles of the edges that face each other. Pinned top to top, a
+ * string between two cards in a column ran down through the upper card, and
+ * its label sat on that card's text; edge to edge, it hangs in the gap
+ * between them, label and all.
+ */
+export function facingPins(p: Point, q: Point): [Point, Point] {
+  const dx = q.x - p.x
+  const dy = q.y - p.y
+  if (Math.abs(dy) >= Math.abs(dx)) {
+    // One above the other: bottom of the upper, top of the lower.
+    return dy >= 0
+      ? [
+          { x: p.x + CARD_W / 2, y: p.y + CARD_H },
+          { x: q.x + CARD_W / 2, y: q.y }
+        ]
+      : [
+          { x: p.x + CARD_W / 2, y: p.y },
+          { x: q.x + CARD_W / 2, y: q.y + CARD_H }
+        ]
+  }
+  // Side by side: the facing sides, at mid-height.
+  return dx >= 0
+    ? [
+        { x: p.x + CARD_W, y: p.y + CARD_H / 2 },
+        { x: q.x, y: q.y + CARD_H / 2 }
+      ]
+    : [
+        { x: p.x, y: p.y + CARD_H / 2 },
+        { x: q.x + CARD_W, y: q.y + CARD_H / 2 }
+      ]
+}
+
+/**
+ * A label's text with the way it reads: a relationship has a direction
+ * ("Elara — sister of → Marten"), and the board can be laid out any way
+ * round, so the arrow points along the string from the `from` card's end —
+ * down or up when the string mostly runs that way, not sideways.
+ */
+export function directedLabel(label: string, a: Point, b: Point): string {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  if (Math.abs(dy) > Math.abs(dx)) return dy > 0 ? `${label} ↓` : `↑ ${label}`
+  return dx >= 0 ? `${label} →` : `← ${label}`
+}

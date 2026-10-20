@@ -3848,6 +3848,103 @@ button {
   stroke-width: 4px;
 }
 
+/* A string being labelled: drawn, but not yet made. */
+.board-string-draft {
+  fill: none;
+  stroke: var(--string);
+  stroke-width: 2px;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+/* Labels sit on the string at its middle, as a tag tied to it: paper, a
+   rule in the string's own colour, the chrome face. HTML over the string
+   layer so a tag fits its words; with the tool down they are text and take
+   no clicks, so a card under a label still drags. */
+.board-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.string-label,
+.string-label-field {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+/* Short strings: beside the string, or above the cards (\`tagPlace\`). */
+.string-label.at-left,
+.string-label-field.at-left {
+  transform: translate(0, -50%);
+}
+
+.string-label.at-bottom,
+.string-label-field.at-bottom {
+  transform: translate(-50%, -100%);
+}
+
+.string-label.at-right,
+.string-label-field.at-right {
+  transform: translate(-100%, -50%);
+}
+
+.string-label.at-top,
+.string-label-field.at-top {
+  transform: translate(-50%, 0);
+}
+
+.string-label {
+  font-family: var(--font-chrome);
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 0 5px;
+  white-space: nowrap;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--string);
+}
+
+button.string-label {
+  pointer-events: auto;
+  cursor: text;
+}
+
+/* An unlabelled string, with the tool up: room to write one. */
+.string-label.empty {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+button.string-label:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.string-label-field {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.string-label-input {
+  width: 180px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.string-label-problem {
+  max-width: 240px;
+  font-size: 11px;
+  padding: 2px 6px;
+  text-align: center;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+}
+
 .board-pin.pending {
   fill: var(--paper);
   stroke: var(--string);
