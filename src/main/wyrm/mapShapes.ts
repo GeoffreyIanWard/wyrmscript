@@ -1,18 +1,12 @@
 import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
+import { MAP_SHAPE_KINDS, minShapePoints } from '../../shared/types'
 import type { MapShape, MapShapeKind } from '../../shared/types'
 
 /** Their own folder, not `map/`: that is the pins', and a pin reader that
  *  met a shape there would make a pin of it. */
 const MAP_DIR = 'map-shapes'
-
-const KINDS: readonly MapShapeKind[] = ['land', 'area', 'border']
-
-/** A closed outline needs three corners; an open line needs two ends. */
-export function minPointsFor(kind: MapShapeKind): number {
-  return kind === 'border' ? 2 : 3
-}
 
 function mapDir(projectPath: string): string {
   return join(projectPath, MAP_DIR)
@@ -31,7 +25,7 @@ interface MapShapeFrontmatter {
 }
 
 function isKind(value: unknown): value is MapShapeKind {
-  return typeof value === 'string' && (KINDS as readonly string[]).includes(value)
+  return typeof value === 'string' && (MAP_SHAPE_KINDS as readonly string[]).includes(value)
 }
 
 /** Keeps only entries with finite numeric x and y, rounded to whole pixels. */
@@ -54,7 +48,7 @@ function parseMapShapeFile(raw: string): MapShape | null {
   const data = matter(raw).data as Partial<Record<keyof MapShapeFrontmatter, unknown>>
   if (typeof data.id !== 'string' || !isKind(data.kind)) return null
   const points = cleanPoints(data.points)
-  if (points.length < minPointsFor(data.kind)) return null
+  if (points.length < minShapePoints(data.kind)) return null
   return {
     id: data.id,
     kind: data.kind,

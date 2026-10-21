@@ -108,7 +108,7 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'map-draw': {
     title: 'Drawing the map',
-    body: 'Land, Area and Border draw point by point: click to put each point down, click the first point (or press Return) to close a coast or an area, Return to finish a border. Backspace takes the last point back; Esc drops the shape. From the keyboard, Option and the arrows move a cursor and Space puts a point down. Dragging still moves the map, and pins stay out of the way while you draw. The Hand selects a shape to change it: drag a corner (or Option and the arrows), click a dotted dot to add one, Delete to take one out, or Delete on the shape to remove it.'
+    body: 'Every tool but the Hand draws point by point: click to put each point down. Land and Area are outlines — click the first point (or press Return) to close one. Border, River, Road and Railway are lines — Return finishes one; a river bends through its points. Backspace takes the last point back; Esc drops the shape. From the keyboard, Option and the arrows move a cursor and Space puts a point down. Dragging still moves the map, and pins stay out of the way while you draw. The Hand selects a shape to change it: drag a corner (or Option and the arrows), click a dotted dot to add one, Delete to take one out, or Delete on the shape to remove it.'
   },
   'map-grow': {
     title: 'More map',
