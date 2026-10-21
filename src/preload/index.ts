@@ -5,6 +5,7 @@ import type {
   Entity,
   EntityType,
   MapPin,
+  MapShape,
   Plotline,
   ProjectData,
   Relationship,
@@ -50,6 +51,9 @@ const api: WyrmApi = {
   listMapPins: (path) => ipcRenderer.invoke('mapPin:list', path),
   writeMapPin: (path, pin: MapPin) => ipcRenderer.invoke('mapPin:write', path, pin),
   deleteMapPin: (path, id) => ipcRenderer.invoke('mapPin:delete', path, id),
+  listMapShapes: (path) => ipcRenderer.invoke('mapShape:list', path),
+  writeMapShape: (path, shape: MapShape) => ipcRenderer.invoke('mapShape:write', path, shape),
+  deleteMapShape: (path, id) => ipcRenderer.invoke('mapShape:delete', path, id),
 
   listBoardStrings: (path) => ipcRenderer.invoke('boardString:list', path),
   writeBoardString: (path, s: BoardString) => ipcRenderer.invoke('boardString:write', path, s),

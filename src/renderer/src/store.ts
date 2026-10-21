@@ -24,6 +24,8 @@ import type {
   EntitySortMode,
   EntityType,
   MapPin,
+  MapShape,
+  MapShapeKind,
   Plotline,
   ProjectInfo,
   RecentProject,
@@ -83,6 +85,15 @@ function newId(): string {
   return Math.random().toString(36).slice(2, 10)
 }
 
+/** F-12: a closed outline (land, area) needs three corners, a border two ends. */
+function minShapePoints(kind: MapShapeKind): number {
+  return kind === 'border' ? 2 : 3
+}
+
+function roundPoints(points: { x: number; y: number }[]): { x: number; y: number }[] {
+  return points.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }))
+}
+
 /**
  * F-41: the fields that belong to one open project, as opposed to the app.
  *
@@ -127,6 +138,7 @@ export const SLICE_KEYS = [
   'plotlines',
   'relationships',
   'mapPins',
+  'mapShapes',
   'boardStrings',
   'boardUndo',
   'backupSettings',
@@ -246,6 +258,8 @@ interface WyrmState {
   relationships: Relationship[]
   /** F-12: world map pin placements — a `world` entity with none isn't on the map yet. */
   mapPins: MapPin[]
+  /** F-12: land, areas and borders drawn on the world map. */
+  mapShapes: MapShape[]
   /** F-46: red strings between corkboard cards. */
   boardStrings: BoardString[]
 
@@ -560,6 +574,24 @@ interface WyrmState {
   moveMapPinAt(path: string, pinId: string, x: number, y: number): Promise<void>
   removeMapPin(pin: MapPin): Promise<void>
 
+  loadMapShapes(): Promise<void>
+  /**
+   * Null, and nothing written, with no project open or too few points for
+   * the kind (land and areas need three, a border two). Points are rounded
+   * to whole map pixels.
+   */
+  createMapShape(kind: MapShapeKind, points: { x: number; y: number }[]): Promise<MapShape | null>
+  /**
+   * Replace a shape's points, in the project at `path` whether or not it is
+   * still in front — the same reason as `moveMapPinAt`: an edit can be
+   * written after a focus change, and resolved against "the project in
+   * front" it would land in another novel (or, in a clone sharing ids,
+   * reshape that novel's shape). A shape removed in the meantime is not
+   * brought back, and too few points for the kind writes nothing.
+   */
+  updateMapShapeAt(path: string, id: string, points: { x: number; y: number }[]): Promise<void>
+  deleteMapShape(shape: MapShape): Promise<void>
+
   loadBoardStrings(): Promise<void>
   /**
    * Null, and nothing written, when both ends are on the same card: a string
@@ -664,6 +696,7 @@ function emptySlice(): ProjectSlice {
     plotlines: [],
     relationships: [],
     mapPins: [],
+    mapShapes: [],
     boardStrings: [],
     boardUndo: null,
     backupSettings: null,
@@ -970,6 +1003,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     plotlines: [],
     relationships: [],
     mapPins: [],
+    mapShapes: [],
     boardStrings: [],
     boardUndo: null,
     backupSettings: null,
@@ -2306,6 +2340,58 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) return
       await api.deleteMapPin(project.path, pin.id)
       set({ mapPins: get().mapPins.filter((p) => p.id !== pin.id) })
+      markDirty()
+    },
+
+    async loadMapShapes() {
+      const { project } = get()
+      if (!project) return
+      set({ mapShapes: await api.listMapShapes(project.path) })
+    },
+
+    async createMapShape(kind, points) {
+      const { project } = get()
+      if (!project) return null
+      const rounded = roundPoints(points)
+      if (rounded.length < minShapePoints(kind)) return null
+      const now = new Date().toISOString()
+      const shape: MapShape = { id: newId(), kind, points: rounded, created: now, modified: now }
+      await api.writeMapShape(project.path, shape)
+      set({ mapShapes: [...get().mapShapes, shape] })
+      markDirty()
+      return shape
+    },
+
+    async updateMapShapeAt(path, id, points) {
+      const now = get()
+      const focused = now.project?.path === path
+      const shapes = focused ? now.mapShapes : now.parked[path]?.mapShapes
+      const found = shapes?.find((s) => s.id === id)
+      if (!found) return
+      const rounded = roundPoints(points)
+      if (rounded.length < minShapePoints(found.kind)) return
+      const updated: MapShape = { ...found, points: rounded }
+      await api.writeMapShape(path, updated)
+      const after = get()
+      if (after.project?.path === path) {
+        set({ mapShapes: after.mapShapes.map((s) => (s.id === id ? updated : s)) })
+      } else if (after.parked[path]) {
+        const slice = after.parked[path]
+        set({
+          parked: {
+            ...after.parked,
+            [path]: { ...slice, mapShapes: slice.mapShapes.map((s) => (s.id === id ? updated : s)) }
+          }
+        })
+      }
+      runtimeFor(path).commitDirty = true
+    },
+
+    async deleteMapShape(shape) {
+      const { project } = get()
+      if (!project) return
+      await api.deleteMapShape(project.path, shape.id)
+      set({ mapShapes: get().mapShapes.filter((s) => s.id !== shape.id) })
       markDirty()
     },
 

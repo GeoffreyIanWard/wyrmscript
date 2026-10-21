@@ -1817,6 +1817,191 @@ button.map-place-name {
   pointer-events: none;
 }
 
+/* ---------- shapes on the map ---------- */
+
+/* Land: paper, with an ink coast. Under it, the same outline drawn as a
+   wide dashed stroke — the land's fill hides the inner half, leaving short
+   hachures offshore, the way an engraved map marks a coastline. */
+.map-shape.land .map-shape-body {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
+.map-ripple {
+  fill: none;
+  stroke: var(--ink);
+  /* Each 1px dash of a 12px-wide stroke is a short tick across the coast;
+     the land's fill hides the inner half, leaving hachures offshore. Butt
+     caps keep them ticks — round caps swelled each into a 12px blob and
+     the coast drew as a solid black band. */
+  stroke-width: 12px;
+  stroke-dasharray: 1 3;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+}
+
+/* An area: hatched, with a dashed edge — a region over the land. */
+.map-shape.area .map-shape-body {
+  fill: url(#map-hatch);
+  stroke: var(--ink);
+  stroke-width: 1.5px;
+  stroke-dasharray: 6 3;
+}
+
+.map-hatch {
+  stroke: var(--ink);
+  stroke-width: 1px;
+}
+
+/* The sea: sparse ink dots on the paper — light enough that the graticule
+   and anything drawn on the sea still read, dark enough that land in plain
+   paper is plainly land. The 25% dither was so dense it read as grey. */
+.map-sea-dot {
+  fill: var(--ink);
+}
+
+/* A border: the cartographer's dash-dot. */
+.map-shape.border .map-shape-body {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2px;
+  stroke-dasharray: 12 4 2 4;
+}
+
+/* Selected and focused look different: selected is a heavy outline (and
+   its handles appear); focus is a dotted one, so Tabbing past a shape never
+   looks like choosing it. Both at once is heavy and dotted. */
+.map-shape.selected .map-shape-body {
+  stroke-width: 4px;
+}
+
+.map-shape-body:focus-visible {
+  stroke-width: 3px;
+  stroke-dasharray: 2 2;
+  outline: none;
+}
+
+.map-shape.selected .map-shape-body:focus-visible {
+  stroke-width: 4px;
+}
+
+/* With the hand, shapes take clicks; with a drawing tool they are only
+   drawing, and every click on the map is a point. */
+.map-scroll[data-tool='hand'] .map-shape-body {
+  pointer-events: visiblePainted;
+  cursor: pointer;
+}
+
+/* The outline widened into something to grab (its width set inline, so it
+   is the same on screen at every zoom). Invisible; dashes do not matter,
+   since `stroke` takes hits whatever the stroke looks like. */
+.map-shape-hit {
+  fill: none;
+  stroke: transparent;
+  pointer-events: none;
+}
+
+.map-scroll[data-tool='hand'] .map-shape-hit {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/* While drawing, pins are part of the picture: clicks go through them. */
+.map-scroll:not([data-tool='hand']) .world-map-pin {
+  pointer-events: none;
+}
+
+/* The keyboard's drawing cursor: a crosshair, unscaled like the handles,
+   shown only while the map has keyboard focus. */
+.map-cursor {
+  position: absolute;
+  z-index: 2;
+  width: 17px;
+  height: 17px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background:
+    linear-gradient(var(--ink), var(--ink)) center / 1px 100% no-repeat,
+    linear-gradient(var(--ink), var(--ink)) center / 100% 1px no-repeat;
+}
+
+.map-scroll:not(:focus-visible) .map-cursor {
+  display: none;
+}
+
+.map-scroll:not([data-tool='hand']) .map-sizer {
+  cursor: crosshair;
+}
+
+/* The shape being drawn. */
+.map-draft {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2px;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+/* Points to grab, drawn unscaled like the pins so they are the same size at
+   every zoom. */
+.map-handle {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  padding: 0;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+}
+
+.map-handle.corner {
+  width: 10px;
+  height: 10px;
+  cursor: move;
+}
+
+.map-handle.middle {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border-style: dotted;
+  cursor: copy;
+}
+
+.map-handle.first {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Once there are enough points, the first one says it closes the shape. */
+.map-handle.first.closes {
+  background: var(--ink);
+}
+
+.map-handle:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* One line, always the same height: the line changes as a shape is drawn,
+   and when it wrapped to two it pushed the map down mid-drawing — the click
+   meant to close a coast on its first point landed ten pixels off it. */
+.map-hint {
+  flex: none;
+  height: 26px;
+  box-sizing: border-box;
+  padding: 6px 20px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--ink);
+}
+
 /* The graticule: dotted ink every hundred map pixels, a surveyor's grid
    that is two-colour by being dotted rather than faint. */
 .map-graticule {
