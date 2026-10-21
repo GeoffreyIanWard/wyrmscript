@@ -20,11 +20,45 @@ import {
   NUDGE_BIG,
   NUDGE_SETTLE,
   pinOffset,
+  cardPin,
+  directedLabel,
+  facingPins,
+  relationshipStrings,
+  tagPlace,
   stackLayout,
   stringPath,
   stringPoints
 } from '../lib/corkboard'
 import type { Direction, PlacedCard, Point } from '../lib/corkboard'
+import { AddCardDialog } from './AddCardDialog'
+import { CardBack } from './CardBack'
+import { afterKeysUp } from '../lib/keys'
+
+interface Thread {
+  key: string
+  a: Point
+  b: Point
+  /** The card the string runs from, for focus once it is pulled. */
+  fromId: string
+  /** The label as written, and as shown (a relationship's has a direction). */
+  text?: string
+  shown?: string
+  /** What a screen reader hears for the tag with the tool down: the arrow
+   *  alone says nothing, and nothing else on the tag says who it joins. */
+  readable: string
+  pinName: string
+  labelName: string
+  /** Which side a short string's tag goes (`tagPlace`). */
+  side?: -1 | 1
+  pull: () => Promise<void>
+  edit: { kind: 'string'; id: string } | { kind: 'relationship'; id: string }
+  relationship?: boolean
+}
+
+type Draft =
+  | { kind: 'new'; from: StringEnd; to: StringEnd; between: 'characters' | 'cards' }
+  | { kind: 'string'; id: string }
+  | { kind: 'relationship'; id: string }
 
 const ARROWS: Record<string, Direction | undefined> = {
   ArrowUp: 'up',
@@ -32,9 +66,6 @@ const ARROWS: Record<string, Direction | undefined> = {
   ArrowLeft: 'left',
   ArrowRight: 'right'
 }
-import { AddCardDialog } from './AddCardDialog'
-import { CardBack } from './CardBack'
-import { afterKeysUp } from '../lib/keys'
 
 /**
  * The corkboard: the story's pieces as index cards, placed where the writer
@@ -75,6 +106,12 @@ export function Corkboard({
   const loadBoardStrings = useWyrm((s) => s.loadBoardStrings)
   const createBoardString = useWyrm((s) => s.createBoardString)
   const deleteBoardString = useWyrm((s) => s.deleteBoardString)
+  const labelBoardString = useWyrm((s) => s.labelBoardString)
+  const relationships = useWyrm((s) => s.relationships)
+  const loadRelationships = useWyrm((s) => s.loadRelationships)
+  const createRelationship = useWyrm((s) => s.createRelationship)
+  const saveRelationship = useWyrm((s) => s.saveRelationship)
+  const deleteRelationship = useWyrm((s) => s.deleteRelationship)
   const [dragging, setDragging] = useState<string | null>(null)
   // Which project the Add Card dialog was opened for. Derived rather than
   // closed in an effect: the dialog shows only while that is the project in
@@ -181,6 +218,11 @@ export function Corkboard({
   useEffect(() => {
     void loadBoardStrings()
   }, [project, loadBoardStrings])
+  // The Character Graph's relationships are drawn as string between the
+  // characters on the board, so the board loads them the way the graph does.
+  useEffect(() => {
+    void loadRelationships()
+  }, [project, loadRelationships])
 
   /**
    * The string tool (F-46). On, a click on a card pushes a pin in where it
@@ -191,6 +233,14 @@ export function Corkboard({
    */
   const [stringMode, setStringMode] = useState(false)
   const [pending, setPending] = useState<StringEnd | null>(null)
+  // Whether the waiting pin came from the keyboard, which has no "where".
+  const pendingByKeyboard = useRef(false)
+  // A string being labelled: a new one between its two pins, or an existing
+  // string's or relationship's label being changed. Held here until Return,
+  // like the pending pin — a string half-made is not a thing the board has.
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const [draftText, setDraftText] = useState('')
+  const [draftProblem, setDraftProblem] = useState<string | null>(null)
   useEffect(() => {
     if (!stringMode) return
     const onKey = (e: KeyboardEvent): void => {
@@ -199,6 +249,8 @@ export function Corkboard({
       // this listener runs first, in the capture phase, and would otherwise
       // take it, leaving the dialog impossible to close from the keyboard.
       if (document.querySelector('.dialog-overlay')) return
+      // The label field takes its own Esc (cancel the string), below.
+      if ((e.target as Element | null)?.closest?.('.string-label-input')) return
       // Stopped as well as handled: Esc is also "back", and putting the
       // string tool down should not also walk the writer off the board.
       e.preventDefault()
@@ -740,21 +792,45 @@ export function Corkboard({
       return
     }
     if (stringMode) {
+      // A string still being named takes the next click back to its field:
+      // pinning another card under it would start a second string while the
+      // first is unfinished.
+      if (draft) {
+        document.querySelector<HTMLInputElement>('.string-label-input')?.focus()
+        return
+      }
       // Pin where the card was clicked, not at its centre: a writer pushing
-      // a pin into a corner of a card meant that corner.
-      // From the keyboard there is no "where": a click with no pointer
-      // (detail 0) pins at the card's own pin, top centre, where a hand
-      // would push one in without thinking about it.
-      const at = e.detail === 0 ? { x: card.x + CARD_W / 2, y: card.y + 10 } : boardPoint(e)
+      // a pin into a corner of a card meant that corner. From the keyboard
+      // there is no "where" (a click with no pointer has detail 0): the pin
+      // waits at the card's own pin, top centre, and once the second card is
+      // known both keyboard ends move to the edges that face each other, so
+      // the string hangs between the cards rather than through one.
+      const byKeyboard = e.detail === 0
+      const at = byKeyboard ? cardPin(card) : boardPoint(e)
       const end: StringEnd = { cardId: card.id, ...pinOffset(card, at) }
       if (pending == null) {
         setPending(end)
+        pendingByKeyboard.current = byKeyboard
         return
       }
       // The second pin on the same card is a mistake, not a string: it is
       // ignored and the first pin stays waiting.
       if (pending.cardId === card.id) return
-      void createBoardString(pending, end)
+      const first = placed.find((c) => c.id === pending.cardId)
+      let from = pending
+      let to = end
+      if (first && (pendingByKeyboard.current || byKeyboard)) {
+        const [p, q] = facingPins(first, card)
+        if (pendingByKeyboard.current) from = { cardId: first.id, ...pinOffset(first, p) }
+        if (byKeyboard) to = { cardId: card.id, ...pinOffset(card, q) }
+      }
+      // Not made yet: the string is labelled first, at its middle. Between
+      // two characters it is a relationship, which needs its name.
+      const between =
+        first?.kind === 'character' && card.kind === 'character' ? 'characters' : 'cards'
+      setDraft({ kind: 'new', from, to, between })
+      setDraftText('')
+      setDraftProblem(null)
       setPending(null)
       return
     }
@@ -781,22 +857,132 @@ export function Corkboard({
       dragging === c.id && offset ? { x: c.x + offset.x, y: c.y + offset.y } : { x: c.x, y: c.y }
     ])
   )
-  const strings = boardStrings.flatMap((str) => {
-    const pts = stringPoints(str, livePositions)
-    if (!pts) return []
-    const titleOf = (id: string): string => placed.find((c) => c.id === id)?.title ?? 'a card'
-    return [
-      {
-        id: str.id,
-        a: pts[0],
-        b: pts[1],
-        fromId: str.from.cardId,
-        // Named for the keyboard and screen readers: a pin is otherwise only
-        // a dot, and "pull this pin" says nothing about which string it is.
-        label: `Pull the string from ${titleOf(str.from.cardId)} to ${titleOf(str.to.cardId)}`
+  const titleOf = (id: string): string => placed.find((c) => c.id === id)?.title ?? 'a card'
+  /**
+   * Everything drawn as string: the board's own strings, and the Character
+   * Graph's relationships between characters who are both on the board. One
+   * list, so a pin, a label and the keyboard work the same on either.
+   */
+  const threads: Thread[] = [
+    ...boardStrings.flatMap((str) => {
+      const pts = stringPoints(str, livePositions)
+      if (!pts) return []
+      return [
+        {
+          key: str.id,
+          a: pts[0],
+          b: pts[1],
+          fromId: str.from.cardId,
+          text: str.label,
+          shown: str.label,
+          readable: `"${str.label ?? ''}", a string between ${titleOf(str.from.cardId)} and ${titleOf(str.to.cardId)}`,
+          // Named for the keyboard and screen readers: a pin is otherwise
+          // only a dot, and "pull this pin" says nothing about which string.
+          pinName: `Pull the string from ${titleOf(str.from.cardId)} to ${titleOf(str.to.cardId)}`,
+          labelName: str.label
+            ? `Change the label "${str.label}"`
+            : `Label the string from ${titleOf(str.from.cardId)} to ${titleOf(str.to.cardId)}`,
+          pull: () => deleteBoardString(str.id),
+          edit: { kind: 'string' as const, id: str.id }
+        }
+      ]
+    }),
+    ...relationshipStrings(
+      relationships,
+      placed.map((c) => ({ ...c, ...(livePositions.get(c.id) ?? {}) }))
+    ).map(({ relationship: rel, a, b, side }) => ({
+      key: `rel-${rel.id}`,
+      a,
+      b,
+      side,
+      fromId: rel.fromId,
+      text: rel.label,
+      shown: directedLabel(rel.label, a, b),
+      readable: `${titleOf(rel.fromId)} is "${rel.label}" ${titleOf(rel.toId)}`,
+      pinName: `Pull the relationship "${rel.label}" from ${titleOf(rel.fromId)} to ${titleOf(rel.toId)}. It leaves the Character Graph too.`,
+      labelName: `Change the relationship "${rel.label}" from ${titleOf(rel.fromId)} to ${titleOf(rel.toId)}`,
+      pull: () => deleteRelationship(rel),
+      edit: { kind: 'relationship' as const, id: rel.id },
+      relationship: true
+    }))
+  ]
+
+  /** Where the label field sits, and the string it belongs to. */
+  const draftAt = ((): { a: Point; b: Point } | null => {
+    if (!draft) return null
+    if (draft.kind === 'new') {
+      const p = livePositions.get(draft.from.cardId)
+      const q = livePositions.get(draft.to.cardId)
+      if (!p || !q) return null
+      return {
+        a: { x: p.x + draft.from.dx, y: p.y + draft.from.dy },
+        b: { x: q.x + draft.to.dx, y: q.y + draft.to.dy }
       }
-    ]
-  })
+    }
+    const t = threads.find((x) => x.edit.kind === draft.kind && x.edit.id === draft.id)
+    return t ? { a: t.a, b: t.b } : null
+  })()
+
+  const closeDraft = (restore = true): void => {
+    const was = draft
+    setDraft(null)
+    setDraftProblem(null)
+    // Back to a card, not dropped to <body> with the field — unless the
+    // writer has already put focus somewhere on purpose (clicked the next
+    // card), which must not be pulled back to the last one.
+    if (!restore) return
+    const id =
+      was?.kind === 'new'
+        ? was.to.cardId
+        : threads.find((x) => was && x.edit.kind === was.kind && x.edit.id === was.id)?.fromId
+    if (id) afterKeysUp(() => faceOf(id)?.focus())
+  }
+
+  /** Return in the label field, or leaving it. False when it cannot be kept. */
+  const commitDraft = (restore = true): boolean => {
+    if (!draft) return true
+    const text = draftText.trim()
+    const named =
+      draft.kind === 'relationship' || (draft.kind === 'new' && draft.between === 'characters')
+    if (named && !text) {
+      // Said, not silently refused: a relationship is a named thing.
+      setDraftProblem(
+        'Name the relationship ("sister of", "owes") — it goes in the Character Graph too.'
+      )
+      return false
+    }
+    if (draft.kind === 'new' && draft.between === 'characters') {
+      // The same relationship twice, one way, is one relationship the
+      // writer cannot see the second of. The other direction is a new one.
+      const same = relationships.find(
+        (r) =>
+          r.fromId === draft.from.cardId &&
+          r.toId === draft.to.cardId &&
+          r.label.trim().toLowerCase() === text.toLowerCase()
+      )
+      if (same) {
+        setDraftProblem(
+          `${titleOf(same.fromId)} is already "${same.label}" ${titleOf(same.toId)} — change that one from its tag.`
+        )
+        return false
+      }
+    }
+    if (draft.kind === 'new') {
+      if (draft.between === 'characters')
+        void createRelationship(draft.from.cardId, draft.to.cardId, text)
+      else void createBoardString(draft.from, draft.to, text)
+    } else if (draft.kind === 'string') {
+      // An unchanged label writes nothing — the store's rule, held there so
+      // every caller gets it.
+      void labelBoardString(draft.id, text)
+    } else {
+      const rel = relationships.find((r) => r.id === draft.id)
+      if (rel && rel.label !== text) void saveRelationship({ ...rel, label: text })
+    }
+    closeDraft(restore)
+    return true
+  }
+
   const pendingAt = pending
     ? (() => {
         const card = livePositions.get(pending.cardId)
@@ -913,10 +1099,14 @@ export function Corkboard({
           role={stringMode ? 'list' : undefined}
           aria-label={stringMode ? 'Strings' : undefined}
         >
-          {strings.map((str) => (
-            <g key={str.id} className="board-string" role="listitem">
-              <path d={stringPath(str.a, str.b)} />
-              {[str.a, str.b].map((pt, i) => (
+          {threads.map((t) => (
+            <g
+              key={t.key}
+              className={`board-string${t.relationship ? ' relationship' : ''}`}
+              role="listitem"
+            >
+              <path d={stringPath(t.a, t.b)} />
+              {[t.a, t.b].map((pt, i) => (
                 <circle
                   key={i}
                   className="board-pin"
@@ -929,9 +1119,9 @@ export function Corkboard({
                   // decoration and a card under one must stay easy to reach.
                   tabIndex={stringMode ? 0 : undefined}
                   role={stringMode ? 'button' : undefined}
-                  aria-label={stringMode ? str.label : undefined}
+                  aria-label={stringMode ? t.pinName : undefined}
                   onClick={() => {
-                    if (stringMode) void deleteBoardString(str.id)
+                    if (stringMode) void t.pull()
                   }}
                   onKeyDown={(e) => {
                     if (!stringMode) return
@@ -939,19 +1129,130 @@ export function Corkboard({
                     e.preventDefault()
                     // The pin is about to go, and focus with it to <body>:
                     // land on the card the string ran from instead.
-                    faceOf(str.fromId)?.focus()
-                    void deleteBoardString(str.id)
+                    faceOf(t.fromId)?.focus()
+                    void t.pull()
                   }}
                 >
-                  <title>Pull this pin to remove the string</title>
+                  <title>
+                    {t.relationship
+                      ? 'Pull this pin to remove the relationship'
+                      : 'Pull this pin to remove the string'}
+                  </title>
                 </circle>
               ))}
             </g>
           ))}
+          {draft?.kind === 'new' && draftAt && (
+            <path className="board-string-draft" d={stringPath(draftAt.a, draftAt.b)} />
+          )}
           {pendingAt && (
             <circle className="board-pin pending" cx={pendingAt.x} cy={pendingAt.y} r={5} />
           )}
         </svg>
+        {/* Labels are HTML over the string layer, not SVG text: a tag sized
+            to its words, and with the tool up a real button to change it. */}
+        <div className="board-labels">
+          {threads.map((t) => {
+            if (
+              draft &&
+              draft.kind !== 'new' &&
+              t.edit.kind === draft.kind &&
+              t.edit.id === draft.id
+            )
+              return null
+            const at = tagPlace(t.a, t.b, t.side)
+            const style = { left: at.x, top: at.y }
+            if (!t.shown && !stringMode) return null
+            return stringMode ? (
+              <button
+                key={t.key}
+                type="button"
+                className={`string-label at-${at.anchor}${t.shown ? '' : ' empty'}${t.relationship ? ' relationship' : ''}`}
+                data-help="string-label"
+                style={style}
+                aria-label={t.labelName}
+                onClick={() => {
+                  setDraft(t.edit)
+                  setDraftText(t.text ?? '')
+                  setDraftProblem(null)
+                }}
+              >
+                {t.shown ?? '+ label'}
+              </button>
+            ) : (
+              <span
+                key={t.key}
+                className={`string-label at-${at.anchor}${t.relationship ? ' relationship' : ''}`}
+                style={style}
+              >
+                <span aria-hidden="true">{t.shown}</span>
+                <span className="sr-only">{t.readable}</span>
+              </span>
+            )
+          })}
+          {draft && draftAt && (
+            <div
+              className={`string-label-field at-${tagPlace(draftAt.a, draftAt.b).anchor}`}
+              style={{
+                left: tagPlace(draftAt.a, draftAt.b).x,
+                top: tagPlace(draftAt.a, draftAt.b).y
+              }}
+            >
+              <input
+                className="text-field string-label-input"
+                autoFocus
+                value={draftText}
+                aria-label={
+                  draft.kind === 'relationship' ||
+                  (draft.kind === 'new' && draft.between === 'characters')
+                    ? 'Name the relationship'
+                    : 'Label the string, or leave it blank'
+                }
+                aria-invalid={draftProblem != null}
+                aria-describedby={draftProblem != null ? 'string-label-problem' : undefined}
+                placeholder={
+                  draft.kind === 'relationship' ||
+                  (draft.kind === 'new' && draft.between === 'characters')
+                    ? 'sister of, owes…'
+                    : 'Label (optional)'
+                }
+                onChange={(e) => {
+                  setDraftText(e.target.value)
+                  setDraftProblem(null)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    commitDraft()
+                  } else if (e.key === 'Escape') {
+                    // The string is not made (or the label not changed), and
+                    // Esc goes no further — not the tool, not "back".
+                    e.preventDefault()
+                    e.stopPropagation()
+                    closeDraft()
+                  }
+                }}
+                onBlur={(e) => {
+                  // The window losing focus (Cmd-Tab, a menu, a native
+                  // dialog) is not the writer leaving the field: nothing is
+                  // kept or thrown away, and the field has the caret back
+                  // when the window does.
+                  if (!document.hasFocus()) return
+                  // Clicking away keeps what was written. One that cannot be
+                  // kept (a relationship with no name) stays open with the
+                  // reason, rather than taking both pins with it unannounced.
+                  const away = e.relatedTarget instanceof HTMLElement
+                  if (draft) commitDraft(!away)
+                }}
+              />
+              {draftProblem != null && (
+                <div id="string-label-problem" className="string-label-problem" role="alert">
+                  {draftProblem}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       {adding && <AddCardDialog onClose={closeAdding} />}
       {turned != null && turnedId != null && docs != null && (

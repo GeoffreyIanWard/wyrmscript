@@ -22,6 +22,7 @@ interface BoardStringFrontmatter {
   id: string
   from: StringEnd
   to: StringEnd
+  label?: string
   created: string
   modified: string
 }
@@ -37,6 +38,9 @@ function parseBoardStringFile(raw: string): BoardString {
     id: data.id,
     from: parseEnd(data.from),
     to: parseEnd(data.to),
+    // Read only when it is a real label: a hand-edited file could carry
+    // anything under the key.
+    ...(typeof data.label === 'string' && data.label.trim() ? { label: data.label } : {}),
     created: data.created,
     modified: data.modified
   }
@@ -48,6 +52,9 @@ export async function writeBoardString(projectPath: string, s: BoardString): Pro
     id: s.id,
     from: parseEnd(s.from),
     to: parseEnd(s.to),
+    // Omitted rather than written empty: gray-matter refuses undefined, and
+    // an empty key is noise in every diff and sync merge.
+    ...(s.label?.trim() ? { label: s.label.trim() } : {}),
     created: s.created,
     modified: new Date().toISOString()
   }

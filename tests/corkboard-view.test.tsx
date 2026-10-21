@@ -741,6 +741,16 @@ describe('strings between cards (F-46)', () => {
     })
   }
 
+  /** After the second pin the string is labelled first: Return runs it. */
+  const runIt = async (label = ''): Promise<void> => {
+    const input = document.querySelector('.string-label-input') as HTMLInputElement
+    expect(input).toBeTruthy()
+    await act(async () => {
+      fireEvent.change(input, { target: { value: label } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+  }
+
   beforeEach(async () => {
     path = await openDemo()
     for (const str of await api.listBoardStrings(path)) await api.deleteBoardString(path, str.id)
@@ -760,6 +770,7 @@ describe('strings between cards (F-46)', () => {
     expect(stringsDrawn()).toBe(0)
 
     await clickAt(faceOf(b), 60, 234)
+    await runIt()
 
     await waitFor(() => expect(stringsDrawn()).toBe(1))
     expect(document.querySelector('.board-pin.pending')).toBeNull()
@@ -806,6 +817,7 @@ describe('strings between cards (F-46)', () => {
     const [a, b] = titles()
     await clickAt(faceOf(a), 40, 30)
     await clickAt(faceOf(b), 60, 234)
+    await runIt()
     await waitFor(() => expect(stringsDrawn()).toBe(1))
 
     const card = cardByTitle(b)
@@ -823,6 +835,7 @@ describe('strings between cards (F-46)', () => {
     const [a, b] = titles()
     await clickAt(faceOf(a), 40, 30)
     await clickAt(faceOf(b), 60, 234)
+    await runIt()
     await waitFor(() => expect(stringsDrawn()).toBe(1))
 
     await act(async () => {
@@ -837,6 +850,7 @@ describe('strings between cards (F-46)', () => {
     const [a, b] = titles()
     await clickAt(faceOf(a), 40, 30)
     await clickAt(faceOf(b), 60, 234)
+    await runIt()
     await waitFor(() => expect(stringsDrawn()).toBe(1))
     await act(async () => {
       fireEvent.click(tool('String'))
@@ -862,6 +876,7 @@ describe('strings between cards (F-46)', () => {
     })
     await clickAt(faceOf(titles()[0]), 40, 30)
     await clickAt(faceOf('Elara Voss'), 60, 700)
+    await runIt()
     await waitFor(() => expect(stringsDrawn()).toBe(1))
 
     await act(async () => {

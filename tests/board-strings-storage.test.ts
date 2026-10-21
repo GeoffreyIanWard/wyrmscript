@@ -119,3 +119,49 @@ describe('deleteBoardString', () => {
     expect(await listBoardStrings(dir)).toHaveLength(1)
   })
 })
+
+describe("a string's label on disk", () => {
+  it('round-trips a label, trimmed', async () => {
+    const dir = await makeProject()
+    await writeBoardString(dir, makeString({ label: '  same night ' }))
+    const [found] = await listBoardStrings(dir)
+    expect(found.label).toBe('same night')
+  })
+
+  it('writes no label key at all for a plain string, or a blank label', async () => {
+    const dir = await makeProject()
+    const plain = makeString()
+    const blank = makeString({ label: '   ' })
+    await writeBoardString(dir, plain)
+    await writeBoardString(dir, blank)
+    for (const s of [plain, blank]) {
+      const raw = await fsp.readFile(join(dir, 'strings', `${s.id}.md`), 'utf8')
+      expect(raw).not.toContain('label')
+    }
+    for (const found of await listBoardStrings(dir)) expect('label' in found).toBe(false)
+  })
+
+  it('reads an empty or blank label on disk as no label', async () => {
+    const dir = await makeProject()
+    for (const value of ["''", "'   '"]) {
+      const s = makeString()
+      await writeBoardString(dir, s)
+      const file = join(dir, 'strings', `${s.id}.md`)
+      const raw = await fsp.readFile(file, 'utf8')
+      await fsp.writeFile(file, raw.replace('---\n', `---\nlabel: ${value}\n`), 'utf8')
+      const found = (await listBoardStrings(dir)).find((x) => x.id === s.id)!
+      expect('label' in found).toBe(false)
+    }
+  })
+
+  it('ignores a label key that is not a real label', async () => {
+    const dir = await makeProject()
+    const s = makeString()
+    await writeBoardString(dir, s)
+    const file = join(dir, 'strings', `${s.id}.md`)
+    const raw = await fsp.readFile(file, 'utf8')
+    await fsp.writeFile(file, raw.replace('---\n', '---\nlabel: 42\n'), 'utf8')
+    const [found] = await listBoardStrings(dir)
+    expect('label' in found).toBe(false)
+  })
+})

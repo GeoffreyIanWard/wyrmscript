@@ -337,6 +337,10 @@ export interface BoardString {
   id: string
   from: StringEnd
   to: StringEnd
+  /** What the string means ("owes", "same night"). Optional; absent, not
+   *  empty, when there is none. A string between two *characters* is not a
+   *  board string at all but a `Relationship`, whose label is required. */
+  label?: string
   created: string
   modified: string
 }
