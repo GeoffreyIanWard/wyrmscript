@@ -2,6 +2,7 @@ import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
 import type { MapPin } from '../../shared/types'
+import { assertPlainId, isPlainId } from './plainId'
 
 const MAP_DIR = 'map'
 
@@ -9,7 +10,10 @@ function mapDir(projectPath: string): string {
   return join(projectPath, MAP_DIR)
 }
 
+/** Refuses an id that is not plain (see `plainId.ts`), so neither a write
+ *  nor a delete can reach outside the folder. */
 function mapPinPath(projectPath: string, id: string): string {
+  assertPlainId(id, 'pin')
   return join(mapDir(projectPath), `${id}.md`)
 }
 
@@ -28,7 +32,7 @@ function parseMapPinFile(raw: string): MapPin {
   const parsed = matter(raw)
   const data = parsed.data as MapPinFrontmatter
   if (
-    typeof data.id !== 'string' ||
+    !isPlainId(data.id) ||
     typeof data.entityId !== 'string' ||
     !Number.isFinite(data.x) ||
     !Number.isFinite(data.y)
@@ -45,6 +49,7 @@ function parseMapPinFile(raw: string): MapPin {
 }
 
 export async function writeMapPin(projectPath: string, pin: MapPin): Promise<void> {
+  const path = mapPinPath(projectPath, pin.id)
   await fsp.mkdir(mapDir(projectPath), { recursive: true })
   const meta: MapPinFrontmatter = {
     id: pin.id,
@@ -55,7 +60,7 @@ export async function writeMapPin(projectPath: string, pin: MapPin): Promise<voi
     modified: new Date().toISOString()
   }
   const file = matter.stringify('', meta)
-  await fsp.writeFile(mapPinPath(projectPath, pin.id), file, 'utf8')
+  await fsp.writeFile(path, file, 'utf8')
 }
 
 /**

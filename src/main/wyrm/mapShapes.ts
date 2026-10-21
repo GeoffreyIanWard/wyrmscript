@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import matter from 'gray-matter'
 import { MAP_SHAPE_KINDS, minShapePoints } from '../../shared/types'
 import type { MapShape, MapShapeKind } from '../../shared/types'
+import { assertPlainId, isPlainId } from './plainId'
 
 /** Their own folder, not `map/`: that is the pins', and a pin reader that
  *  met a shape there would make a pin of it. */
@@ -12,7 +13,10 @@ function mapDir(projectPath: string): string {
   return join(projectPath, MAP_DIR)
 }
 
+/** Refuses an id that is not plain (see `plainId.ts`), so neither a write
+ *  nor a delete can reach outside the folder. */
 function mapShapePath(projectPath: string, id: string): string {
+  assertPlainId(id, 'shape')
   return join(mapDir(projectPath), `${id}.md`)
 }
 
@@ -43,10 +47,11 @@ function cleanPoints(value: unknown): { x: number; y: number }[] {
 }
 
 /** Null for anything that isn't a usable shape (a stray pin file has no
- *  `kind`, for one). */
+ *  `kind`, for one, and an id that isn't plain could never be moved or
+ *  deleted safely). */
 function parseMapShapeFile(raw: string): MapShape | null {
   const data = matter(raw).data as Partial<Record<keyof MapShapeFrontmatter, unknown>>
-  if (typeof data.id !== 'string' || !isKind(data.kind)) return null
+  if (!isPlainId(data.id) || !isKind(data.kind)) return null
   const points = cleanPoints(data.points)
   if (points.length < minShapePoints(data.kind)) return null
   return {
@@ -59,6 +64,7 @@ function parseMapShapeFile(raw: string): MapShape | null {
 }
 
 export async function writeMapShape(projectPath: string, shape: MapShape): Promise<void> {
+  const path = mapShapePath(projectPath, shape.id)
   await fsp.mkdir(mapDir(projectPath), { recursive: true })
   const meta: MapShapeFrontmatter = {
     id: shape.id,
@@ -68,7 +74,7 @@ export async function writeMapShape(projectPath: string, shape: MapShape): Promi
     modified: new Date().toISOString()
   }
   const file = matter.stringify('', meta)
-  await fsp.writeFile(mapShapePath(projectPath, shape.id), file, 'utf8')
+  await fsp.writeFile(path, file, 'utf8')
 }
 
 /**

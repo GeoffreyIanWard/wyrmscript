@@ -2,6 +2,7 @@ import { promises as fsp } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import matter from 'gray-matter'
 import type { DocFile, Entity, EntityType } from '../../shared/types'
+import { assertPlainId } from './plainId'
 import { readDoc } from './project'
 
 const DOCS_DIR = 'documents'
@@ -152,18 +153,6 @@ const PORTRAIT_MIMES: Record<string, string> = {
   '.webp': 'image/webp'
 }
 const PORTRAIT_EXTS = Object.keys(PORTRAIT_MIMES)
-
-/**
- * The id is the only thing the renderer names, and here it becomes a
- * filename inside the project — so one carrying a separator or `..` is
- * refused outright rather than resolved to wherever it points. Every id this
- * app mints is base-36, so a real one never trips this.
- */
-function assertPlainId(id: string): void {
-  if (!id || id.includes('/') || id.includes('\\') || id.includes('..')) {
-    throw new Error(`Not a valid entry id: ${JSON.stringify(id)}`)
-  }
-}
 
 /** The portrait on disk for this entry, if any — found by extension rather
  *  than from the entry's record, which can lag the folder after a sync. */
