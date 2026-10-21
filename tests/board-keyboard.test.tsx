@@ -6,7 +6,7 @@ import { DEFAULT_APPEARANCE, DEFAULT_STATS } from '../src/shared/types'
 import { api } from '../src/renderer/src/lib/api'
 import { useWyrm, __disposeAll } from '../src/renderer/src/store'
 import { Corkboard } from '../src/renderer/src/components/Corkboard'
-import { CARD_W, NUDGE, NUDGE_BIG, nearestCard } from '../src/renderer/src/lib/corkboard'
+import { CARD_H, CARD_W, NUDGE, NUDGE_BIG, nearestCard } from '../src/renderer/src/lib/corkboard'
 
 /**
  * The corkboard from the keyboard. It was mouse-only: cards could be
@@ -284,18 +284,32 @@ describe('strings from the keyboard', () => {
       fireEvent.click(face(title), { detail: 0 })
     })
   }
+  /** Return in the label field that follows the second pin. */
+  const runIt = async (): Promise<void> => {
+    const input = await waitFor(() => {
+      const el = document.querySelector('.string-label-input')
+      expect(el).toBeTruthy()
+      return el as HTMLInputElement
+    })
+    await key(input, 'Enter')
+  }
 
-  it('pins each card at its top centre on Return, says so, and runs the string', async () => {
+  it('pins from the keyboard at the facing edges, says so, and runs the string', async () => {
     const [first, second] = scenes
     await press(first)
     expect(screen.getByRole('status').textContent).toContain(`Pinned to ${first}`)
     await press(second)
+    // The label field takes the keyboard: the second card is not where focus
+    // is left while it is up.
+    expect(document.activeElement?.classList.contains('string-label-input')).toBe(true)
+    await runIt()
 
     await waitFor(() => expect(document.querySelectorAll('.board-string').length).toBe(1))
     const [s] = await api.listBoardStrings(path)
-    // The card's own pin: top centre.
-    expect(s.from).toMatchObject({ dx: CARD_W / 2, dy: 10 })
-    expect(s.to).toMatchObject({ dx: CARD_W / 2, dy: 10 })
+    // The edges that face each other — bottom of the upper card, top of the
+    // lower — so the string hangs between them rather than through one.
+    expect(s.from).toMatchObject({ dx: CARD_W / 2, dy: CARD_H })
+    expect(s.to).toMatchObject({ dx: CARD_W / 2, dy: 0 })
     expect(screen.getByRole('status').textContent).toBe('')
   })
 
@@ -303,6 +317,7 @@ describe('strings from the keyboard', () => {
     const [first, second] = scenes
     await press(first)
     await press(second)
+    await runIt()
     const pin = await waitFor(() =>
       screen.getAllByRole('button', { name: `Pull the string from ${first} to ${second}` })
     )
@@ -350,6 +365,8 @@ describe('pulling a pin', () => {
           fireEvent.click(face(t), { detail: 0 })
         })
       }
+      const field = document.querySelector('.string-label-input') as HTMLInputElement
+      await key(field, 'Enter')
       await waitFor(() => expect(document.querySelectorAll('.board-string').length).toBe(1))
       await key(document.querySelector('.board-pin') as HTMLElement, k)
       await waitFor(() => expect(document.querySelectorAll('.board-string').length).toBe(0))

@@ -541,7 +541,9 @@ interface WyrmState {
    * whose card is later deleted is tolerated and hidden by the view, not
    * cascaded here.
    */
-  createBoardString(from: StringEnd, to: StringEnd): Promise<BoardString | null>
+  createBoardString(from: StringEnd, to: StringEnd, label?: string): Promise<BoardString | null>
+  /** Give a string a label, or take it away with an empty one. */
+  labelBoardString(id: string, label: string): Promise<void>
   deleteBoardString(id: string): Promise<void>
 }
 
@@ -2236,15 +2238,37 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({ boardStrings: await api.listBoardStrings(project.path) })
     },
 
-    async createBoardString(from, to) {
+    async createBoardString(from, to, label) {
       const { project } = get()
       if (!project || from.cardId === to.cardId) return null
       const now = new Date().toISOString()
-      const s: BoardString = { id: newId(), from, to, created: now, modified: now }
+      const s: BoardString = {
+        id: newId(),
+        from,
+        to,
+        ...(label?.trim() ? { label: label.trim() } : {}),
+        created: now,
+        modified: now
+      }
       await api.writeBoardString(project.path, s)
       set({ boardStrings: [...get().boardStrings, s] })
       markDirty()
       return s
+    },
+
+    async labelBoardString(id, label) {
+      const { project } = get()
+      const found = get().boardStrings.find((s) => s.id === id)
+      if (!project || !found) return
+      // Unchanged writes nothing: a rewrite restamps the file for the next
+      // checkpoint and every sync.
+      if ((found.label ?? '') === label.trim()) return
+      const rest: BoardString = { ...found }
+      delete rest.label
+      const updated: BoardString = label.trim() ? { ...rest, label: label.trim() } : rest
+      await api.writeBoardString(project.path, updated)
+      set({ boardStrings: get().boardStrings.map((s) => (s.id === id ? updated : s)) })
+      markDirty()
     },
 
     async deleteBoardString(id) {
