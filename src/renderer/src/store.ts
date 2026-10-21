@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
 import type {
+  MapBounds,
   DocMeta,
   AppearanceSettings,
   BackupRun,
@@ -52,6 +53,16 @@ export type MainView =
   | { kind: 'folder'; id: string }
   | { kind: 'stats' }
   | { kind: 'tags' }
+  | {
+      /** F-12: the world map, full-window. Scroll and zoom are carried only
+       *  on the copy remembered in `viewHistory`, so coming back from a place
+       *  opened on the map lands where the map was. */
+      kind: 'map'
+      zoom?: number
+      scrollLeft?: number
+      scrollTop?: number
+      focusPin?: string
+    }
   | {
       kind: 'corkboard'
       /**
@@ -476,6 +487,12 @@ interface WyrmState {
   showStats(): void
   /** The corkboard: every scene as an index card, in binder order. */
   showCorkboard(): void
+  /** F-12: the world map, full-window. A detour: Esc goes back. */
+  showMap(): void
+  /** The map has used the place it was told to come back to; drop it. */
+  settleMapReturn(): void
+  /** F-12: the map's extent, saved with the project. */
+  setMapBounds(bounds: MapBounds): Promise<void>
   /**
    * Add Card is open for this project — kept in the store, not the board,
    * so the menu, the command palette and ⌥⌘N can open it from anywhere. The
@@ -532,6 +549,15 @@ interface WyrmState {
   /** Places a location if it has no pin yet, or moves its existing one — the
    *  same drag/drop operation either way. */
   setMapPin(entityId: string, x: number, y: number): Promise<void>
+  /**
+   * Move a pin that is already on the map, in the project at `path` whether
+   * or not it is still in front. A nudge is written after the keys stop, and
+   * that can be after a focus change: resolved against "the project in
+   * front" it wrote a new pin into another novel (or, in a clone sharing
+   * ids, moved that novel's pin). A pin removed in the meantime is not
+   * brought back — a move never creates one.
+   */
+  moveMapPinAt(path: string, pinId: string, x: number, y: number): Promise<void>
   removeMapPin(pin: MapPin): Promise<void>
 
   loadBoardStrings(): Promise<void>
@@ -1942,6 +1968,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await api.deleteEntity(project.path, entity.type, entity.id)
       setEntities(get().entities.filter((e) => e.id !== entity.id))
       markDirty()
+      // A place's pin goes with it, as its portrait does: a pin for an entry
+      // that no longer exists is a dot on the map nothing can explain.
+      const pin = get().mapPins.find((p) => p.entityId === entity.id)
+      if (pin) await get().removeMapPin(pin)
       if (panelEntityId === entity.id) set({ panelEntityId: null })
       if (mainView.kind === 'entity' && mainView.id === entity.id)
         set({ mainView: { kind: 'doc' } })
@@ -2032,6 +2062,32 @@ export const useWyrm = create<WyrmState>((set, get) => {
         mainView: { kind: 'stats' },
         viewHistory: [...viewHistory, mainView].slice(-VIEW_HISTORY_LIMIT)
       })
+    },
+
+    showMap() {
+      // A detour, like stats and tags: the map is looked at and come back
+      // from, from the board or the page, and Esc should put the writer
+      // back exactly where they were.
+      const { mainView, viewHistory } = get()
+      if (mainView.kind === 'map') return
+      set({
+        mainView: { kind: 'map' },
+        viewHistory: [...viewHistory, mainView].slice(-VIEW_HISTORY_LIMIT)
+      })
+    },
+
+    settleMapReturn() {
+      const { mainView } = get()
+      if (mainView.kind !== 'map' || Object.keys(mainView).length === 1) return
+      set({ mainView: { kind: 'map' } })
+    },
+
+    async setMapBounds(bounds) {
+      const { project } = get()
+      if (!project) return
+      project.data.mapBounds = bounds
+      setProject({ ...project })
+      await persistProject()
     },
 
     showCorkboard() {
@@ -2218,6 +2274,29 @@ export const useWyrm = create<WyrmState>((set, get) => {
           : [...get().mapPins, pin]
       })
       markDirty()
+    },
+
+    async moveMapPinAt(path, pinId, x, y) {
+      const now = get()
+      const focused = now.project?.path === path
+      const pins = focused ? now.mapPins : now.parked[path]?.mapPins
+      const found = pins?.find((p) => p.id === pinId)
+      if (!found) return
+      const moved: MapPin = { ...found, x, y }
+      await api.writeMapPin(path, moved)
+      const after = get()
+      if (after.project?.path === path) {
+        set({ mapPins: after.mapPins.map((p) => (p.id === pinId ? moved : p)) })
+      } else if (after.parked[path]) {
+        const slice = after.parked[path]
+        set({
+          parked: {
+            ...after.parked,
+            [path]: { ...slice, mapPins: slice.mapPins.map((p) => (p.id === pinId ? moved : p)) }
+          }
+        })
+      }
+      runtimeFor(path).commitDirty = true
     },
 
     async removeMapPin(pin) {

@@ -219,4 +219,72 @@ describe('the places that have to agree with the menu', () => {
 
     await waitFor(() => expect(document.querySelector('.dialog-overlay')).toBeTruthy())
   })
+
+  it('opens the world map as a place from the menu, the board and the palette, binder hidden', async () => {
+    const path = await openProject()
+    for (const d of (await api.readAllDocs(path)).slice(0, 1)) {
+      await api.writeDoc(path, { ...d, meta: { ...d.meta, tags: ['scene'] } })
+    }
+    await renderApp()
+    const atMap = async (): Promise<void> => {
+      await waitFor(() => expect(useWyrm.getState().mainView.kind).toBe('map'))
+      await waitFor(() => expect(document.querySelector('.world-map')).toBeTruthy())
+      // The map takes the window, as the board does: no binder squeezing it.
+      expect(document.querySelector('.binder')).toBeNull()
+      expect(document.querySelector('.dialog-overlay')).toBeNull()
+    }
+
+    // The menu.
+    await openMenu('Corkboard')
+    const item = [...document.querySelectorAll('.menu-drop .menu-item')].find((i) =>
+      i.textContent?.includes('World Map')
+    ) as HTMLElement
+    // Menu items act on mousedown, as the bar does.
+    await act(async () => {
+      fireEvent.mouseDown(item)
+    })
+    await atMap()
+    act(() => {
+      useWyrm.getState().goBack()
+    })
+    expect(useWyrm.getState().mainView.kind).toBe('doc')
+
+    // The board's own strip.
+    act(() => useWyrm.getState().showCorkboard())
+    await waitFor(() => expect(document.querySelector('.corkboard-tools')).toBeTruthy())
+    const tool = [...document.querySelectorAll('.board-tool')].find((b) =>
+      b.textContent?.includes('World Map')
+    ) as HTMLElement
+    await act(async () => {
+      fireEvent.click(tool)
+    })
+    await atMap()
+    // A detour from the board: Esc goes back there.
+    act(() => {
+      useWyrm.getState().goBack()
+    })
+    expect(useWyrm.getState().mainView.kind).toBe('corkboard')
+
+    // The palette.
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'k', metaKey: true })
+    })
+    await waitFor(() => expect(document.querySelector('.text-field')).toBeTruthy())
+    await act(async () => {
+      fireEvent.change(document.querySelector('.text-field') as HTMLInputElement, {
+        target: { value: 'world map' }
+      })
+    })
+    const row = await waitFor(() => {
+      const r = [...document.querySelectorAll('.version-row')].find((x) =>
+        x.textContent?.includes('World Map')
+      )
+      expect(r).toBeTruthy()
+      return r as HTMLElement
+    })
+    await act(async () => {
+      fireEvent.click(row)
+    })
+    await atMap()
+  })
 })

@@ -1687,20 +1687,148 @@ button {
 
 /* ---------- world map (F-12) ---------- */
 
-.world-map-dialog {
-  max-width: 720px;
+/* The map is a place, like the board: it takes the window. Tools along the
+   top, the places down the side, and the map itself scrolling under both.
+   Off the map's edge is the desk — the 50% dither — so where the map ends
+   is never in doubt. */
+.world-map {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.world-map-canvas {
-  position: relative;
-  border: 1px solid var(--ink);
-  background-image: var(--dither-25);
-  background-size: 4px 4px;
+.map-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 20px;
+  flex: none;
+  border-bottom: 1px solid var(--ink);
+}
+
+.map-tools-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-tools-label,
+.map-zoom {
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.map-zoom {
+  min-width: 4ch;
+  text-align: center;
+}
+
+.map-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.map-places {
+  width: 210px;
+  flex: none;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border-right: 1px solid var(--ink);
+  font-size: 12px;
+}
+
+.map-places .field-name {
+  margin: 10px 0 4px;
+}
+
+.map-place-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px dotted var(--ink);
+}
+
+.map-place-name {
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.map-place-name {
+  font: inherit;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.map-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background-color: var(--paper);
+  background-image: var(--dither-50);
+  background-size: 2px 2px;
+  padding: 24px;
+}
+
+.map-scroll:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -4px;
+}
+
+.map-scroll .map-sizer {
+  cursor: grab;
+}
+
+.map-scroll.panning .map-sizer {
+  cursor: grabbing;
+}
+
+/* Sized to the zoomed map, so the scroll area is the map's real extent; the
+   canvas inside is drawn at map size and scaled from its top-left. */
+.map-sizer {
+  position: relative;
+}
+
+.map-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  background: var(--paper);
+  outline: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  touch-action: none;
+  user-select: none;
+}
+
+.map-art {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* The graticule: dotted ink every hundred map pixels, a surveyor's grid
+   that is two-colour by being dotted rather than faint. */
+.map-graticule {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1px;
+  stroke-dasharray: 1 5;
 }
 
 .world-map-pin {
   position: absolute;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1709,11 +1837,11 @@ button {
   cursor: grab;
   touch-action: none;
   user-select: none;
-}
-
-.world-map-pin.dragging {
-  cursor: grabbing;
-  z-index: 2;
+  font: inherit;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  padding: 0;
 }
 
 .world-map-pin:focus-visible {
@@ -1732,30 +1860,12 @@ button {
 .world-map-pin-label {
   font-size: 10px;
   white-space: nowrap;
-  max-width: 120px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   background: var(--paper);
   border: 1px solid var(--ink);
   padding: 0 3px;
-}
-
-.world-map-list {
-  margin-top: 12px;
-}
-
-.world-map-list + .world-map-list {
-  margin-top: 6px;
-}
-
-.world-map-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-  border-bottom: 1px solid var(--ink);
-  padding: 3px 0;
 }
 
 /* F-24: Welcome's recents list. */

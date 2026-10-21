@@ -333,7 +333,7 @@ export function MenuBar({
           disabled: !hasProject,
           action: onCharacterGraph
         },
-        { kind: 'item', label: 'World Map…', disabled: !hasProject, action: onWorldMap }
+        { kind: 'item', label: 'World Map', disabled: !hasProject, action: onWorldMap }
       ]
     },
     {
