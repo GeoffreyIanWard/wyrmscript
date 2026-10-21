@@ -1,8 +1,23 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
-import type { MapPin } from '../../../shared/types'
+import type { MapPin, MapShape, MapShapeKind } from '../../../shared/types'
 import { useWyrm } from '../store'
 import { afterKeysUp } from '../lib/keys'
+import {
+  closesOn,
+  describeShape,
+  DRAW_ORDER,
+  edgeLongEnough,
+  insertPoint,
+  isClosed,
+  KIND_NAME,
+  midpoints,
+  MIN_POINTS,
+  movePoint,
+  removePoint,
+  roundPoint,
+  shapePath
+} from '../lib/mapShapes'
 import {
   boundsOf,
   clampTo,
@@ -40,6 +55,23 @@ const GUTTER = 24
 const PAN = 60
 const PAN_BIG = 300
 
+/** The map's tools: the hand moves the view and selects; the others draw. */
+type Tool = 'hand' | MapShapeKind
+
+const TOOL_HELP: Record<Tool, string> = {
+  hand: 'Drag to move the map. Click a shape to change it.',
+  land: 'Click round a coast, point by point. Click the first point, or press Return, to close it.',
+  area: 'Click round the area, point by point. Click the first point, or press Return, to close it.',
+  border: 'Click along the border, point by point. Return finishes it.'
+}
+
+/** The line while a shape is part-drawn: short, so it stays one line. */
+const DRAFT_HELP: Record<MapShapeKind, string> = {
+  land: 'Click the first point, or Return, to close the coast.',
+  area: 'Click the first point, or Return, to close the area.',
+  border: 'Return finishes the border.'
+}
+
 const ARROWS: Record<string, Point | undefined> = {
   ArrowUp: { x: 0, y: -1 },
   ArrowDown: { x: 0, y: 1 },
@@ -58,6 +90,11 @@ export function WorldMap(): JSX.Element {
   const removeMapPin = useWyrm((s) => s.removeMapPin)
   const setMapBounds = useWyrm((s) => s.setMapBounds)
   const showEntity = useWyrm((s) => s.showEntity)
+  const mapShapes = useWyrm((s) => s.mapShapes)
+  const loadMapShapes = useWyrm((s) => s.loadMapShapes)
+  const createMapShape = useWyrm((s) => s.createMapShape)
+  const updateMapShapeAt = useWyrm((s) => s.updateMapShapeAt)
+  const deleteMapShape = useWyrm((s) => s.deleteMapShape)
   const returnedTo = useWyrm((s) => (s.mainView.kind === 'map' ? s.mainView : null))
   const settleMapReturn = useWyrm((s) => s.settleMapReturn)
 
@@ -66,14 +103,16 @@ export function WorldMap(): JSX.Element {
   const [loaded, setLoaded] = useState(false)
   useEffect(() => {
     let live = true
-    void loadMapPins().then(() => live && setLoaded(true))
+    // Settled, not all-or-nothing: a read that fails leaves that layer empty
+    // rather than taking the map down with an unhandled rejection.
+    void Promise.allSettled([loadMapPins(), loadMapShapes()]).then(() => live && setLoaded(true))
     return () => {
       live = false
     }
     // On the project's path, not its object: every save makes a new project
     // object (growing the map does), and a read issued then could land after
     // a pin placed a moment later and drop it.
-  }, [projectPath, loadMapPins])
+  }, [projectPath, loadMapPins, loadMapShapes])
 
   // Pins held here while being moved, so they follow the pointer or the
   // keys without waiting on a write.
@@ -81,7 +120,13 @@ export function WorldMap(): JSX.Element {
   const [zoom, setZoom] = useState<number>(() => returnedTo?.zoom ?? 1)
   const scrollEl = useRef<HTMLDivElement | null>(null)
 
-  const bounds = boundsOf(project?.data.mapBounds, mapPins)
+  // Everything on the map widens it, shapes as well as pins: a pin taken
+  // off must never shrink the map under land drawn out beside it.
+  const extent = useMemo(
+    () => [...mapPins, ...mapShapes.flatMap((s) => s.points)],
+    [mapPins, mapShapes]
+  )
+  const bounds = boundsOf(project?.data.mapBounds, extent)
   const locations = entities
     .filter((e) => e.type === 'world')
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -278,10 +323,230 @@ export function WorldMap(): JSX.Element {
     }
   }
 
-  /* ---------- panning ---------- */
+  /* ---------- the map under the pointer ---------- */
 
-  // Dragging the map itself moves the view, the way a hand moves a paper
-  // map across a desk. Scroll bars and the trackpad work as well.
+  const sizerEl = useRef<HTMLDivElement | null>(null)
+  /** A pointer position as a point on the map. */
+  const mapPoint = (e: { clientX: number; clientY: number }): Point => {
+    const box = sizerEl.current?.getBoundingClientRect()
+    return roundPoint(
+      clampTo(bounds, {
+        x: bounds.x + (e.clientX - (box?.left ?? 0)) / zoom,
+        y: bounds.y + (e.clientY - (box?.top ?? 0)) / zoom
+      })
+    )
+  }
+
+  /* ---------- drawing ---------- */
+
+  const [tool, setTool] = useState<Tool>('hand')
+  // The shape being drawn: points placed so far, and where the pointer is,
+  // for the line to the next point. Not stored until it is finished.
+  const [draft, setDraft] = useState<Point[]>([])
+  const [hover, setHover] = useState<Point | null>(null)
+  const [problem, setProblem] = useState<string | null>(null)
+  // Where the keyboard draws: a cursor moved by Option and the arrows, which
+  // Space puts a point down at. Shown only when the map has keyboard focus.
+  const [cursor, setCursor] = useState<Point | null>(null)
+
+  const chooseTool = (next: Tool): void => {
+    setTool(next)
+    setDraft([])
+    setHover(null)
+    setProblem(null)
+    setCursor(next === 'hand' ? null : roundPoint(clampTo(bounds, viewCentre())))
+    if (next !== 'hand') setSelected(null)
+  }
+
+  /** Scroll just enough to keep a point in view, as a caret is kept. */
+  const keepInView = (p: Point): void => {
+    const el = scrollEl.current
+    if (!el) return
+    const margin = 40
+    const sx = (p.x - bounds.x) * zoom + GUTTER
+    const sy = (p.y - bounds.y) * zoom + GUTTER
+    if (sx < el.scrollLeft + margin) el.scrollLeft = sx - margin
+    else if (sx > el.scrollLeft + el.clientWidth - margin)
+      el.scrollLeft = sx - el.clientWidth + margin
+    if (sy < el.scrollTop + margin) el.scrollTop = sy - margin
+    else if (sy > el.scrollTop + el.clientHeight - margin)
+      el.scrollTop = sy - el.clientHeight + margin
+  }
+
+  /** Make the shape being drawn, if it has enough points to be one. */
+  const finishDraft = (points = draft): void => {
+    if (tool === 'hand') return
+    if (points.length < MIN_POINTS[tool]) {
+      // Said, not silently refused (the house rule for dead buttons).
+      setProblem(
+        `${KIND_NAME[tool]} needs at least ${MIN_POINTS[tool]} points — ${points.length} so far.`
+      )
+      return
+    }
+    setDraft([])
+    setHover(null)
+    setProblem(null)
+    void createMapShape(tool, points)
+  }
+
+  const addPoint = (p: Point): void => {
+    if (tool === 'hand') return
+    setProblem(null)
+    if (isClosed(tool) && closesOn(draft, p, zoom)) {
+      finishDraft()
+      return
+    }
+    setDraft((d) => [...d, p])
+    // The line to the next point starts from this one, not from wherever
+    // the pointer last was.
+    setHover(p)
+  }
+
+  /* ---------- changing a shape ---------- */
+
+  const [selected, setSelected] = useState<string | null>(null)
+  // Points held here while a corner is dragged or nudged, as pins are.
+  const [localShape, setLocalShape] = useState<Record<string, Point[]>>({})
+  const pointsOf = (shape: MapShape): Point[] => localShape[shape.id] ?? shape.points
+  const selectedShape = mapShapes.find((s) => s.id === selected) ?? null
+
+  const shapeWrites = useRef(
+    new Map<string, { timer: ReturnType<typeof setTimeout>; write: () => void }>()
+  )
+  useEffect(
+    () => () => {
+      for (const { timer, write } of shapeWrites.current.values()) {
+        clearTimeout(timer)
+        write()
+      }
+    },
+    []
+  )
+
+  /** New points for a shape — written at once, or once the keys stop.
+   *  Addressed to the project it was changed in, captured now. */
+  const reshape = (shape: MapShape, points: Point[], settle = 0): void => {
+    const path = projectPath
+    setLocalShape((l) => ({ ...l, [shape.id]: points }))
+    const write = (): void => {
+      shapeWrites.current.delete(shape.id)
+      if (path) void updateMapShapeAt(path, shape.id, points)
+    }
+    clearTimeout(shapeWrites.current.get(shape.id)?.timer)
+    if (settle === 0) write()
+    else shapeWrites.current.set(shape.id, { timer: setTimeout(write, settle), write })
+  }
+
+  const removeShape = (shape: MapShape): void => {
+    clearTimeout(shapeWrites.current.get(shape.id)?.timer)
+    shapeWrites.current.delete(shape.id)
+    setSelected(null)
+    void deleteMapShape(shape)
+    scrollEl.current?.focus({ preventScroll: true })
+  }
+
+  const onCornerDown = (
+    e: ReactPointerEvent<HTMLButtonElement>,
+    shape: MapShape,
+    index: number
+  ): void => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    stop.current?.()
+    const start = { x: e.clientX, y: e.clientY }
+    const origin = pointsOf(shape)[index]
+    let moved = false
+    let latest = pointsOf(shape)
+    const move = (ev: PointerEvent): void => {
+      if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < DRAG_THRESHOLD) return
+      moved = true
+      latest = movePoint(
+        pointsOf(shape),
+        index,
+        clampTo(bounds, {
+          x: origin.x + (ev.clientX - start.x) / zoom,
+          y: origin.y + (ev.clientY - start.y) / zoom
+        })
+      )
+      setLocalShape((l) => ({ ...l, [shape.id]: latest }))
+    }
+    const up = (): void => {
+      stop.current?.()
+      if (moved) reshape(shape, latest)
+    }
+    const cancel = (): void => {
+      stop.current?.()
+      setLocalShape((l) => {
+        const next = { ...l }
+        delete next[shape.id]
+        return next
+      })
+    }
+    document.addEventListener('pointermove', move)
+    document.addEventListener('pointerup', up)
+    document.addEventListener('pointercancel', cancel)
+    stop.current = () => {
+      document.removeEventListener('pointermove', move)
+      document.removeEventListener('pointerup', up)
+      document.removeEventListener('pointercancel', cancel)
+      stop.current = null
+    }
+  }
+
+  const onCornerKey = (
+    e: KeyboardEvent<HTMLButtonElement>,
+    shape: MapShape,
+    index: number
+  ): void => {
+    const dir = ARROWS[e.key]
+    if (dir && e.altKey && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault()
+      e.stopPropagation()
+      const step = e.shiftKey ? NUDGE_BIG : NUDGE
+      const at = pointsOf(shape)[index]
+      reshape(
+        shape,
+        movePoint(
+          pointsOf(shape),
+          index,
+          clampTo(bounds, { x: at.x + dir.x * step, y: at.y + dir.y * step })
+        ),
+        NUDGE_SETTLE
+      )
+      return
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault()
+      e.stopPropagation()
+      const fewer = removePoint(pointsOf(shape), index, shape.kind)
+      if (!fewer) {
+        setProblem(
+          `${KIND_NAME[shape.kind]} needs at least ${MIN_POINTS[shape.kind]} points. Delete the whole shape instead.`
+        )
+        return
+      }
+      setProblem(null)
+      // Taking out the last point unmounts its handle: the keyboard goes to
+      // the corner now at its place, never to <body>.
+      focusCorner.current = Math.min(index, fewer.length - 1)
+      reshape(shape, fewer)
+    }
+  }
+
+  const focusCorner = useRef<number | null>(null)
+  useEffect(() => {
+    const i = focusCorner.current
+    if (i == null) return
+    focusCorner.current = null
+    scrollEl.current?.querySelector<HTMLElement>(`[data-corner="${i}"]`)?.focus()
+  })
+
+  /* ---------- panning, and clicks on the map ---------- */
+
+  // Dragging the map moves the view, the way a hand moves a paper map
+  // across a desk — in every tool, so drawing a long coast never strands
+  // the writer at the edge of the view. A press that does not move is a
+  // click: a point in a drawing tool, or letting go of a shape with the hand.
   const [panning, setPanning] = useState(false)
   const onMapDown = (e: ReactPointerEvent<HTMLDivElement>): void => {
     if (e.button !== 0) return
@@ -291,24 +556,48 @@ export function WorldMap(): JSX.Element {
     if (!el) return
     stop.current?.()
     const start = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
-    setPanning(true)
+    const at = mapPoint(e)
+    // The shape the press began on: chosen on a still click, so a drag that
+    // starts on land pans like any other — a map that is mostly land must
+    // still move.
+    const hit = (e.target as Element).closest?.('[data-shape]')?.getAttribute('data-shape') ?? null
+    let moved = false
     const move = (ev: PointerEvent): void => {
+      if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < DRAG_THRESHOLD) return
+      if (!moved) setPanning(true)
+      moved = true
       el.scrollLeft = start.left - (ev.clientX - start.x)
       el.scrollTop = start.top - (ev.clientY - start.y)
     }
     const up = (): void => {
       stop.current?.()
       setPanning(false)
+      if (moved) return
+      if (tool === 'hand') {
+        setSelected(hit)
+        setProblem(null)
+      } else addPoint(at)
+    }
+    const cancel = (): void => {
+      stop.current?.()
+      setPanning(false)
     }
     document.addEventListener('pointermove', move)
     document.addEventListener('pointerup', up)
-    document.addEventListener('pointercancel', up)
+    document.addEventListener('pointercancel', cancel)
     stop.current = () => {
       document.removeEventListener('pointermove', move)
       document.removeEventListener('pointerup', up)
-      document.removeEventListener('pointercancel', up)
+      document.removeEventListener('pointercancel', cancel)
       stop.current = null
     }
+  }
+
+  // Followed whenever a drawing tool is up, so the line to the next point
+  // is never left over from before.
+  const onMapMove = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    if (tool === 'hand') return
+    setHover(mapPoint(e))
   }
 
   /* ---------- places ---------- */
@@ -358,16 +647,93 @@ export function WorldMap(): JSX.Element {
     focusPin(pin.id)
   }
 
-  /** The map from the keyboard: arrows move the view, Shift further. */
+  /**
+   * The drawing's keys, for the whole map view — tools, hint and map — not
+   * only the scroll area: a writer who zooms mid-coast has focus on a zoom
+   * button, and Esc there must drop the coast, not leave the map. They are
+   * the map's own, so they stop here: Esc is also "back".
+   */
+  const onMapKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (draft.length === 0 && !selected) return
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      setProblem(null)
+      if (draft.length > 0) {
+        setDraft([])
+        setHover(null)
+        return
+      }
+      // Letting go unmounts the handles; one that held focus hands it to its
+      // shape, or the next Esc would start from <body> and leave the map.
+      const id = selected
+      const onHandle = (e.target as Element).closest?.('.map-handle')
+      setSelected(null)
+      if (onHandle)
+        afterKeysUp(() =>
+          (
+            scrollEl.current?.querySelector<SVGElement>(`[data-shape="${id}"] .map-shape-body`) ??
+            scrollEl.current
+          )?.focus({ preventScroll: true })
+        )
+      return
+    }
+    if (draft.length === 0) return
+    // A focused button keeps its own Return: Zoom in zooms.
+    if (e.key === 'Enter' && !(e.target as Element).closest?.('button')) {
+      e.preventDefault()
+      finishDraft()
+      return
+    }
+    if (e.key === 'Backspace') {
+      e.preventDefault()
+      const fewer = draft.slice(0, -1)
+      setDraft(fewer)
+      if (fewer.length === 0) setHover(null)
+      setProblem(null)
+    }
+  }
+
+  /** The map from the keyboard: arrows move the view, Shift further; with a
+   *  drawing tool, Option and the arrows move the cursor and Space puts a
+   *  point down at it. */
   const onScrollKey = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (e.target !== e.currentTarget) return
     const dir = ARROWS[e.key]
     const el = scrollEl.current
-    if (!dir || !el || e.altKey || e.metaKey || e.ctrlKey) return
+    if (!el || e.metaKey || e.ctrlKey) return
+    if (tool !== 'hand' && cursor) {
+      if (dir && e.altKey) {
+        e.preventDefault()
+        const step = e.shiftKey ? NUDGE_BIG : NUDGE
+        const next = roundPoint(
+          clampTo(bounds, { x: cursor.x + dir.x * step, y: cursor.y + dir.y * step })
+        )
+        setCursor(next)
+        if (draft.length > 0) setHover(next)
+        keepInView(next)
+        return
+      }
+      // Return closes once there is something to close; before that it puts
+      // the first point down, rather than doing nothing.
+      if (e.key === ' ' || (e.key === 'Enter' && draft.length === 0)) {
+        e.preventDefault()
+        addPoint(cursor)
+        return
+      }
+    }
+    if (!dir || e.altKey) return
     e.preventDefault()
     const step = e.shiftKey ? PAN_BIG : PAN
     el.scrollLeft += dir.x * step
     el.scrollTop += dir.y * step
+  }
+
+  /** A zoom or a grow clicked mid-shape gives the keyboard back to the map,
+   *  so the Return the hint asks for closes the shape rather than pressing
+   *  the button again. Not from the keyboard: that writer may press it twice. */
+  const backToDraft = (e: { detail: number }): void => {
+    if (draft.length > 0 && e.detail > 0) scrollEl.current?.focus({ preventScroll: true })
   }
 
   if (!project) return <div className="terminal" />
@@ -378,7 +744,7 @@ export function WorldMap(): JSX.Element {
   const gridY = ((-bounds.y % 100) + 100) % 100
 
   return (
-    <div className="terminal world-map" data-help="world-map">
+    <div className="terminal world-map" data-help="world-map" onKeyDown={onMapKey}>
       <div className="map-tools">
         <span className="map-tools-group" data-help="map-zoom">
           <button
@@ -388,7 +754,10 @@ export function WorldMap(): JSX.Element {
             // Not `disabled`: a disabled button drops focus to <body> the
             // moment it reaches the end of its range.
             aria-disabled={zoom === ZOOMS[0] ? true : undefined}
-            onClick={() => zoomTo(stepZoom(zoom, -1))}
+            onClick={(e) => {
+              zoomTo(stepZoom(zoom, -1))
+              backToDraft(e)
+            }}
           >
             <span className="board-tool-pin" aria-hidden="true" />
             <span>−</span>
@@ -401,11 +770,28 @@ export function WorldMap(): JSX.Element {
             className="board-tool"
             aria-label="Zoom in"
             aria-disabled={zoom === ZOOMS[ZOOMS.length - 1] ? true : undefined}
-            onClick={() => zoomTo(stepZoom(zoom, 1))}
+            onClick={(e) => {
+              zoomTo(stepZoom(zoom, 1))
+              backToDraft(e)
+            }}
           >
             <span className="board-tool-pin" aria-hidden="true" />
             <span>+</span>
           </button>
+        </span>
+        <span className="map-tools-group" data-help="map-draw" role="group" aria-label="Map tools">
+          {(['hand', 'land', 'area', 'border'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`board-tool${tool === t ? ' on' : ''}`}
+              aria-pressed={tool === t}
+              onClick={() => chooseTool(t)}
+            >
+              <span className="board-tool-pin" aria-hidden="true" />
+              <span>{t === 'hand' ? 'Hand' : KIND_NAME[t]}</span>
+            </button>
+          ))}
         </span>
         <span className="map-tools-group" data-help="map-grow">
           <span className="map-tools-label">More map:</span>
@@ -422,7 +808,10 @@ export function WorldMap(): JSX.Element {
               type="button"
               className="board-tool"
               aria-label={`More map to the ${side}`}
-              onClick={() => growMap(side)}
+              onClick={(e) => {
+                growMap(side)
+                backToDraft(e)
+              }}
             >
               <span className="board-tool-pin" aria-hidden="true" />
               <span>{label}</span>
@@ -431,6 +820,12 @@ export function WorldMap(): JSX.Element {
         </span>
       </div>
 
+      <div className="map-hint" role="status">
+        {problem ??
+          (draft.length > 0
+            ? `${DRAFT_HELP[tool]} Backspace: undo a point. Esc: drop it.`
+            : TOOL_HELP[tool])}
+      </div>
       <div className="map-body">
         <aside className="map-places" data-help="map-places" aria-label="Places" tabIndex={-1}>
           {locations.length === 0 ? (
@@ -498,15 +893,27 @@ export function WorldMap(): JSX.Element {
           className={`map-scroll${panning ? ' panning' : ''}`}
           ref={scrollEl}
           onPointerDown={onMapDown}
+          onPointerMove={onMapMove}
+          onPointerLeave={() => setHover(cursor && draft.length > 0 ? cursor : null)}
+          onFocus={(e) => {
+            if (e.target === e.currentTarget && tool !== 'hand')
+              setCursor(roundPoint(clampTo(bounds, viewCentre())))
+          }}
+          data-tool={tool}
           // A place you can be in from the keyboard: Tab here, and the arrow
           // keys move the view (Shift further), as dragging does.
           tabIndex={0}
           role="region"
-          aria-label="World map. Arrow keys move the view; Shift moves it further."
+          aria-label={
+            tool === 'hand'
+              ? 'World map. Arrow keys move the view; Shift moves it further.'
+              : `World map. Drawing ${KIND_NAME[tool].toLowerCase()}: Option and the arrows move the cursor; Space puts a point down; Return closes the shape.`
+          }
           onKeyDown={onScrollKey}
         >
           <div
             className="map-sizer"
+            ref={sizerEl}
             style={{ width: bounds.width * zoom, height: bounds.height * zoom }}
           >
             <div
@@ -517,13 +924,23 @@ export function WorldMap(): JSX.Element {
                 transform: `scale(${zoom})`
               }}
             >
-              <svg
-                className="map-art"
-                width={bounds.width}
-                height={bounds.height}
-                aria-hidden="true"
-              >
+              <svg className="map-art" width={bounds.width} height={bounds.height}>
                 <defs>
+                  <pattern id="map-sea" width={6} height={6} patternUnits="userSpaceOnUse">
+                    <rect className="map-sea-dot" x={0} y={0} width={1} height={1} />
+                    <rect className="map-sea-dot" x={3} y={3} width={1} height={1} />
+                  </pattern>
+                  {/* Hatching for an area: diagonal ink lines, two-colour by
+                      being lines rather than a tint. */}
+                  <pattern
+                    id="map-hatch"
+                    width={8}
+                    height={8}
+                    patternUnits="userSpaceOnUse"
+                    patternTransform="rotate(45)"
+                  >
+                    <path d="M 0 0 V 8" className="map-hatch" />
+                  </pattern>
                   <pattern
                     id="map-graticule"
                     width={100}
@@ -535,9 +952,137 @@ export function WorldMap(): JSX.Element {
                     <path d="M 0 0 H 100 M 0 0 V 100" className="map-graticule" />
                   </pattern>
                 </defs>
-                <rect width={bounds.width} height={bounds.height} fill="url(#map-graticule)" />
+                <rect
+                  width={bounds.width}
+                  height={bounds.height}
+                  fill="url(#map-sea)"
+                  aria-hidden="true"
+                />
+                <rect
+                  width={bounds.width}
+                  height={bounds.height}
+                  fill="url(#map-graticule)"
+                  aria-hidden="true"
+                />
+                {DRAW_ORDER.flatMap((kind) => {
+                  const ofKind = mapShapes.filter((shape) => shape.kind === kind)
+                  return ofKind.map((shape, n) => {
+                    const d = shapePath(pointsOf(shape), isClosed(kind), bounds)
+                    const isSelected = selected === shape.id
+                    return (
+                      <g
+                        key={shape.id}
+                        className={`map-shape ${kind}${isSelected ? ' selected' : ''}`}
+                        data-shape={shape.id}
+                      >
+                        {/* The coast's ripple: a dotted halo drawn under
+                              the land, whose fill hides the inner half. */}
+                        {kind === 'land' && (
+                          <path className="map-ripple" d={d} aria-hidden="true" />
+                        )}
+                        <path
+                          className="map-shape-body"
+                          d={d}
+                          // Shapes are choosable with the hand, by pointer or
+                          // by Tab; with a drawing tool they are only drawing.
+                          tabIndex={tool === 'hand' ? 0 : undefined}
+                          role={tool === 'hand' ? 'button' : undefined}
+                          aria-pressed={tool === 'hand' ? isSelected : undefined}
+                          // Numbered, so three islands are not three of the
+                          // same thing to a screen reader.
+                          aria-label={
+                            tool === 'hand'
+                              ? `${describeShape({ kind, points: pointsOf(shape) })}, ${n + 1} of ${ofKind.length}. ${isSelected ? 'Selected: its points follow.' : 'Return selects it'}; Delete removes it.`
+                              : undefined
+                          }
+                          onKeyDown={(e) => {
+                            if (tool !== 'hand') return
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setSelected(shape.id)
+                              setProblem(null)
+                            } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              removeShape(shape)
+                            }
+                          }}
+                        />
+                        {/* What the hand grabs: the outline widened to the
+                              same size on screen at every zoom, so a border
+                              is not a 1px hairline to hit at 50%. */}
+                        <path
+                          className="map-shape-hit"
+                          d={d}
+                          style={{ strokeWidth: 14 / zoom }}
+                          aria-hidden="true"
+                        />
+                      </g>
+                    )
+                  })
+                })}
+                {draft.length > 0 && tool !== 'hand' && (
+                  <path
+                    className={`map-draft ${tool}`}
+                    d={shapePath(hover ? [...draft, hover] : draft, false, bounds)}
+                    aria-hidden="true"
+                  />
+                )}
               </svg>
             </div>
+            {/* The drawing's own points, unscaled like the pins so they stay
+                the same size to grab at every zoom: the first point of a
+                shape being drawn (click it to close), and the corners and
+                edge middles of the selected shape. */}
+            {draft.length > 0 && tool !== 'hand' && (
+              <span
+                className={`map-handle first${isClosed(tool) && draft.length >= 3 ? ' closes' : ''}`}
+                style={{
+                  left: (draft[0].x - bounds.x) * zoom,
+                  top: (draft[0].y - bounds.y) * zoom
+                }}
+                aria-hidden="true"
+              />
+            )}
+            {/* Middles before corners, so a corner wins where they meet. */}
+            {selectedShape &&
+              tool === 'hand' &&
+              midpoints(pointsOf(selectedShape), isClosed(selectedShape.kind))
+                .filter((m) => edgeLongEnough(pointsOf(selectedShape), m.index, zoom))
+                .map((m) => (
+                  <button
+                    key={`m${m.index}`}
+                    type="button"
+                    className="map-handle middle"
+                    style={{ left: (m.x - bounds.x) * zoom, top: (m.y - bounds.y) * zoom }}
+                    aria-label={`Add a point between ${m.index} and ${m.index + 1 > pointsOf(selectedShape).length ? 1 : m.index + 1}`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() =>
+                      reshape(selectedShape, insertPoint(pointsOf(selectedShape), m.index, m))
+                    }
+                  />
+                ))}
+            {selectedShape &&
+              tool === 'hand' &&
+              pointsOf(selectedShape).map((p, i) => (
+                <button
+                  key={`c${i}`}
+                  type="button"
+                  className="map-handle corner"
+                  data-corner={i}
+                  style={{ left: (p.x - bounds.x) * zoom, top: (p.y - bounds.y) * zoom }}
+                  aria-label={`Point ${i + 1} of ${pointsOf(selectedShape).length}. Drag, or Option and the arrows, to move it; Delete takes it out.`}
+                  onPointerDown={(e) => onCornerDown(e, selectedShape, i)}
+                  onKeyDown={(e) => onCornerKey(e, selectedShape, i)}
+                />
+              ))}
+            {cursor && tool !== 'hand' && (
+              <span
+                className="map-cursor"
+                style={{ left: (cursor.x - bounds.x) * zoom, top: (cursor.y - bounds.y) * zoom }}
+                aria-hidden="true"
+              />
+            )}
             {/* Pins sit outside the scaled drawing, placed at zoomed
                 positions, so a name stays readable and a focus ring visible at
                 every zoom — scaled with the art, at 50% they were smudges. */}
@@ -551,10 +1096,15 @@ export function WorldMap(): JSX.Element {
                   data-pin={pin.id}
                   data-help="map-pin"
                   className="world-map-pin"
+                  // While drawing, a pin is only part of the map: a click on a
+                  // town is a point of the coast, not a trip to the World Book.
+                  tabIndex={tool === 'hand' ? undefined : -1}
+                  aria-hidden={tool === 'hand' ? undefined : true}
                   style={{ left: (at.x - bounds.x) * zoom, top: (at.y - bounds.y) * zoom }}
                   aria-label={`${name}. Return opens it; Option and the arrows move it.`}
-                  onPointerDown={(e) => onPinDown(e, pin)}
+                  onPointerDown={(e) => tool === 'hand' && onPinDown(e, pin)}
                   onKeyDown={(e) => {
+                    if (tool !== 'hand') return
                     onPinKey(e, pin)
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()

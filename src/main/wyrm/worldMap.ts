@@ -22,9 +22,18 @@ interface MapPinFrontmatter {
   modified: string
 }
 
+/** Throws on anything that is not a pin — the list skips it — rather than
+ *  making a pin with no place and no position out of a stray file. */
 function parseMapPinFile(raw: string): MapPin {
   const parsed = matter(raw)
   const data = parsed.data as MapPinFrontmatter
+  if (
+    typeof data.id !== 'string' ||
+    typeof data.entityId !== 'string' ||
+    !Number.isFinite(data.x) ||
+    !Number.isFinite(data.y)
+  )
+    throw new Error('Not a map pin')
   return {
     id: data.id,
     entityId: data.entityId,

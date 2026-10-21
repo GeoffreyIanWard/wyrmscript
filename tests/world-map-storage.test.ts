@@ -101,3 +101,40 @@ describe('deleteMapPin', () => {
     expect(await listMapPins(dir)).toHaveLength(1)
   })
 })
+
+describe('a stray file among the pins', () => {
+  it('is skipped rather than made into a pin with no place and no position', async () => {
+    const dir = await makeProject()
+    const pin = makePin()
+    await writeMapPin(dir, pin)
+    await fsp.writeFile(
+      join(dir, 'map', 'stray.md'),
+      '---\nid: s1\nkind: land\npoints:\n  - {x: 1, y: 2}\n---\n',
+      'utf8'
+    )
+    expect((await listMapPins(dir)).map((p) => p.id)).toEqual([pin.id])
+  })
+
+  // Each near-pin breaks exactly one guard of an otherwise valid pin.
+  it.each([
+    ['no id', '---\nentityId: e1\nx: 1\ny: 2\n---\n'],
+    ['no entityId', '---\nid: s1\nx: 1\ny: 2\n---\n'],
+    ['a non-numeric x', '---\nid: s1\nentityId: e1\nx: abc\ny: 2\n---\n'],
+    ['no y', '---\nid: s1\nentityId: e1\nx: 1\n---\n']
+  ])('skips a near-pin with %s', async (_label, body) => {
+    const dir = await makeProject()
+    const pin = makePin()
+    await writeMapPin(dir, pin)
+    await fsp.writeFile(join(dir, 'map', 'near.md'), body, 'utf8')
+    expect((await listMapPins(dir)).map((p) => p.id)).toEqual([pin.id])
+  })
+
+  it('lists a pin at the origin, where x and y are 0', async () => {
+    const dir = await makeProject()
+    await writeMapPin(dir, makePin({ id: 'origin', x: 0, y: 0 }))
+    const [found] = await listMapPins(dir)
+    expect(found.id).toBe('origin')
+    expect(found.x).toBe(0)
+    expect(found.y).toBe(0)
+  })
+})

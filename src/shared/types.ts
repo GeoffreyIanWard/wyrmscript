@@ -310,6 +310,26 @@ export interface MapPin {
 }
 
 /**
+ * F-12: a shape drawn on the world map — a land mass's coast, a shaded area,
+ * or a border. Points in map pixels, in drawing order, rounded to whole
+ * pixels. `land` and `area` are closed outlines (the last point joins the
+ * first); `border` is an open line.
+ *
+ * One record per shape, like `MapPin` and `BoardString`: stored as
+ * `map-shapes/<id>.md` (not `map/`, which holds the pins), so two devices drawing different coasts merge cleanly, and
+ * an edit to one shape is a conflict about that shape alone.
+ */
+export type MapShapeKind = 'land' | 'area' | 'border'
+
+export interface MapShape {
+  id: string
+  kind: MapShapeKind
+  points: { x: number; y: number }[]
+  created: string
+  modified: string
+}
+
+/**
  * F-46: one end of a red string, anchored to a corkboard card.
  *
  * The anchor is a card plus an offset from the card's top-left in board
@@ -776,6 +796,10 @@ export interface WyrmApi {
   listMapPins(path: string): Promise<MapPin[]>
   writeMapPin(path: string, pin: MapPin): Promise<void>
   deleteMapPin(path: string, id: string): Promise<void>
+  /** F-12: shapes drawn on the map, one `map/<id>.md` each. */
+  listMapShapes(path: string): Promise<MapShape[]>
+  writeMapShape(path: string, shape: MapShape): Promise<void>
+  deleteMapShape(path: string, id: string): Promise<void>
 
   /** F-46: red strings between corkboard cards. */
   listBoardStrings(path: string): Promise<BoardString[]>

@@ -91,14 +91,16 @@ const REAL = (({
   removeMapPin,
   showEntity,
   setMapBounds,
-  loadMapPins
+  loadMapPins,
+  loadMapShapes
 }) => ({
   setMapPin,
   moveMapPinAt,
   removeMapPin,
   showEntity,
   setMapBounds,
-  loadMapPins
+  loadMapPins,
+  loadMapShapes
 }))(useWyrm.getState())
 
 function place(id: string, name: string): Entity {
@@ -141,6 +143,9 @@ async function renderMap(
     mainView: extra.mainView ?? { kind: 'map' },
     loadMapPins: vi.fn(async () => {
       useWyrm.setState({ mapPins })
+    }),
+    loadMapShapes: vi.fn(async () => {
+      useWyrm.setState({ mapShapes: [] })
     }),
     setMapPin: extra.setMapPin ?? vi.fn(async () => {}),
     moveMapPinAt: extra.moveMapPinAt ?? vi.fn(async () => {}),

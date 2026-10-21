@@ -106,6 +106,10 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'Zoom',
     body: 'Half size, actual size or double. Only whole and half steps, so the drawing stays crisp; the middle of what you are looking at stays in the middle.'
   },
+  'map-draw': {
+    title: 'Drawing the map',
+    body: 'Land, Area and Border draw point by point: click to put each point down, click the first point (or press Return) to close a coast or an area, Return to finish a border. Backspace takes the last point back; Esc drops the shape. From the keyboard, Option and the arrows move a cursor and Space puts a point down. Dragging still moves the map, and pins stay out of the way while you draw. The Hand selects a shape to change it: drag a corner (or Option and the arrows), click a dotted dot to add one, Delete to take one out, or Delete on the shape to remove it.'
+  },
   'map-grow': {
     title: 'More map',
     body: 'Adds room on that side. Growing north or west moves the edge of the map, not the places on it.'
