@@ -90,6 +90,26 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'The back of the card',
     body: 'Every field is optional. Enter saves and turns to the next scene in the book; Shift+Enter starts a new line in the synopsis. There is no Cancel — however you close it, what you wrote is kept, and only what you changed is written, so a card you turn past leaves the scene as it was. If a save fails you can try again or close without saving. An unwritten scene shows its synopsis on the front.'
   },
+  'world-map': {
+    title: 'The world map',
+    body: "Your World Book's places, laid out. Drag the map to move around it, or scroll. It is as big as you need: More map adds room on any side, and nothing already on it moves. Esc goes back to where you were."
+  },
+  'map-places': {
+    title: 'Places',
+    body: 'Every World Book entry is a place. Place puts one on the map, in the middle of what you are looking at; click a placed one to find it on the map. Remove takes it off the map and leaves the entry alone.'
+  },
+  'map-pin': {
+    title: 'A place on the map',
+    body: 'Drag it to move it, or Option and the arrow keys (Shift for a bigger step). Click it, or Return, to open the place — Esc brings you back to the map, just as you left it.'
+  },
+  'map-zoom': {
+    title: 'Zoom',
+    body: 'Half size, actual size or double. Only whole and half steps, so the drawing stays crisp; the middle of what you are looking at stays in the middle.'
+  },
+  'map-grow': {
+    title: 'More map',
+    body: 'Adds room on that side. Growing north or west moves the edge of the map, not the places on it.'
+  },
   'board-add': {
     title: 'Add a card',
     body: 'A new scene, character or location — made for real, as a document in the manuscript or an entry in the story bible, with its card here. Or an entry that already exists, put on the board. ⌥⌘N opens this from anywhere.'

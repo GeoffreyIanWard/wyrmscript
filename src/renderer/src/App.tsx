@@ -16,7 +16,7 @@ import { TimelineDialog } from './components/TimelineDialog'
 import { PlotGraphDialog } from './components/PlotGraphDialog'
 import { PlotlinesDialog } from './components/PlotlinesDialog'
 import { CharacterGraphDialog } from './components/CharacterGraphDialog'
-import { WorldMapDialog } from './components/WorldMapDialog'
+import { WorldMap } from './components/WorldMap'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { CompileDialog } from './components/CompileDialog'
 import { isConnected, isRemoteMissing } from './lib/syncState'
@@ -489,6 +489,7 @@ function MainPane({
   if (mainView.kind === 'folder') return <FolderView key={mainView.id} folderId={mainView.id} />
   if (mainView.kind === 'stats') return <StatsPage />
   if (mainView.kind === 'tags') return <TagBrowser />
+  if (mainView.kind === 'map') return <WorldMap />
   if (mainView.kind === 'corkboard')
     return (
       <Corkboard
@@ -523,7 +524,6 @@ function App(): JSX.Element {
   const [plotGraphOpen, setPlotGraphOpen] = useState(false)
   const [plotlinesOpen, setPlotlinesOpen] = useState(false)
   const [characterGraphOpen, setCharacterGraphOpen] = useState(false)
-  const [worldMapOpen, setWorldMapOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [cloneOpen, setCloneOpen] = useState(false)
@@ -560,7 +560,6 @@ function App(): JSX.Element {
     setPlotGraphOpen(false)
     setPlotlinesOpen(false)
     setCharacterGraphOpen(false)
-    setWorldMapOpen(false)
     setVersionDialog(null)
     setCompileOpen(false)
     setBackupOpen(false)
@@ -591,8 +590,8 @@ function App(): JSX.Element {
   const openPaths = useWyrm((s) => s.openPaths)
   const windowGeometry = useWyrm((s) => s.windowGeometry)
   const minimized = useWyrm((s) => s.minimized)
-  /** The corkboard takes the whole window, binder included. */
-  const boardOpen = useWyrm((s) => s.mainView.kind === 'corkboard')
+  /** The corkboard and the world map take the whole window, binder included. */
+  const boardOpen = useWyrm((s) => s.mainView.kind === 'corkboard' || s.mainView.kind === 'map')
   const boot = useWyrm((s) => s.boot)
 
   // F-41: a window with no remembered position gets one. Done here rather than
@@ -856,7 +855,7 @@ function App(): JSX.Element {
         onPlotGraph={() => setPlotGraphOpen(true)}
         onPlotlines={() => setPlotlinesOpen(true)}
         onCharacterGraph={() => setCharacterGraphOpen(true)}
-        onWorldMap={() => setWorldMapOpen(true)}
+        onWorldMap={() => useWyrm.getState().showMap()}
         onSyncSettings={() => setSyncOpen(true)}
         onSearch={() => setSearchOpen(true)}
         onPalette={() => setPaletteOpen(true)}
@@ -919,7 +918,7 @@ function App(): JSX.Element {
                           onPlotGraph={() => setPlotGraphOpen(true)}
                           onPlotlines={() => setPlotlinesOpen(true)}
                           onCharacterGraph={() => setCharacterGraphOpen(true)}
-                          onWorldMap={() => setWorldMapOpen(true)}
+                          onWorldMap={() => useWyrm.getState().showMap()}
                         />
                       </ErrorBoundary>
                       {!focusMode && <EntityPanel />}
@@ -990,11 +989,6 @@ function App(): JSX.Element {
         {characterGraphOpen && (
           <ErrorBoundary label="Character graph" onDismiss={() => setCharacterGraphOpen(false)}>
             <CharacterGraphDialog onClose={() => setCharacterGraphOpen(false)} />
-          </ErrorBoundary>
-        )}
-        {worldMapOpen && (
-          <ErrorBoundary label="World map" onDismiss={() => setWorldMapOpen(false)}>
-            <WorldMapDialog onClose={() => setWorldMapOpen(false)} />
           </ErrorBoundary>
         )}
         {compileOpen && (
@@ -1087,9 +1081,9 @@ function App(): JSX.Element {
                 },
                 {
                   id: 'world-map',
-                  title: 'World Map…',
+                  title: 'World Map',
                   subtitle: 'Corkboard',
-                  run: () => setWorldMapOpen(true)
+                  run: () => useWyrm.getState().showMap()
                 },
                 {
                   id: 'checkpoint',

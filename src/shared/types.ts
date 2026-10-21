@@ -129,6 +129,22 @@ export interface ProjectData {
    *  remember their own choice independently. Per-project, not app-level:
    *  a shared project should look the same on every machine it's opened on. */
   entitySort?: Partial<Record<EntityType, EntitySortMode>>
+  /**
+   * The world map's extent, in map pixels. Absent on a project that has
+   * never grown its map, which then has the default. An origin rather than
+   * a size alone, so growing the map north or west moves the edge, not
+   * every pin and shape on it: one field in project.json changes, where
+   * shifting the content would rewrite a file per pin.
+   */
+  mapBounds?: MapBounds
+}
+
+/** F-12: the world map's extent. `x`/`y` may be negative once grown north or west. */
+export interface MapBounds {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 /** A repository on the signed-in GitHub account (F-43). */
