@@ -11,6 +11,7 @@ import type {
   Entity,
   EntityType,
   MapPin,
+  MapMark,
   MapShape,
   Plotline,
   ProjectData,
@@ -34,6 +35,7 @@ import {
 import { deletePlotline, listPlotlines, writePlotline } from './plotlines'
 import { deleteRelationship, listRelationships, writeRelationship } from './relationships'
 import { deleteMapPin, listMapPins, writeMapPin } from './worldMap'
+import { deleteMapMark, listMapMarks, writeMapMark } from './mapMarks'
 import { deleteMapShape, listMapShapes, writeMapShape } from './mapShapes'
 import { deleteBoardString, listBoardStrings, writeBoardString } from './boardStrings'
 import {
@@ -241,6 +243,9 @@ export function registerIpc(): void {
     writeMapShape(path, shape)
   )
   ipcMain.handle('mapShape:delete', (_e, path: string, id: string) => deleteMapShape(path, id))
+  ipcMain.handle('mapMark:list', (_e, path: string) => listMapMarks(path))
+  ipcMain.handle('mapMark:write', (_e, path: string, mark: MapMark) => writeMapMark(path, mark))
+  ipcMain.handle('mapMark:delete', (_e, path: string, id: string) => deleteMapMark(path, id))
 
   ipcMain.handle('boardString:list', (_e, path: string) => listBoardStrings(path))
   ipcMain.handle('boardString:write', (_e, path: string, s: BoardString) =>

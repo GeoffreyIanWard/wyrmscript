@@ -1702,8 +1702,10 @@ button {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 18px;
-  padding: 14px 20px;
+  /* Tight: thirteen tools and the four ways to grow have to fit in two
+     rows, or the bar eats the map it is there to draw on. */
+  gap: 8px 14px;
+  padding: 8px 16px;
   flex: none;
   border-bottom: 1px solid var(--ink);
 }
@@ -1711,7 +1713,16 @@ button {
 .map-tools-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+}
+
+/* The map's buttons drop the board's pin glyph: the bar is full enough. */
+.map-tools .board-tool {
+  padding: 4px 8px;
+}
+
+.map-tools .board-tool-pin {
+  display: none;
 }
 
 .map-tools-label,
@@ -1977,6 +1988,185 @@ button.map-place-name {
 /* While drawing, pins are part of the picture: clicks go through them. */
 .map-scroll:not([data-tool='hand']) .world-map-pin {
   pointer-events: none;
+}
+
+/* ---------- stamps and labels ---------- */
+
+/* A stamp, engraved: paper bodies outlined in ink (so a stamp over the sea
+   or a road is not see-through), ink shading lines, a little solid ink. */
+.map-stamp-body {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1.2px;
+  stroke-linejoin: round;
+}
+
+.map-stamp-lines {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1px;
+  stroke-linecap: round;
+}
+
+.map-stamp-solid {
+  fill: var(--ink);
+}
+
+/* What the hand grabs on a stamp: its whole box, not its thin strokes. */
+.map-mark-hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: none;
+}
+
+.map-scroll[data-tool='hand'] .map-mark-hit {
+  pointer-events: all;
+  cursor: move;
+}
+
+/* Chosen: a ruled box round the stamp. Focused: a dotted one. Chromium's
+   own orange ring is turned off, as on shapes. */
+.map-mark:focus {
+  outline: none;
+}
+
+.map-mark.selected .map-mark-hit {
+  stroke: var(--ink);
+  stroke-width: 1px;
+}
+
+.map-mark:focus-visible .map-mark-hit {
+  stroke: var(--ink);
+  stroke-width: 1px;
+  stroke-dasharray: 2 2;
+}
+
+/* Chosen and focused at once: heavier and dotted, so a keyboard writer
+   sees the Return that chose it land. */
+.map-mark.selected:focus-visible .map-mark-hit {
+  stroke-width: 2px;
+}
+
+/* Names on the map: the chrome's face in ink, with a paper halo so they
+   read over hatching, sea dots and roads alike — still only two inks.
+   Unscaled, like the pins. */
+.map-label {
+  position: absolute;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink);
+  pointer-events: none;
+  user-select: none;
+  text-shadow:
+    1px 0 var(--paper),
+    -1px 0 var(--paper),
+    0 1px var(--paper),
+    0 -1px var(--paper),
+    1px 1px var(--paper),
+    -1px -1px var(--paper);
+}
+
+/* Land and areas named in spaced capitals, as a cartographer letters a
+   country; a river in italics, above its water; roads, railways and
+   borders small, above the line. */
+.map-label.feature.land,
+.map-label.feature.area {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+.map-label.feature.river {
+  font-style: italic;
+  transform: translate(-50%, -150%);
+}
+
+.map-label.feature.road,
+.map-label.feature.rail,
+.map-label.feature.border {
+  font-size: 10px;
+  transform: translate(-50%, -160%);
+}
+
+.map-label.stamp-name {
+  font-size: 10px;
+  transform: translate(-50%, 0);
+}
+
+/* A free label: a sea's or a region's name, large and widely spaced. */
+.map-label.free {
+  font-size: 14px;
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  padding: 2px 4px;
+}
+
+.map-scroll[data-tool='hand'] .map-label.free {
+  pointer-events: auto;
+  cursor: move;
+}
+
+.map-label.free:focus {
+  outline: none;
+}
+
+.map-label.free.selected {
+  outline: 1px solid var(--ink);
+}
+
+.map-label.free:focus-visible {
+  outline: 1px dotted var(--ink);
+}
+
+.map-label.free.selected:focus-visible {
+  outline: 2px dotted var(--ink);
+}
+
+/* Why a name cannot be kept, said under the field rather than only in the
+   hint line at the top of the window. */
+.map-name-problem {
+  position: absolute;
+  z-index: 4;
+  transform: translate(-50%, 14px);
+  max-width: 32ch;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--paper);
+  background: var(--ink);
+  white-space: normal;
+  text-align: center;
+}
+
+/* Where a name is typed: in place, over what it names. */
+.map-name-field {
+  position: absolute;
+  z-index: 4;
+  transform: translate(-50%, -50%);
+  width: 18ch;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.map-name-field:focus {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.map-name-field.free {
+  font-size: 14px;
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
 }
 
 /* The keyboard's drawing cursor: a crosshair, unscaled like the handles,

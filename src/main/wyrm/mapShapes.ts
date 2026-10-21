@@ -20,6 +20,7 @@ interface MapShapeFrontmatter {
   id: string
   kind: MapShapeKind
   points: { x: number; y: number }[]
+  name?: string
   created: string
   modified: string
 }
@@ -49,13 +50,15 @@ function parseMapShapeFile(raw: string): MapShape | null {
   if (typeof data.id !== 'string' || !isKind(data.kind)) return null
   const points = cleanPoints(data.points)
   if (points.length < minShapePoints(data.kind)) return null
-  return {
+  const shape: MapShape = {
     id: data.id,
     kind: data.kind,
     points,
     created: typeof data.created === 'string' ? data.created : '',
     modified: typeof data.modified === 'string' ? data.modified : ''
   }
+  if (typeof data.name === 'string' && data.name !== '') shape.name = data.name
+  return shape
 }
 
 export async function writeMapShape(projectPath: string, shape: MapShape): Promise<void> {
@@ -67,6 +70,8 @@ export async function writeMapShape(projectPath: string, shape: MapShape): Promi
     created: shape.created,
     modified: new Date().toISOString()
   }
+  // Written only when set: gray-matter throws on an undefined value.
+  if (typeof shape.name === 'string' && shape.name !== '') meta.name = shape.name
   const file = matter.stringify('', meta)
   await fsp.writeFile(mapShapePath(projectPath, shape.id), file, 'utf8')
 }

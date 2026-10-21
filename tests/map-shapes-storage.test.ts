@@ -193,6 +193,41 @@ describe('writeMapShape / listMapShapes', () => {
   })
 })
 
+describe('shape names', () => {
+  it('round-trips a name, and writes it into the file', async () => {
+    const project = await makeProject()
+    const shape = makeShape('land', { name: 'The Saltmarsh' })
+    await writeMapShape(project, shape)
+    const raw = await fsp.readFile(join(project, 'map-shapes', `${shape.id}.md`), 'utf8')
+    expect(matter(raw).data.name).toBe('The Saltmarsh')
+    const [listed] = await listMapShapes(project)
+    expect(listed.name).toBe('The Saltmarsh')
+  })
+
+  it('omits the key when the name is missing or empty', async () => {
+    const project = await makeProject()
+    const none = makeShape('land')
+    const empty = makeShape('area', { name: '' })
+    for (const s of [none, empty]) await writeMapShape(project, s)
+    for (const s of [none, empty]) {
+      const raw = await fsp.readFile(join(project, 'map-shapes', `${s.id}.md`), 'utf8')
+      expect(raw).not.toContain('name')
+      expect(raw).not.toMatch(/undefined|null/)
+    }
+    for (const s of await listMapShapes(project)) expect('name' in s).toBe(false)
+  })
+
+  it('reads a non-string or empty name as none, keeping the shape', async () => {
+    const project = await makeProject()
+    const pts = '\npoints:\n  - {x: 0, y: 0}\n  - {x: 1, y: 1}\n  - {x: 2, y: 0}\n'
+    await writeRaw(project, 'num.md', '---\nid: num\nkind: land\nname: 7' + pts + '---\n')
+    await writeRaw(project, 'blank.md', '---\nid: blank\nkind: land\nname: ""' + pts + '---\n')
+    const listed = await listMapShapes(project)
+    expect(listed.map((s) => s.id).sort()).toEqual(['blank', 'num'])
+    for (const s of listed) expect('name' in s).toBe(false)
+  })
+})
+
 describe('deleteMapShape', () => {
   it('removes the file, and a missing one is not an error', async () => {
     const project = await makeProject()
