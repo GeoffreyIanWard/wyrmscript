@@ -313,13 +313,23 @@ export interface MapPin {
  * F-12: a shape drawn on the world map — a land mass's coast, a shaded area,
  * or a border. Points in map pixels, in drawing order, rounded to whole
  * pixels. `land` and `area` are closed outlines (the last point joins the
- * first); `border` is an open line.
+ * first); `border`, `river`, `road` and `rail` are open lines.
  *
  * One record per shape, like `MapPin` and `BoardString`: stored as
  * `map-shapes/<id>.md` (not `map/`, which holds the pins), so two devices drawing different coasts merge cleanly, and
  * an edit to one shape is a conflict about that shape alone.
  */
-export type MapShapeKind = 'land' | 'area' | 'border'
+export const MAP_SHAPE_KINDS = ['land', 'area', 'border', 'river', 'road', 'rail'] as const
+export type MapShapeKind = (typeof MAP_SHAPE_KINDS)[number]
+
+/** Whether the last point joins the first: land and areas are outlines,
+ *  everything else a line. */
+export const isClosedShape = (kind: MapShapeKind): boolean => kind === 'land' || kind === 'area'
+
+/** The fewest points a shape can have and still be one: an outline needs
+ *  three corners, a line two ends. Stated once, for main, the store and the
+ *  view, which used to say it three times. */
+export const minShapePoints = (kind: MapShapeKind): number => (isClosedShape(kind) ? 3 : 2)
 
 export interface MapShape {
   id: string

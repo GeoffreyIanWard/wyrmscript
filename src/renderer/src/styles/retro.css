@@ -1870,6 +1870,49 @@ button.map-place-name {
   stroke-dasharray: 12 4 2 4;
 }
 
+/* A river: one ink line through its points, bending as it goes. */
+.map-shape.river .map-shape-body {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A road: two parallel ink lines, made as a wide ink casing with a
+   narrower paper stroke down its middle — the way a printed map cases one. */
+.map-road-casing {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 6px;
+  stroke-linejoin: round;
+}
+
+.map-shape.road .map-shape-body {
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* A railway: a thin line with sleepers across it — a wide stroke dashed so
+   finely that each dash is a tie. Butt caps, so a tie stays a tick. */
+.map-shape.rail .map-shape-body {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+}
+
+.map-rail-ties {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 7px;
+  stroke-dasharray: 1.5 5;
+  stroke-linecap: butt;
+  pointer-events: none;
+}
+
 /* Selected and focused look different: selected is a heavy outline (and
    its handles appear); focus is a dotted one, so Tabbing past a shape never
    looks like choosing it. Both at once is heavy and dotted. */
@@ -1877,14 +1920,37 @@ button.map-place-name {
   stroke-width: 4px;
 }
 
+/* Chromium rings a focused SVG shape in its own orange box, even on a
+   click — not an ink, and not the shape. The dotted stroke is the cue. */
+.map-shape-body:focus {
+  outline: none;
+}
+
 .map-shape-body:focus-visible {
   stroke-width: 3px;
   stroke-dasharray: 2 2;
-  outline: none;
 }
 
 .map-shape.selected .map-shape-body:focus-visible {
   stroke-width: 4px;
+}
+
+/* A road's body is the paper between its lines, so a heavier body would
+   only thin them: selecting a road thickens its casing instead. Focus
+   dots the casing, the part of a road that is ink. The casings are drawn
+   apart from the roads (so junctions join), hence classes, not nesting. */
+.map-shape.road.selected .map-shape-body,
+.map-shape.road .map-shape-body:focus-visible {
+  stroke-width: 3px;
+  stroke-dasharray: none;
+}
+
+.map-road-casing.selected {
+  stroke-width: 9px;
+}
+
+.map-road-casing.focused {
+  stroke-dasharray: 2 2;
 }
 
 /* With the hand, shapes take clicks; with a drawing tool they are only

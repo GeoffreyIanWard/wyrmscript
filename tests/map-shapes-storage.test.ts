@@ -121,6 +121,26 @@ describe('writeMapShape / listMapShapes', () => {
     expect(await listMapShapes(project)).toEqual([])
   })
 
+  it('keeps rivers, roads and railways, lines of two points or more', async () => {
+    const project = await makeProject()
+    const two = [
+      { x: 0, y: 0 },
+      { x: 50, y: 60 }
+    ]
+    const lines = (['river', 'road', 'rail'] as const).map((kind) =>
+      makeShape(kind, { points: two })
+    )
+    for (const s of lines) await writeMapShape(project, s)
+    await writeRaw(
+      project,
+      'stub.md',
+      '---\nid: stub\nkind: river\npoints:\n  - {x: 0, y: 0}\n---\n'
+    )
+    const listed = await listMapShapes(project)
+    expect(listed.map((s) => s.kind).sort()).toEqual(['rail', 'river', 'road'])
+    expect(listed.every((s) => s.points.length === 2)).toBe(true)
+  })
+
   it('skips pins, bad kinds, too few points and unparsable files', async () => {
     const project = await makeProject()
     const good = makeShape('land')

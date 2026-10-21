@@ -10,13 +10,16 @@ import {
   edgeLongEnough,
   insertPoint,
   isClosed,
+  isSmooth,
   KIND_NAME,
   midpoints,
   MIN_POINTS,
   movePoint,
   removePoint,
   roundPoint,
-  shapePath
+  pathFor,
+  shapePath,
+  smoothPath
 } from '../lib/mapShapes'
 import {
   boundsOf,
@@ -62,21 +65,40 @@ const TOOL_HELP: Record<Tool, string> = {
   hand: 'Drag to move the map. Click a shape to change it.',
   land: 'Click round a coast, point by point. Click the first point, or press Return, to close it.',
   area: 'Click round the area, point by point. Click the first point, or press Return, to close it.',
-  border: 'Click along the border, point by point. Return finishes it.'
+  border: 'Click along the border, point by point. Return finishes it.',
+  river: 'Click along the river, point by point: it bends through them. Return finishes it.',
+  road: 'Click along the road, point by point. Return finishes it.',
+  rail: 'Click along the railway, point by point. Return finishes it.'
 }
 
 /** The line while a shape is part-drawn: short, so it stays one line. */
 const DRAFT_HELP: Record<MapShapeKind, string> = {
   land: 'Click the first point, or Return, to close the coast.',
   area: 'Click the first point, or Return, to close the area.',
-  border: 'Return finishes the border.'
+  border: 'Return finishes the border.',
+  river: 'Return finishes the river.',
+  road: 'Return finishes the road.',
+  rail: 'Return finishes the railway.'
 }
+
+/** The tools, in the bar's order: outlines, then lines. */
+const TOOLS: Tool[] = ['hand', 'land', 'area', 'border', 'river', 'road', 'rail']
 
 const ARROWS: Record<string, Point | undefined> = {
   ArrowUp: { x: 0, y: -1 },
   ArrowDown: { x: 0, y: 1 },
   ArrowLeft: { x: -1, y: 0 },
   ArrowRight: { x: 1, y: 0 }
+}
+
+/** Whether an element's focus came from the keyboard, as the browser
+ *  judges it for :focus-visible (which jsdom may not parse). */
+function focusedByKeyboard(el: Element): boolean {
+  try {
+    return el.matches(':focus-visible')
+  } catch {
+    return true
+  }
 }
 
 export function WorldMap(): JSX.Element {
@@ -348,6 +370,11 @@ export function WorldMap(): JSX.Element {
   // Where the keyboard draws: a cursor moved by Option and the arrows, which
   // Space puts a point down at. Shown only when the map has keyboard focus.
   const [cursor, setCursor] = useState<Point | null>(null)
+  // Whether the pointer is the one drawing. A Return pressed mid-coast makes
+  // Chromium treat the map's focus as keyboard focus, which would show the
+  // cursor to a writer drawing with the mouse; the keyboard's own drawing
+  // keys bring it back.
+  const [pointerDrawing, setPointerDrawing] = useState(false)
 
   const chooseTool = (next: Tool): void => {
     setTool(next)
@@ -396,6 +423,10 @@ export function WorldMap(): JSX.Element {
       finishDraft()
       return
     }
+    // A second click on the same spot (a double-click) is not a new point:
+    // a curve through a repeated point curls back on itself.
+    const last = draft[draft.length - 1]
+    if (last && last.x === p.x && last.y === p.y) return
     setDraft((d) => [...d, p])
     // The line to the next point starts from this one, not from wherever
     // the pointer last was.
@@ -405,6 +436,8 @@ export function WorldMap(): JSX.Element {
   /* ---------- changing a shape ---------- */
 
   const [selected, setSelected] = useState<string | null>(null)
+  // The shape with keyboard focus, if any.
+  const [keyFocus, setKeyFocus] = useState<string | null>(null)
   // Points held here while a corner is dragged or nudged, as pins are.
   const [localShape, setLocalShape] = useState<Record<string, Point[]>>({})
   const pointsOf = (shape: MapShape): Point[] => localShape[shape.id] ?? shape.points
@@ -557,6 +590,7 @@ export function WorldMap(): JSX.Element {
     stop.current?.()
     const start = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
     const at = mapPoint(e)
+    setPointerDrawing(true)
     // The shape the press began on: chosen on a still click, so a drag that
     // starts on land pans like any other — a map that is mostly land must
     // still move.
@@ -710,6 +744,7 @@ export function WorldMap(): JSX.Element {
           clampTo(bounds, { x: cursor.x + dir.x * step, y: cursor.y + dir.y * step })
         )
         setCursor(next)
+        setPointerDrawing(false)
         if (draft.length > 0) setHover(next)
         keepInView(next)
         return
@@ -718,6 +753,7 @@ export function WorldMap(): JSX.Element {
       // the first point down, rather than doing nothing.
       if (e.key === ' ' || (e.key === 'Enter' && draft.length === 0)) {
         e.preventDefault()
+        setPointerDrawing(false)
         addPoint(cursor)
         return
       }
@@ -742,6 +778,8 @@ export function WorldMap(): JSX.Element {
   // same hundreds whichever way the map has grown.
   const gridX = ((-bounds.x % 100) + 100) % 100
   const gridY = ((-bounds.y % 100) + 100) % 100
+  // The shape being drawn, out to the pointer, open until it is finished.
+  const drafted = hover ? [...draft, hover] : draft
 
   return (
     <div className="terminal world-map" data-help="world-map" onKeyDown={onMapKey}>
@@ -780,7 +818,7 @@ export function WorldMap(): JSX.Element {
           </button>
         </span>
         <span className="map-tools-group" data-help="map-draw" role="group" aria-label="Map tools">
-          {(['hand', 'land', 'area', 'border'] as const).map((t) => (
+          {TOOLS.map((t) => (
             <button
               key={t}
               type="button"
@@ -894,10 +932,14 @@ export function WorldMap(): JSX.Element {
           ref={scrollEl}
           onPointerDown={onMapDown}
           onPointerMove={onMapMove}
-          onPointerLeave={() => setHover(cursor && draft.length > 0 ? cursor : null)}
+          onPointerLeave={() =>
+            setHover(cursor && !pointerDrawing && draft.length > 0 ? cursor : null)
+          }
           onFocus={(e) => {
-            if (e.target === e.currentTarget && tool !== 'hand')
-              setCursor(roundPoint(clampTo(bounds, viewCentre())))
+            if (e.target !== e.currentTarget || tool === 'hand') return
+            setCursor(roundPoint(clampTo(bounds, viewCentre())))
+            // Arrived by keyboard (Tab), not by a click: show the cursor.
+            if (focusedByKeyboard(e.currentTarget)) setPointerDrawing(false)
           }}
           data-tool={tool}
           // A place you can be in from the keyboard: Tab here, and the arrow
@@ -907,7 +949,7 @@ export function WorldMap(): JSX.Element {
           aria-label={
             tool === 'hand'
               ? 'World map. Arrow keys move the view; Shift moves it further.'
-              : `World map. Drawing ${KIND_NAME[tool].toLowerCase()}: Option and the arrows move the cursor; Space puts a point down; Return closes the shape.`
+              : `World map. Drawing ${KIND_NAME[tool].toLowerCase()}: Option and the arrows move the cursor; Space puts a point down; ${isClosed(tool) ? 'Return closes the shape.' : `Return finishes the ${KIND_NAME[tool].toLowerCase()}.`}`
           }
           onKeyDown={onScrollKey}
         >
@@ -966,8 +1008,24 @@ export function WorldMap(): JSX.Element {
                 />
                 {DRAW_ORDER.flatMap((kind) => {
                   const ofKind = mapShapes.filter((shape) => shape.kind === kind)
-                  return ofKind.map((shape, n) => {
-                    const d = shapePath(pointsOf(shape), isClosed(kind), bounds)
+                  // Every road's casing first, then every road's paper: cased
+                  // one road at a time, a road meeting another drew an ink
+                  // line across it, and every junction looked closed.
+                  const casings =
+                    kind === 'road' && ofKind.length > 0 ? (
+                      <g key="road-casings" className="map-road-casings" aria-hidden="true">
+                        {ofKind.map((shape) => (
+                          <path
+                            key={shape.id}
+                            className={`map-road-casing${selected === shape.id ? ' selected' : ''}${keyFocus === shape.id ? ' focused' : ''}`}
+                            data-casing={shape.id}
+                            d={pathFor(kind, pointsOf(shape), bounds)}
+                          />
+                        ))}
+                      </g>
+                    ) : null
+                  const groups = ofKind.map((shape, n) => {
+                    const d = pathFor(kind, pointsOf(shape), bounds)
                     const isSelected = selected === shape.id
                     return (
                       <g
@@ -995,6 +1053,12 @@ export function WorldMap(): JSX.Element {
                               ? `${describeShape({ kind, points: pointsOf(shape) })}, ${n + 1} of ${ofKind.length}. ${isSelected ? 'Selected: its points follow.' : 'Return selects it'}; Delete removes it.`
                               : undefined
                           }
+                          // Known here, not by CSS, because a road's casing is
+                          // drawn apart from its body and shows its focus.
+                          onFocus={(e) =>
+                            focusedByKeyboard(e.currentTarget) && setKeyFocus(shape.id)
+                          }
+                          onBlur={() => setKeyFocus((f) => (f === shape.id ? null : f))}
                           onKeyDown={(e) => {
                             if (tool !== 'hand') return
                             if (e.key === 'Enter' || e.key === ' ') {
@@ -1017,14 +1081,24 @@ export function WorldMap(): JSX.Element {
                           style={{ strokeWidth: 14 / zoom }}
                           aria-hidden="true"
                         />
+                        {/* A railway's sleepers: a wide stroke dashed so
+                            thin that each dash is a tie across the line. */}
+                        {kind === 'rail' && (
+                          <path className="map-rail-ties" d={d} aria-hidden="true" />
+                        )}
                       </g>
                     )
                   })
+                  return casings ? [casings, ...groups] : groups
                 })}
                 {draft.length > 0 && tool !== 'hand' && (
                   <path
                     className={`map-draft ${tool}`}
-                    d={shapePath(hover ? [...draft, hover] : draft, false, bounds)}
+                    d={
+                      isSmooth(tool)
+                        ? smoothPath(drafted, bounds)
+                        : shapePath(drafted, false, bounds)
+                    }
                     aria-hidden="true"
                   />
                 )}
@@ -1047,7 +1121,11 @@ export function WorldMap(): JSX.Element {
             {/* Middles before corners, so a corner wins where they meet. */}
             {selectedShape &&
               tool === 'hand' &&
-              midpoints(pointsOf(selectedShape), isClosed(selectedShape.kind))
+              midpoints(
+                pointsOf(selectedShape),
+                isClosed(selectedShape.kind),
+                isSmooth(selectedShape.kind)
+              )
                 .filter((m) => edgeLongEnough(pointsOf(selectedShape), m.index, zoom))
                 .map((m) => (
                   <button
@@ -1076,7 +1154,7 @@ export function WorldMap(): JSX.Element {
                   onKeyDown={(e) => onCornerKey(e, selectedShape, i)}
                 />
               ))}
-            {cursor && tool !== 'hand' && (
+            {cursor && tool !== 'hand' && !pointerDrawing && (
               <span
                 className="map-cursor"
                 style={{ left: (cursor.x - bounds.x) * zoom, top: (cursor.y - bounds.y) * zoom }}

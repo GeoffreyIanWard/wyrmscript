@@ -221,6 +221,53 @@ describe('map shapes in the store', () => {
     expect(useWyrm.getState().mapShapes).toEqual([shape])
   })
 
+  it.each(['river', 'road', 'rail'] as const)(
+    'creates a %s line from exactly 2 points',
+    async (kind) => {
+      const path = await openDemo()
+      const write = vi.spyOn(api, 'writeMapShape')
+      const two = tri.slice(0, 2)
+      const shape = await useWyrm.getState().createMapShape(kind, two)
+      expect(shape).not.toBeNull()
+      expect(shape!.kind).toBe(kind)
+      expect(shape!.points).toEqual(two)
+      expect(write).toHaveBeenCalledTimes(1)
+      expect((await api.listMapShapes(path))[0].points).toEqual(two)
+    }
+  )
+
+  it.each(['river', 'road', 'rail'] as const)(
+    'refuses a 1-point %s line, writing nothing',
+    async (kind) => {
+      const path = await openDemo()
+      const write = vi.spyOn(api, 'writeMapShape')
+      expect(await useWyrm.getState().createMapShape(kind, tri.slice(0, 1))).toBeNull()
+      expect(write).not.toHaveBeenCalled()
+      expect(useWyrm.getState().mapShapes).toEqual([])
+      expect(await api.listMapShapes(path)).toEqual([])
+    }
+  )
+
+  it.each(['river', 'road', 'rail'] as const)(
+    'lets a %s line be updated to exactly 2 points, but not 1',
+    async (kind) => {
+      const path = await openDemo()
+      const shape = (await useWyrm.getState().createMapShape(kind, tri))!
+      const write = vi.spyOn(api, 'writeMapShape')
+      await useWyrm.getState().updateMapShapeAt(path, shape.id, tri.slice(0, 1))
+      expect(write).not.toHaveBeenCalled()
+      expect(useWyrm.getState().mapShapes).toEqual([shape])
+      const two = [
+        { x: 1, y: 1 },
+        { x: 9, y: 9 }
+      ]
+      await useWyrm.getState().updateMapShapeAt(path, shape.id, two)
+      expect(write).toHaveBeenCalledTimes(1)
+      expect(useWyrm.getState().mapShapes[0].points).toEqual(two)
+      expect((await api.listMapShapes(path))[0].points).toEqual(two)
+    }
+  )
+
   it('deletes a shape', async () => {
     const path = await openDemo()
     const a = (await useWyrm.getState().createMapShape('land', tri))!

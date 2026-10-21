@@ -34,7 +34,7 @@ import type {
   PrintSettings,
   CompileBlock
 } from '../../shared/types'
-import { PLOTLINE_COLOURS, SCENE_TAG } from '../../shared/types'
+import { minShapePoints, PLOTLINE_COLOURS, SCENE_TAG } from '../../shared/types'
 import { api } from './lib/api'
 import { isConnected } from './lib/syncState'
 import { compile, compileFileName, renderHtml } from './lib/compile'
@@ -83,11 +83,6 @@ export type MainView =
 
 function newId(): string {
   return Math.random().toString(36).slice(2, 10)
-}
-
-/** F-12: a closed outline (land, area) needs three corners, a border two ends. */
-function minShapePoints(kind: MapShapeKind): number {
-  return kind === 'border' ? 2 : 3
 }
 
 function roundPoints(points: { x: number; y: number }[]): { x: number; y: number }[] {
