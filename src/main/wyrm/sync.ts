@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import { promises as fsp } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import git from 'isomorphic-git'
+import diff3Merge from 'diff3'
 import matter from 'gray-matter'
 import type { ConflictResolution, ProjectData, SyncConflict, SyncOutcome } from '../../shared/types'
 import { author, commitAll, commitMerge } from './git'
@@ -115,6 +116,22 @@ async function textAt(dir: string, oid: string, filepath: string): Promise<strin
   return blob == null ? null : new TextDecoder().decode(blob)
 }
 
+/**
+ * Whether bytes are not text: not valid UTF-8, or holding a NUL. Judged on
+ * the bytes, never on a decoded string — a U+FFFD the writer typed is text,
+ * and a lossy decode cannot tell the two apart.
+ */
+function isBinary(bytes: Uint8Array | null): boolean {
+  if (!bytes) return false
+  if (bytes.includes(0)) return true
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    return false
+  } catch {
+    return true
+  }
+}
+
 /** Byte-exact equality, with absence equal only to absence. */
 function sameBytes(a: Uint8Array | null, b: Uint8Array | null): boolean {
   if (a == null || b == null) return a === b
@@ -145,12 +162,15 @@ async function describeConflict(
   localHead: string,
   remoteHead: string
 ): Promise<SyncConflict> {
-  const localRaw = await textAt(dir, localHead, filepath)
-  const remoteRaw = await textAt(dir, remoteHead, filepath)
+  const localBlob = await blobAt(dir, localHead, filepath)
+  const remoteBlob = await blobAt(dir, remoteHead, filepath)
+  const localRaw = localBlob == null ? null : new TextDecoder().decode(localBlob)
+  const remoteRaw = remoteBlob == null ? null : new TextDecoder().decode(remoteBlob)
 
   const kind: SyncConflict['kind'] = filepath.startsWith('documents/')
     ? 'doc'
-    : /^(glossary|characters|world)\//.test(filepath)
+    : // Entries only: a portrait sits in the same folder and is not one.
+      /^(glossary|characters|world)\/[^/]+\.md$/.test(filepath)
       ? 'entity'
       : filepath === 'project.json'
         ? 'project'
@@ -169,6 +189,12 @@ async function describeConflict(
     remoteBody = parsed[1] == null ? null : parsed[1].content.replace(/^\n/, '')
   } else if (kind === 'project') {
     title = 'Binder & project settings'
+  } else {
+    // A portrait or another file that is not text: its bytes mean nothing on
+    // the resolution screen, and decoded they are a screenful of garbage.
+    const NOT_TEXT = '(not text — an image or other file)'
+    localBody = isBinary(localBlob) ? NOT_TEXT : localRaw
+    remoteBody = isBinary(remoteBlob) ? NOT_TEXT : remoteRaw
   }
 
   return { path: filepath, kind, title, localBody, remoteBody }
@@ -176,25 +202,84 @@ async function describeConflict(
 
 /* ---------- the merge machinery ---------- */
 
-/** Documents and story-bible entries: YAML frontmatter over a Markdown body. */
-function isFrontmattered(filepath: string): boolean {
-  return /^(documents|glossary|characters|world)\/.+\.md$/.test(filepath)
+/**
+ * The corkboard's and the map's records — strings, relationships,
+ * plotlines, pins, shapes, marks. Written like documents (frontmatter over
+ * an often empty body), but the writer's own words and the geometry live in
+ * the frontmatter: a relationship's label, a mark's name, a shape's points.
+ * So they merge field by field only where the two devices changed different
+ * fields; the same field changed both ways is the writer's to decide, never
+ * "this device wins" (`mergeFrontmattered`'s `strict`).
+ */
+const RECORDS = /^(strings|relationships|plotlines|map|map-shapes|map-marks)\/[^/]+\.md$/
+
+export function isRecord(filepath: string): boolean {
+  return RECORDS.test(filepath)
+}
+
+/**
+ * Every one-file-per-record collection: documents and story-bible entries,
+ * and the records above. One device moving a stamp while the other renames
+ * it is two changes to two fields, not a conflict; the records used to be
+ * left out, so it reached the writer as a "file" conflict of raw YAML.
+ */
+export function isFrontmattered(filepath: string): boolean {
+  return /^(documents|glossary|characters|world)\/[^/]+\.md$/.test(filepath) || isRecord(filepath)
+}
+
+/** Fields that are one value in two keys: a position. Merged as a pair, so
+ *  two moves never combine into a point neither device chose. */
+const PAIRS: [string, string][] = [
+  ['x', 'y'],
+  ['boardX', 'boardY']
+]
+
+/** isomorphic-git's line splitter, for merging exactly as it does. */
+const LINEBREAKS = /^.*(\r?\n|$)/gm
+
+/**
+ * A three-way merge of one file's text, as isomorphic-git's default driver
+ * does it (its `mergeFile`, which it does not export, over the same `diff3`,
+ * pinned to the version it pins) — so a file merged cleanly here is merged
+ * byte for byte as the detector merged it. Two differences, both refusals:
+ * a file that is not text is never merged at all (two portraits interleaved
+ * by lines "merge cleanly" into a corrupt image — I-17; the caller judges
+ * that from the bytes, `isBinary`), and a conflicting
+ * merge carries no markers, since nothing here ever writes one to disk.
+ */
+function mergeText(contents: string[], binary = false): { clean: boolean; text: string } {
+  const [base, ours, theirs] = contents
+  if (binary) return { clean: false, text: ours }
+  const result = diff3Merge(
+    ours.match(LINEBREAKS) ?? [],
+    base.match(LINEBREAKS) ?? [],
+    theirs.match(LINEBREAKS) ?? []
+  )
+  let text = ''
+  for (const item of result) {
+    if (item.conflict) return { clean: false, text: ours }
+    if (item.ok) text += item.ok.join('')
+  }
+  return { clean: true, text }
 }
 
 /**
  * Three-way merge of a frontmattered file at the granularity the product
  * actually thinks in. Frontmatter merges structurally — `modified` takes the
- * newer stamp, `created` the older, and any other field keeps this device's
- * change when both devices changed it. Bodies merge only when at most one
+ * newer stamp, `created` the older, a position moves as one x/y pair, and
+ * any other field changed differently on both devices keeps this device's
+ * value, or, for a `strict` record, makes the whole file the writer's call. Bodies merge only when at most one
  * device changed the prose; two devices editing the same document's text is
  * always the writer's decision, never diff3's — a merge tool interleaving
  * paragraphs of fiction because they were far enough apart is not a feature.
- * Returns the merged file, or null when the bodies genuinely both changed.
+ * Returns the merged file, or null when the bodies genuinely both changed
+ * (or, when strict, any field did).
  */
 function mergeFrontmattered(
   baseRaw: string | null,
   oursRaw: string | null,
-  theirsRaw: string | null
+  theirsRaw: string | null,
+  strict = false
 ): string | null {
   if (baseRaw == null || oursRaw == null || theirsRaw == null) return null
   const base = matter(baseRaw)
@@ -214,10 +299,30 @@ function mergeFrontmattered(
   const keys = new Set([...Object.keys(ours.data), ...Object.keys(theirs.data)])
   const data: Record<string, unknown> = {}
   const asJson = (v: unknown): string => JSON.stringify(v ?? null)
+  const [bd, od, td] = [base.data, ours.data, theirs.data] as Record<string, unknown>[]
+  /** Which side's value to keep, or null when both changed it differently
+   *  and that is the writer's to decide. */
+  const pick = (b: string, o: string, t: string): 'ours' | 'theirs' | null => {
+    if (o !== b && t !== b && o !== t && strict) return null
+    return o !== b ? 'ours' : t !== b ? 'theirs' : 'ours'
+  }
+  for (const pair of PAIRS) {
+    if (!pair.some((k) => keys.has(k))) continue
+    const side = pick(
+      asJson(pair.map((k) => bd[k])),
+      asJson(pair.map((k) => od[k])),
+      asJson(pair.map((k) => td[k]))
+    )
+    if (side == null) return null
+    for (const k of pair) {
+      data[k] = (side === 'ours' ? od : td)[k]
+      keys.delete(k)
+    }
+  }
   for (const key of keys) {
-    const b = (base.data as Record<string, unknown>)[key]
-    const o = (ours.data as Record<string, unknown>)[key]
-    const t = (theirs.data as Record<string, unknown>)[key]
+    const b = bd[key]
+    const o = od[key]
+    const t = td[key]
     if (key === 'modified' || key === 'created') {
       const stamps = [o, t]
         .filter((v) => v != null)
@@ -231,8 +336,12 @@ function mergeFrontmattered(
       }
       continue
     }
-    // Per-field three-way; when both devices changed a field, this device wins.
-    data[key] = asJson(o) !== asJson(b) ? o : asJson(t) !== asJson(b) ? t : o
+    // Per-field three-way. When both devices changed a field differently, a
+    // document or entry keeps this device's (its prose, the part that
+    // matters, is protected above); a record goes to the writer.
+    const side = pick(asJson(b), asJson(o), asJson(t))
+    if (side == null) return null
+    data[key] = side === 'ours' ? o : t
   }
   // A cleared optional field (tags, pins, a Tidied board position) is an
   // absent key — writeEntity/writeDoc omit unset fields rather than write an
@@ -268,6 +377,36 @@ async function analyseMerge(
 ): Promise<MergeAnalysis> {
   const conflicts = new Set<string>()
   const autoResolved = new Map<string, string>()
+  const bases = await git.findMergeBase({ fs, dir, oids: [localHead, remoteHead] })
+  const base = (bases[0] as string | undefined) ?? null
+
+  /** Whether any side of a path is not text, judged on its bytes. */
+  const binaryAt = async (filepath: string): Promise<boolean> =>
+    isBinary(base ? await blobAt(dir, base, filepath) : null) ||
+    isBinary(await blobAt(dir, localHead, filepath)) ||
+    isBinary(await blobAt(dir, remoteHead, filepath))
+
+  // isomorphic-git hands its merge driver only a file's name, not its folder,
+  // and the text already decoded — too late to judge the bytes. So every file
+  // both sides changed that is not text is found first, and the driver knows
+  // one by its name and the exact text of both sides.
+  const toText = (b: Uint8Array): string => Buffer.from(b).toString('utf8')
+  const binaryKey = (name: string, ours: string, theirs: string): string =>
+    `${name}\u0000${ours}\u0000${theirs}`
+  const binaryMerges = new Set<string>()
+  const paths = new Set([
+    ...(await git.listFiles({ fs, dir, ref: localHead })),
+    ...(await git.listFiles({ fs, dir, ref: remoteHead }))
+  ])
+  for (const filepath of paths) {
+    const local = await blobAt(dir, localHead, filepath)
+    const remote = await blobAt(dir, remoteHead, filepath)
+    if (local == null || remote == null || sameBytes(local, remote)) continue
+    if (await binaryAt(filepath))
+      binaryMerges.add(binaryKey(basename(filepath), toText(local), toText(remote)))
+  }
+  const isBinaryMerge = (name: string, contents: string[]): boolean =>
+    binaryMerges.has(binaryKey(name, contents[1], contents[2]))
 
   try {
     // Plain attempt: succeeds only when nothing overlaps at all.
@@ -277,7 +416,12 @@ async function analyseMerge(
       ours: SYNC_BRANCH,
       theirs: REMOTE_REF,
       author,
-      noUpdateBranch: true
+      noUpdateBranch: true,
+      // The default, except that a file which is not text is a conflict.
+      mergeDriver: ({ contents, path }) => {
+        const merged = mergeText(contents, isBinaryMerge(path, contents))
+        return { cleanMerge: merged.clean, mergedText: merged.text }
+      }
     })
     return { conflicts: [], autoResolved, oracle: clean.oid ?? null }
   } catch (e) {
@@ -290,14 +434,15 @@ async function analyseMerge(
     for (const p of data.deleteByTheirs ?? []) conflicts.add(p)
     if (conflicts.size === 0) throw e
 
-    const bases = await git.findMergeBase({ fs, dir, oids: [localHead, remoteHead] })
-    const base = (bases[0] as string | undefined) ?? null
     for (const filepath of data.bothModified ?? []) {
-      if (!isFrontmattered(filepath)) continue
+      // A record that is not text cannot be parsed and written back as text
+      // without corrupting it: the writer chooses, and the choice is bytes.
+      if (!isFrontmattered(filepath) || (await binaryAt(filepath))) continue
       const merged = mergeFrontmattered(
         base ? await textAt(dir, base, filepath) : null,
         await textAt(dir, localHead, filepath),
-        await textAt(dir, remoteHead, filepath)
+        await textAt(dir, remoteHead, filepath),
+        isRecord(filepath)
       )
       if (merged != null) {
         autoResolved.set(filepath, merged)
@@ -322,10 +467,16 @@ async function analyseMerge(
       theirs: REMOTE_REF,
       author,
       noUpdateBranch: true,
-      // Content does not matter for the paths this run silences — writer
-      // choices and autoResolved entries overwrite them — so "ours" is just a
-      // well-formed placeholder.
-      mergeDriver: ({ contents }) => ({ cleanMerge: true, mergedText: contents[1] })
+      // Every both-changed file that diff3 merges cleanly keeps that merge.
+      // Only the paths this run silences — the conflicts, which the writer's
+      // choices or autoResolved entries overwrite — take "ours" as a
+      // well-formed placeholder. It used to give "ours" to every
+      // both-changed file, so one real conflict anywhere quietly threw away
+      // the other device's half of every clean merge alongside it (I-13).
+      mergeDriver: ({ contents, path }) => ({
+        cleanMerge: true,
+        mergedText: mergeText(contents, isBinaryMerge(path, contents)).text
+      })
     })
     return { conflicts: [...conflicts], autoResolved, oracle: oracle.oid ?? null }
   }
@@ -451,18 +602,31 @@ async function completeMerge(
       continue
     }
 
-    // No oracle (delete-conflict case): per-file three-way without diff3.
+    // No oracle (delete-conflict case): per-file three-way. A file both
+    // devices changed was not listed as a conflict, so diff3 merges it
+    // cleanly; it used to be reduced to this device's copy (I-13 again).
     const local = await blobAt(dir, localHead, filepath)
     const remote = await blobAt(dir, remoteHead, filepath)
     const baseBlob = base ? await blobAt(dir, base, filepath) : null
-    const keep = sameBytes(local, remote)
-      ? local
-      : sameBytes(remote, baseBlob)
-        ? local
-        : sameBytes(local, baseBlob)
-          ? remote
-          : local
-    if (keep != null) target.set(filepath, keep)
+    if (sameBytes(local, remote) || sameBytes(remote, baseBlob)) {
+      if (local != null) target.set(filepath, local)
+    } else if (sameBytes(local, baseBlob)) {
+      if (remote != null) target.set(filepath, remote)
+    } else if (local != null && remote != null) {
+      // Decoded as isomorphic-git decodes (a TextDecoder drops a leading
+      // BOM), so this is the merge the detector judged clean.
+      const decode = (b: Uint8Array | null): string => (b ? Buffer.from(b).toString('utf8') : '')
+      const merged = mergeText(
+        [decode(baseBlob), decode(local), decode(remote)],
+        isBinary(baseBlob) || isBinary(local) || isBinary(remote)
+      )
+      // The detector merged this cleanly, or it would be a conflict. If it
+      // does not merge cleanly now, stop before anything is written rather
+      // than quietly keep one side.
+      if (!merged.clean)
+        throw new Error(`Could not combine ${filepath} safely; nothing was changed.`)
+      target.set(filepath, merged.text)
+    }
   }
 
   await materialize(dir, localHead, target)
