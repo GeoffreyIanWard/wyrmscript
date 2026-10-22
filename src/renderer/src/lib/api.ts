@@ -15,6 +15,7 @@ import type {
   EntityType,
   DayStat,
   MapPin,
+  MapMark,
   MapShape,
   Plotline,
   ProjectData,
@@ -77,6 +78,7 @@ interface MockProject {
   relationships: Map<string, Relationship>
   mapPins: Map<string, MapPin>
   mapShapes: Map<string, MapShape>
+  mapMarks: Map<string, MapMark>
   boardStrings: Map<string, BoardString>
   /** F-47: portrait data URLs by entry id — the image files of a project with no disk. */
   portraits: Map<string, string>
@@ -141,6 +143,7 @@ function starterProject(title: string): MockProject {
     relationships: new Map(),
     mapPins: new Map(),
     mapShapes: new Map(),
+    mapMarks: new Map(),
     boardStrings: new Map(),
     portraits: new Map()
   }
@@ -282,6 +285,7 @@ function demoProject(): MockProject {
     relationships,
     mapPins,
     mapShapes: new Map(),
+    mapMarks: new Map(),
     // F-46: no strings seeded — the preview's board starts bare, so the
     // first string a reader draws is the first one on it.
     boardStrings: new Map(),
@@ -614,6 +618,17 @@ export function createMockApi(): WyrmApi {
     },
     async deleteMapShape(path: string, id: string): Promise<void> {
       mustGet(path).mapShapes.delete(id)
+    },
+    async listMapMarks(path: string): Promise<MapMark[]> {
+      return [...mustGet(path).mapMarks.values()].map((m) => ({ ...m }))
+    },
+    async writeMapMark(path: string, mark: MapMark): Promise<void> {
+      const stored: MapMark = { ...mark, modified: new Date().toISOString() }
+      if (!stored.name) delete stored.name
+      mustGet(path).mapMarks.set(mark.id, stored)
+    },
+    async deleteMapMark(path: string, id: string): Promise<void> {
+      mustGet(path).mapMarks.delete(id)
     },
 
     async listBoardStrings(path: string): Promise<BoardString[]> {

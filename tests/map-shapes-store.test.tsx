@@ -279,6 +279,102 @@ describe('map shapes in the store', () => {
     expect((await api.listMapShapes(path)).map((s) => s.id)).toEqual([b.id])
   })
 
+  it('renames a shape in the focused project: trimmed, written, dirty', async () => {
+    const path = await openDemo()
+    const shape = (await useWyrm.getState().createMapShape('land', tri))!
+    __runtimeFor(path)!.commitDirty = false
+    await useWyrm.getState().renameMapShapeAt(path, shape.id, '  The Saltmarsh  ')
+    expect(useWyrm.getState().mapShapes[0].name).toBe('The Saltmarsh')
+    expect((await api.listMapShapes(path))[0].name).toBe('The Saltmarsh')
+    expect(__runtimeFor(path)!.commitDirty).toBe(true)
+  })
+
+  it('an empty or blank name deletes the key rather than assigning it', async () => {
+    const path = await openDemo()
+    const shape = (await useWyrm.getState().createMapShape('land', tri))!
+    await useWyrm.getState().renameMapShapeAt(path, shape.id, 'Named')
+    const write = vi.spyOn(api, 'writeMapShape')
+    await useWyrm.getState().renameMapShapeAt(path, shape.id, '   ')
+    expect(write).toHaveBeenCalledTimes(1)
+    expect('name' in write.mock.calls[0][1]).toBe(false)
+    expect('name' in useWyrm.getState().mapShapes[0]).toBe(false)
+    expect('name' in (await api.listMapShapes(path))[0]).toBe(false)
+  })
+
+  it('writes nothing when the name is unchanged', async () => {
+    const path = await openDemo()
+    const shape = (await useWyrm.getState().createMapShape('land', tri))!
+    const write = vi.spyOn(api, 'writeMapShape')
+    await useWyrm.getState().renameMapShapeAt(path, shape.id, '')
+    await useWyrm.getState().renameMapShapeAt(path, shape.id, '   ')
+    await useWyrm.getState().renameMapShapeAt(path, 'gone', 'X')
+    await useWyrm.getState().renameMapShapeAt('/not/open', shape.id, 'X')
+    expect(write).not.toHaveBeenCalled()
+    await useWyrm.getState().renameMapShapeAt(path, shape.id, 'Same')
+    await useWyrm.getState().renameMapShapeAt(path, shape.id, ' Same ')
+    expect(write).toHaveBeenCalledTimes(1)
+  })
+
+  it('renames a parked project’s shape, leaving the one in front alone', async () => {
+    await openDemo()
+    const now = new Date().toISOString()
+    const parkedShape: MapShape = {
+      id: 'r1',
+      kind: 'land',
+      points: tri,
+      created: now,
+      modified: now
+    }
+    const front: MapShape = { ...parkedShape, kind: 'border', created: 'x', name: 'Front' }
+    const write = vi.spyOn(api, 'writeMapShape').mockResolvedValue()
+    useWyrm.setState({
+      mapShapes: [front],
+      parked: { [OTHER]: { ...useWyrm.getState(), mapShapes: [parkedShape] } as never }
+    })
+    await useWyrm.getState().renameMapShapeAt(OTHER, 'r1', 'Far Shore')
+    expect(write).toHaveBeenCalledWith(OTHER, { ...parkedShape, name: 'Far Shore' })
+    expect(useWyrm.getState().parked[OTHER].mapShapes).toEqual([
+      { ...parkedShape, name: 'Far Shore' }
+    ])
+    expect(useWyrm.getState().mapShapes).toEqual([front])
+    expect(__runtimeFor(OTHER)?.commitDirty).toBe(true)
+  })
+
+  it('a rename that lands after a focus change goes to the parked slice', async () => {
+    const path = await openDemo()
+    const shape = (await useWyrm.getState().createMapShape('land', tri))!
+    __runtimeFor(path)!.commitDirty = false
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    vi.spyOn(api, 'writeMapShape').mockImplementation(() => gate)
+    const pending = useWyrm.getState().renameMapShapeAt(path, shape.id, 'Far Shore')
+    // The writer focuses a clone (same shape id) while the write is in flight.
+    const state = useWyrm.getState()
+    useWyrm.setState({
+      parked: { [path]: { ...state, mapShapes: [shape] } as never },
+      project: { ...state.project!, path: '/novels/Clone.wyrm' },
+      mapShapes: [{ ...shape }]
+    })
+    release()
+    await pending
+    expect(useWyrm.getState().parked[path].mapShapes[0].name).toBe('Far Shore')
+    expect('name' in useWyrm.getState().mapShapes[0]).toBe(false)
+    expect(__runtimeFor(path)!.commitDirty).toBe(true)
+    expect(__runtimeFor('/novels/Clone.wyrm')?.commitDirty ?? false).toBe(false)
+  })
+
+  it('keeps a shape’s name through a points update', async () => {
+    const path = await openDemo()
+    const shape = (await useWyrm.getState().createMapShape('land', tri))!
+    await useWyrm.getState().renameMapShapeAt(path, shape.id, 'Named')
+    await useWyrm.getState().updateMapShapeAt(
+      path,
+      shape.id,
+      tri.map((p) => ({ ...p, x: p.x + 1 }))
+    )
+    expect(useWyrm.getState().mapShapes[0].name).toBe('Named')
+  })
+
   it('clones points into the mock, so a caller cannot mutate stored state', async () => {
     const path = await openDemo()
     const shape = (await useWyrm.getState().createMapShape('land', tri))!

@@ -24,6 +24,8 @@ import type {
   EntitySortMode,
   EntityType,
   MapPin,
+  MapMark,
+  MapMarkKind,
   MapShape,
   MapShapeKind,
   Plotline,
@@ -134,6 +136,7 @@ export const SLICE_KEYS = [
   'relationships',
   'mapPins',
   'mapShapes',
+  'mapMarks',
   'boardStrings',
   'boardUndo',
   'backupSettings',
@@ -255,6 +258,7 @@ interface WyrmState {
   mapPins: MapPin[]
   /** F-12: land, areas and borders drawn on the world map. */
   mapShapes: MapShape[]
+  mapMarks: MapMark[]
   /** F-46: red strings between corkboard cards. */
   boardStrings: BoardString[]
 
@@ -586,6 +590,48 @@ interface WyrmState {
    */
   updateMapShapeAt(path: string, id: string, points: { x: number; y: number }[]): Promise<void>
   deleteMapShape(shape: MapShape): Promise<void>
+  /**
+   * Name (or clear) a drawn shape, in the project at `path` — path-addressed
+   * like `updateMapShapeAt`, for the same reason. The name is trimmed; empty
+   * removes it. A shape removed in the meantime is not brought back, and a
+   * name that changes nothing writes nothing.
+   */
+  renameMapShapeAt(path: string, id: string, name: string): Promise<void>
+
+  loadMapMarks(): Promise<void>
+  /**
+   * Stamp or label the map at (x, y), rounded to whole map pixels. The name
+   * is trimmed: a label needs one (empty gives null and writes nothing), a
+   * stamp's is optional and omitted when empty. Null with no project open.
+   */
+  createMapMark(kind: MapMarkKind, x: number, y: number, name?: string): Promise<MapMark | null>
+  /**
+   * `createMapMark` addressed by path: the mark is written to `path` and,
+   * once the write lands, added to whichever slice holds that project now
+   * (the flat fields or its parked slice), never the one that happens to be in
+   * front. Null when `path` is not open at call time.
+   */
+  createMapMarkAt(
+    path: string,
+    kind: MapMarkKind,
+    x: number,
+    y: number,
+    name?: string
+  ): Promise<MapMark | null>
+  /**
+   * Move and/or rename a mark, in the project at `path` whether or not it is
+   * still in front (the same reason as `updateMapShapeAt`). A mark removed
+   * in the meantime is not brought back. x/y are rounded; the name is
+   * trimmed, and an empty one removes a stamp's name but is refused for a
+   * label (which would be left with no text). Nothing is written when
+   * nothing changed.
+   */
+  updateMapMarkAt(
+    path: string,
+    id: string,
+    patch: { x?: number; y?: number; name?: string }
+  ): Promise<void>
+  deleteMapMark(mark: MapMark): Promise<void>
 
   loadBoardStrings(): Promise<void>
   /**
@@ -692,6 +738,7 @@ function emptySlice(): ProjectSlice {
     relationships: [],
     mapPins: [],
     mapShapes: [],
+    mapMarks: [],
     boardStrings: [],
     boardUndo: null,
     backupSettings: null,
@@ -815,6 +862,23 @@ export const useWyrm = create<WyrmState>((set, get) => {
     const info = await api.openProjectPath(project.path)
     if (info) setProject(info)
     await get().loadEntities()
+    // The map layers are files too, so a sync can change them under the UI.
+    // Each is read for `project.path` and applied only if that project is still
+    // in front; a failed read leaves that layer as it was. (Every caller runs
+    // this with the synced project focused, but a focus change mid-await must
+    // not drop one project's marks into another.)
+    const path = project.path
+    const layers = await Promise.allSettled([
+      api.listMapPins(path),
+      api.listMapShapes(path),
+      api.listMapMarks(path)
+    ])
+    if (get().project?.path === path) {
+      const [pins, shapes, marks] = layers
+      if (pins.status === 'fulfilled') set({ mapPins: pins.value })
+      if (shapes.status === 'fulfilled') set({ mapShapes: shapes.value })
+      if (marks.status === 'fulfilled') set({ mapMarks: marks.value })
+    }
     if (!activeId) return
     const doc = await api.readDoc(project.path, activeId).catch(() => null)
     if (doc) {
@@ -999,6 +1063,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     relationships: [],
     mapPins: [],
     mapShapes: [],
+    mapMarks: [],
     boardStrings: [],
     boardUndo: null,
     backupSettings: null,
@@ -2388,6 +2453,133 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await api.deleteMapShape(project.path, shape.id)
       set({ mapShapes: get().mapShapes.filter((s) => s.id !== shape.id) })
       markDirty()
+    },
+
+    async renameMapShapeAt(path, id, name) {
+      const now = get()
+      const focused = now.project?.path === path
+      const shapes = focused ? now.mapShapes : now.parked[path]?.mapShapes
+      const found = shapes?.find((s) => s.id === id)
+      if (!found) return
+      const trimmed = name.trim()
+      if (trimmed === (found.name ?? '')) return
+      const updated: MapShape = { ...found }
+      if (trimmed) updated.name = trimmed
+      else delete updated.name
+      await api.writeMapShape(path, updated)
+      const after = get()
+      if (after.project?.path === path) {
+        set({ mapShapes: after.mapShapes.map((s) => (s.id === id ? updated : s)) })
+      } else if (after.parked[path]) {
+        const slice = after.parked[path]
+        set({
+          parked: {
+            ...after.parked,
+            [path]: { ...slice, mapShapes: slice.mapShapes.map((s) => (s.id === id ? updated : s)) }
+          }
+        })
+      }
+      runtimeFor(path).commitDirty = true
+    },
+
+    /* ---------- map marks (F-12 part 4) ---------- */
+
+    async loadMapMarks() {
+      const { project } = get()
+      if (!project) return
+      set({ mapMarks: await api.listMapMarks(project.path) })
+    },
+
+    async createMapMark(kind, x, y, name) {
+      const path = get().project?.path
+      return path ? get().createMapMarkAt(path, kind, x, y, name) : null
+    },
+
+    async createMapMarkAt(path, kind, x, y, name) {
+      const before = get()
+      if (before.project?.path !== path && !before.parked[path]) return null
+      const trimmed = (name ?? '').trim()
+      if (kind === 'label' && !trimmed) return null
+      const now = new Date().toISOString()
+      const mark: MapMark = {
+        id: newId(),
+        kind,
+        x: Math.round(x),
+        y: Math.round(y),
+        created: now,
+        modified: now
+      }
+      if (trimmed) mark.name = trimmed
+      await api.writeMapMark(path, mark)
+      const after = get()
+      if (after.project?.path === path) {
+        set({ mapMarks: [...after.mapMarks, mark] })
+      } else if (after.parked[path]) {
+        const slice = after.parked[path]
+        set({
+          parked: { ...after.parked, [path]: { ...slice, mapMarks: [...slice.mapMarks, mark] } }
+        })
+      }
+      runtimeFor(path).commitDirty = true
+      return mark
+    },
+
+    async updateMapMarkAt(path, id, patch) {
+      const now = get()
+      const focused = now.project?.path === path
+      const marks = focused ? now.mapMarks : now.parked[path]?.mapMarks
+      const found = marks?.find((m) => m.id === id)
+      if (!found) return
+      const updated: MapMark = { ...found }
+      if (patch.x !== undefined) updated.x = Math.round(patch.x)
+      if (patch.y !== undefined) updated.y = Math.round(patch.y)
+      if (patch.name !== undefined) {
+        const trimmed = patch.name.trim()
+        if (trimmed) updated.name = trimmed
+        else if (found.kind === 'label') return
+        else delete updated.name
+      }
+      if (
+        updated.x === found.x &&
+        updated.y === found.y &&
+        (updated.name ?? '') === (found.name ?? '')
+      ) {
+        return
+      }
+      updated.modified = new Date().toISOString()
+      await api.writeMapMark(path, updated)
+      const after = get()
+      if (after.project?.path === path) {
+        set({ mapMarks: after.mapMarks.map((m) => (m.id === id ? updated : m)) })
+      } else if (after.parked[path]) {
+        const slice = after.parked[path]
+        set({
+          parked: {
+            ...after.parked,
+            [path]: { ...slice, mapMarks: slice.mapMarks.map((m) => (m.id === id ? updated : m)) }
+          }
+        })
+      }
+      runtimeFor(path).commitDirty = true
+    },
+
+    async deleteMapMark(mark) {
+      const path = get().project?.path
+      if (!path) return
+      await api.deleteMapMark(path, mark.id)
+      const after = get()
+      if (after.project?.path === path) {
+        set({ mapMarks: after.mapMarks.filter((m) => m.id !== mark.id) })
+      } else if (after.parked[path]) {
+        const slice = after.parked[path]
+        set({
+          parked: {
+            ...after.parked,
+            [path]: { ...slice, mapMarks: slice.mapMarks.filter((m) => m.id !== mark.id) }
+          }
+        })
+      }
+      runtimeFor(path).commitDirty = true
     },
 
     /* ---------- red strings (F-46) ---------- */

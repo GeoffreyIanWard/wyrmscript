@@ -335,6 +335,37 @@ export interface MapShape {
   id: string
   kind: MapShapeKind
   points: { x: number; y: number }[]
+  /** What the feature is called — "The Saltmarsh", "River Wend" — drawn as a
+   *  label on the map. Omitted, not empty, when it has none. */
+  name?: string
+  created: string
+  modified: string
+}
+
+/**
+ * F-12 part 4: the map's marks — things at one point rather than along a
+ * line. A stamp is a 1-bit picture of a feature (a mountain, a forest); a
+ * label is free text for a sea, a region, anything not drawn.
+ */
+export const MAP_STAMP_KINDS = ['mountain', 'hills', 'forest', 'marsh', 'town'] as const
+export type MapStampKind = (typeof MAP_STAMP_KINDS)[number]
+export type MapMarkKind = MapStampKind | 'label'
+export const MAP_MARK_KINDS: readonly MapMarkKind[] = [...MAP_STAMP_KINDS, 'label']
+
+/**
+ * One mark on the map, in map pixels. Stored one per file as
+ * `map-marks/<id>.md` (not `map/`, the pins', nor `map-shapes/`), so two
+ * devices stamping different forests merge cleanly.
+ *
+ * A stamp's `name` is optional and drawn beneath it; a label's `name` is the
+ * label, and a label without one is not kept.
+ */
+export interface MapMark {
+  id: string
+  kind: MapMarkKind
+  x: number
+  y: number
+  name?: string
   created: string
   modified: string
 }
@@ -810,6 +841,9 @@ export interface WyrmApi {
   listMapShapes(path: string): Promise<MapShape[]>
   writeMapShape(path: string, shape: MapShape): Promise<void>
   deleteMapShape(path: string, id: string): Promise<void>
+  listMapMarks(path: string): Promise<MapMark[]>
+  writeMapMark(path: string, mark: MapMark): Promise<void>
+  deleteMapMark(path: string, id: string): Promise<void>
 
   /** F-46: red strings between corkboard cards. */
   listBoardStrings(path: string): Promise<BoardString[]>

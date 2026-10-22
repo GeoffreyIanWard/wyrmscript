@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
-import type { MapPin, MapShape, MapShapeKind } from '../../../shared/types'
+import { MAP_SHAPE_KINDS } from '../../../shared/types'
+import type { MapMark, MapMarkKind, MapPin, MapShape, MapShapeKind } from '../../../shared/types'
 import { useWyrm } from '../store'
 import { afterKeysUp } from '../lib/keys'
 import {
@@ -21,6 +22,18 @@ import {
   shapePath,
   smoothPath
 } from '../lib/mapShapes'
+import {
+  describeMark,
+  isStamp,
+  labelAnchor,
+  MARK_NAME,
+  STAMP_ART,
+  STAMP_H,
+  STAMP_ORDER,
+  STAMP_SCALE,
+  STAMP_W,
+  stampNameAt
+} from '../lib/mapMarks'
 import {
   boundsOf,
   clampTo,
@@ -52,23 +65,40 @@ const DRAG_THRESHOLD = 4
 const NUDGE = 8
 const NUDGE_BIG = 40
 const NUDGE_SETTLE = 300
+/** Two stamps on one spot this close together are one double-click. */
+const DOUBLE_CLICK = 400
 /** The desk showing round the map, matching `.map-scroll`'s padding. */
 const GUTTER = 24
 /** How far one arrow press moves the view, and with Shift. */
 const PAN = 60
 const PAN_BIG = 300
 
-/** The map's tools: the hand moves the view and selects; the others draw. */
-type Tool = 'hand' | MapShapeKind
+/** The map's tools: the hand moves the view and selects; the shape tools
+ *  draw point by point; the mark tools put one thing down per click. */
+type Tool = 'hand' | MapShapeKind | MapMarkKind
+
+const isShapeKind = (t: Tool): t is MapShapeKind =>
+  (MAP_SHAPE_KINDS as readonly string[]).includes(t)
+const isMarkKind = (t: Tool): t is MapMarkKind => t !== 'hand' && !isShapeKind(t)
+
+/** A tool's name on its button. */
+const toolName = (t: Tool): string =>
+  t === 'hand' ? 'Hand' : isShapeKind(t) ? KIND_NAME[t] : MARK_NAME[t]
 
 const TOOL_HELP: Record<Tool, string> = {
-  hand: 'Drag to move the map. Click a shape to change it.',
+  hand: 'Drag to move the map. Click anything drawn on it to change it.',
   land: 'Click round a coast, point by point. Click the first point, or press Return, to close it.',
   area: 'Click round the area, point by point. Click the first point, or press Return, to close it.',
   border: 'Click along the border, point by point. Return finishes it.',
   river: 'Click along the river, point by point: it bends through them. Return finishes it.',
   road: 'Click along the road, point by point. Return finishes it.',
-  rail: 'Click along the railway, point by point. Return finishes it.'
+  rail: 'Click along the railway, point by point. Return finishes it.',
+  mountain: 'Click to put a mountain down. Every click is another.',
+  hills: 'Click to put hills down. Every click is another.',
+  forest: 'Click to put a forest down. Every click is another.',
+  marsh: 'Click to put a marsh down. Every click is another.',
+  town: 'Click to put a town down. Every click is another.',
+  label: 'Click where the words go, then type them.'
 }
 
 /** The line while a shape is part-drawn: short, so it stays one line. */
@@ -81,8 +111,16 @@ const DRAFT_HELP: Record<MapShapeKind, string> = {
   rail: 'Return finishes the railway.'
 }
 
-/** The tools, in the bar's order: outlines, then lines. */
+/** The drawing tools, in the bar's order: outlines, then lines. */
 const TOOLS: Tool[] = ['hand', 'land', 'area', 'border', 'river', 'road', 'rail']
+/** Then the marks: stamps, and free labels. */
+const MARK_TOOLS: Tool[] = [...STAMP_ORDER, 'label']
+
+/** A name being written: for a shape or a mark already on the map, or for
+ *  a free label not yet made (made only once it has words). */
+type Naming =
+  | { what: 'shape' | 'mark'; id: string; at: Point; value: string }
+  | { what: 'new-label'; at: Point; value: string }
 
 const ARROWS: Record<string, Point | undefined> = {
   ArrowUp: { x: 0, y: -1 },
@@ -117,6 +155,12 @@ export function WorldMap(): JSX.Element {
   const createMapShape = useWyrm((s) => s.createMapShape)
   const updateMapShapeAt = useWyrm((s) => s.updateMapShapeAt)
   const deleteMapShape = useWyrm((s) => s.deleteMapShape)
+  const renameMapShapeAt = useWyrm((s) => s.renameMapShapeAt)
+  const mapMarks = useWyrm((s) => s.mapMarks)
+  const loadMapMarks = useWyrm((s) => s.loadMapMarks)
+  const createMapMarkAt = useWyrm((s) => s.createMapMarkAt)
+  const updateMapMarkAt = useWyrm((s) => s.updateMapMarkAt)
+  const deleteMapMark = useWyrm((s) => s.deleteMapMark)
   const returnedTo = useWyrm((s) => (s.mainView.kind === 'map' ? s.mainView : null))
   const settleMapReturn = useWyrm((s) => s.settleMapReturn)
 
@@ -127,14 +171,16 @@ export function WorldMap(): JSX.Element {
     let live = true
     // Settled, not all-or-nothing: a read that fails leaves that layer empty
     // rather than taking the map down with an unhandled rejection.
-    void Promise.allSettled([loadMapPins(), loadMapShapes()]).then(() => live && setLoaded(true))
+    void Promise.allSettled([loadMapPins(), loadMapShapes(), loadMapMarks()]).then(
+      () => live && setLoaded(true)
+    )
     return () => {
       live = false
     }
     // On the project's path, not its object: every save makes a new project
     // object (growing the map does), and a read issued then could land after
     // a pin placed a moment later and drop it.
-  }, [projectPath, loadMapPins, loadMapShapes])
+  }, [projectPath, loadMapPins, loadMapShapes, loadMapMarks])
 
   // Pins held here while being moved, so they follow the pointer or the
   // keys without waiting on a write.
@@ -145,8 +191,8 @@ export function WorldMap(): JSX.Element {
   // Everything on the map widens it, shapes as well as pins: a pin taken
   // off must never shrink the map under land drawn out beside it.
   const extent = useMemo(
-    () => [...mapPins, ...mapShapes.flatMap((s) => s.points)],
-    [mapPins, mapShapes]
+    () => [...mapPins, ...mapShapes.flatMap((s) => s.points), ...mapMarks],
+    [mapPins, mapShapes, mapMarks]
   )
   const bounds = boundsOf(project?.data.mapBounds, extent)
   const locations = entities
@@ -367,6 +413,8 @@ export function WorldMap(): JSX.Element {
   const [draft, setDraft] = useState<Point[]>([])
   const [hover, setHover] = useState<Point | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  // What just happened, for the hint line until the next thing does.
+  const [notice, setNotice] = useState<string | null>(null)
   // Where the keyboard draws: a cursor moved by Option and the arrows, which
   // Space puts a point down at. Shown only when the map has keyboard focus.
   const [cursor, setCursor] = useState<Point | null>(null)
@@ -378,6 +426,8 @@ export function WorldMap(): JSX.Element {
 
   const chooseTool = (next: Tool): void => {
     setTool(next)
+    setNaming(null)
+    setNotice(null)
     setDraft([])
     setHover(null)
     setProblem(null)
@@ -402,7 +452,7 @@ export function WorldMap(): JSX.Element {
 
   /** Make the shape being drawn, if it has enough points to be one. */
   const finishDraft = (points = draft): void => {
-    if (tool === 'hand') return
+    if (!isShapeKind(tool)) return
     if (points.length < MIN_POINTS[tool]) {
       // Said, not silently refused (the house rule for dead buttons).
       setProblem(
@@ -417,7 +467,7 @@ export function WorldMap(): JSX.Element {
   }
 
   const addPoint = (p: Point): void => {
-    if (tool === 'hand') return
+    if (!isShapeKind(tool)) return
     setProblem(null)
     if (isClosed(tool) && closesOn(draft, p, zoom)) {
       finishDraft()
@@ -574,6 +624,234 @@ export function WorldMap(): JSX.Element {
     scrollEl.current?.querySelector<HTMLElement>(`[data-corner="${i}"]`)?.focus()
   })
 
+  /* ---------- stamps and labels ---------- */
+
+  const selectedMark = mapMarks.find((m) => m.id === selected) ?? null
+  // Marks held here while being moved, as pins are.
+  const [localMark, setLocalMark] = useState<Record<string, Point>>({})
+  const markAt = (mark: MapMark): Point => localMark[mark.id] ?? { x: mark.x, y: mark.y }
+
+  const markWrites = useRef(
+    new Map<string, { timer: ReturnType<typeof setTimeout>; write: () => void }>()
+  )
+  useEffect(
+    () => () => {
+      for (const { timer, write } of markWrites.current.values()) {
+        clearTimeout(timer)
+        write()
+      }
+    },
+    []
+  )
+
+  /** Put a mark somewhere — by a drag at once, by the keys once they stop —
+   *  written to the project it was moved in, as pins are. */
+  const moveMark = (mark: MapMark, to: Point, settle = 0): void => {
+    const at = roundPoint(clampTo(bounds, to))
+    const path = projectPath
+    setLocalMark((l) => ({ ...l, [mark.id]: at }))
+    const write = (): void => {
+      markWrites.current.delete(mark.id)
+      if (path) void updateMapMarkAt(path, mark.id, { x: at.x, y: at.y })
+    }
+    clearTimeout(markWrites.current.get(mark.id)?.timer)
+    if (settle === 0) write()
+    else markWrites.current.set(mark.id, { timer: setTimeout(write, settle), write })
+  }
+
+  const removeMark = (mark: MapMark): void => {
+    clearTimeout(markWrites.current.get(mark.id)?.timer)
+    markWrites.current.delete(mark.id)
+    setSelected(null)
+    void deleteMapMark(mark)
+    scrollEl.current?.focus({ preventScroll: true })
+  }
+
+  const lastStamp = useRef<{ at: Point; time: number } | null>(null)
+
+  /** A click (or Space) with a mark tool: a stamp goes down at once; a label
+   *  asks for its words first, and is made only once it has some. */
+  const putMark = (at: Point, when: number): void => {
+    if (!isMarkKind(tool)) return
+    setProblem(null)
+    if (!isStamp(tool)) {
+      openNaming({ what: 'new-label', at, value: '' })
+      return
+    }
+    const kind = tool
+    // The second click of a double-click is the same click, not another
+    // stamp stacked exactly on the first.
+    const last = lastStamp.current
+    lastStamp.current = { at, time: when }
+    if (
+      last &&
+      when - last.time < DOUBLE_CLICK &&
+      Math.hypot(at.x - last.at.x, at.y - last.at.y) < 4
+    )
+      return
+    setNotice(null)
+    if (projectPath)
+      void createMapMarkAt(projectPath, kind, at.x, at.y).then(
+        // Said, so a writer at the keyboard (or a screen reader) knows it went
+        // down and does not press again, stacking a second on the first.
+        (made) => made && setNotice(`${MARK_NAME[kind]} put down. The Hand moves it.`)
+      )
+  }
+
+  /* ---------- names ---------- */
+
+  const [naming, setNaming] = useState<Naming | null>(null)
+  // Set once a name has been kept or dropped, so the blur that follows
+  // (the field going away) does not keep it a second time.
+  const namingDone = useRef(false)
+
+  /** Open the name field. Every way in goes through here, so a field is
+   *  never born already marked as kept by the one before it. */
+  const openNaming = (n: Naming): void => {
+    namingDone.current = false
+    setProblem(null)
+    setNaming(n)
+  }
+
+  const startNaming = (target: { shape: MapShape } | { mark: MapMark }): void => {
+    if ('shape' in target) {
+      const { shape } = target
+      openNaming({
+        what: 'shape',
+        id: shape.id,
+        at: labelAnchor({ kind: shape.kind, points: pointsOf(shape) }),
+        value: shape.name ?? ''
+      })
+    } else {
+      const { mark } = target
+      const at = markAt(mark)
+      openNaming({
+        what: 'mark',
+        id: mark.id,
+        at: isStamp(mark.kind) ? stampNameAt(at) : at,
+        value: mark.name ?? ''
+      })
+    }
+  }
+
+  // Set while the keyboard is handed back to the map after a name, so the
+  // map's focus handler leaves the cursor where the writer was labelling
+  // rather than sending it back to the middle of the view.
+  const returningFocus = useRef(false)
+
+  /** Give the keyboard back to what was being named, or to the map. */
+  const focusAfterNaming = (id: string | null): void =>
+    afterKeysUp(() => {
+      const item =
+        id &&
+        scrollEl.current?.querySelector<HTMLElement | SVGElement>(
+          `[data-shape="${id}"] .map-shape-body, [data-mark="${id}"]`
+        )
+      if (item) item.focus({ preventScroll: true })
+      else {
+        returningFocus.current = true
+        scrollEl.current?.focus({ preventScroll: true })
+        returningFocus.current = false
+      }
+    })
+
+  /**
+   * Keep what was typed. Every way of leaving the field keeps it, as on the
+   * back of a card — except a new label left empty, which is dropped on a
+   * blur and refused, with a reason, on Return.
+   */
+  const keepName = (how: 'enter' | 'blur'): void => {
+    const n = naming
+    if (!n || namingDone.current) return
+    const value = n.value.trim()
+    const path = projectPath
+    if (n.what === 'new-label') {
+      if (!value) {
+        if (how === 'enter') {
+          setProblem('A label needs some words — type them, or Esc to drop it.')
+          return
+        }
+      } else if (path) void createMapMarkAt(path, 'label', n.at.x, n.at.y, value)
+    } else if (n.what === 'shape') {
+      if (path) void renameMapShapeAt(path, n.id, value)
+    } else {
+      const mark = mapMarks.find((m) => m.id === n.id)
+      if (mark?.kind === 'label' && !value) {
+        if (how === 'enter') {
+          setProblem('A label needs some words. Delete it to take it off the map.')
+          return
+        }
+      } else if (path) void updateMapMarkAt(path, n.id, { name: value })
+    }
+    namingDone.current = true
+    setNaming(null)
+    setProblem(null)
+    if (n.what === 'new-label' && cursor) setCursor(n.at)
+    if (how === 'enter') focusAfterNaming(n.what === 'new-label' ? null : n.id)
+  }
+
+  // The field as it stands, and the project it was opened in, for keeping
+  // it if the map goes away under it — a ⌥⌘B, or another window raised by
+  // its title bar, unmounts the map without the field ever losing focus.
+  // Every way of closing keeps it, as on the back of a card.
+  const openName = useRef<{ naming: Naming; path: string } | null>(null)
+  useEffect(() => {
+    openName.current = naming && projectPath ? { naming, path: projectPath } : null
+  })
+  useEffect(
+    () => () => {
+      const open = openName.current
+      if (!open || namingDone.current) return
+      namingDone.current = true
+      const { naming: n, path } = open
+      const value = n.value.trim()
+      const state = useWyrm.getState()
+      if (n.what === 'new-label') {
+        if (value) void state.createMapMarkAt(path, 'label', n.at.x, n.at.y, value)
+      } else if (n.what === 'shape') void state.renameMapShapeAt(path, n.id, value)
+      // The store refuses an empty label, so nothing is lost there either.
+      else void state.updateMapMarkAt(path, n.id, { name: value })
+    },
+    []
+  )
+  const dropName = (): void => {
+    const n = naming
+    namingDone.current = true
+    setNaming(null)
+    setProblem(null)
+    if (n?.what === 'new-label' && cursor) setCursor(n.at)
+    focusAfterNaming(n && n.what !== 'new-label' ? n.id : null)
+  }
+
+  /** Return on something already chosen names it; on anything else, chooses it. */
+  const chooseOrName = (target: { shape: MapShape } | { mark: MapMark }): void => {
+    const id = 'shape' in target ? target.shape.id : target.mark.id
+    if (selected === id) startNaming(target)
+    else {
+      setSelected(id)
+      setProblem(null)
+    }
+  }
+
+  const onMarkKey = (e: KeyboardEvent<Element>, mark: MapMark): void => {
+    if (tool !== 'hand') return
+    const dir = ARROWS[e.key]
+    if (dir && e.altKey && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault()
+      e.stopPropagation()
+      const step = e.shiftKey ? NUDGE_BIG : NUDGE
+      const at = markAt(mark)
+      moveMark(mark, { x: at.x + dir.x * step, y: at.y + dir.y * step }, NUDGE_SETTLE)
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      chooseOrName({ mark })
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault()
+      e.stopPropagation()
+      removeMark(mark)
+    }
+  }
+
   /* ---------- panning, and clicks on the map ---------- */
 
   // Dragging the map moves the view, the way a hand moves a paper map
@@ -594,27 +872,65 @@ export function WorldMap(): JSX.Element {
     // The shape the press began on: chosen on a still click, so a drag that
     // starts on land pans like any other — a map that is mostly land must
     // still move.
-    const hit = (e.target as Element).closest?.('[data-shape]')?.getAttribute('data-shape') ?? null
+    const target = e.target as Element
+    const hit =
+      target.closest?.('[data-shape], [data-mark]')?.getAttribute('data-shape') ??
+      target.closest?.('[data-mark]')?.getAttribute('data-mark') ??
+      null
+    // A mark, unlike a shape, is small and is moved by dragging it, as a pin
+    // is: a press on one with the hand moves it rather than the map.
+    const markId =
+      tool === 'hand' ? target.closest?.('[data-mark]')?.getAttribute('data-mark') : null
+    const mark = markId ? mapMarks.find((m) => m.id === markId) : undefined
+    const markFrom = mark ? markAt(mark) : null
     let moved = false
     const move = (ev: PointerEvent): void => {
       if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < DRAG_THRESHOLD) return
+      if (mark && markFrom) {
+        moved = true
+        setLocalMark((l) => ({
+          ...l,
+          [mark.id]: roundPoint(
+            clampTo(bounds, {
+              x: markFrom.x + (ev.clientX - start.x) / zoom,
+              y: markFrom.y + (ev.clientY - start.y) / zoom
+            })
+          )
+        }))
+        return
+      }
       if (!moved) setPanning(true)
       moved = true
       el.scrollLeft = start.left - (ev.clientX - start.x)
       el.scrollTop = start.top - (ev.clientY - start.y)
     }
-    const up = (): void => {
+    const up = (ev: PointerEvent): void => {
       stop.current?.()
       setPanning(false)
-      if (moved) return
+      if (moved) {
+        if (mark && markFrom)
+          moveMark(mark, {
+            x: markFrom.x + (ev.clientX - start.x) / zoom,
+            y: markFrom.y + (ev.clientY - start.y) / zoom
+          })
+        return
+      }
+      if (!isMarkKind(tool)) setNotice(null)
       if (tool === 'hand') {
         setSelected(hit)
         setProblem(null)
-      } else addPoint(at)
+      } else if (isMarkKind(tool)) putMark(at, ev.timeStamp)
+      else addPoint(at)
     }
     const cancel = (): void => {
       stop.current?.()
       setPanning(false)
+      if (mark)
+        setLocalMark((l) => {
+          const next = { ...l }
+          delete next[mark.id]
+          return next
+        })
     }
     document.addEventListener('pointermove', move)
     document.addEventListener('pointerup', up)
@@ -630,7 +946,7 @@ export function WorldMap(): JSX.Element {
   // Followed whenever a drawing tool is up, so the line to the next point
   // is never left over from before.
   const onMapMove = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    if (tool === 'hand') return
+    if (!isShapeKind(tool)) return
     setHover(mapPoint(e))
   }
 
@@ -754,7 +1070,8 @@ export function WorldMap(): JSX.Element {
       if (e.key === ' ' || (e.key === 'Enter' && draft.length === 0)) {
         e.preventDefault()
         setPointerDrawing(false)
-        addPoint(cursor)
+        if (isMarkKind(tool)) putMark(cursor, e.timeStamp)
+        else addPoint(cursor)
         return
       }
     }
@@ -765,11 +1082,57 @@ export function WorldMap(): JSX.Element {
     el.scrollTop += dir.y * step
   }
 
+  /** A double-click with the hand names what it lands on. */
+  const onMapDoubleClick = (e: { target: EventTarget }): void => {
+    if (tool !== 'hand') return
+    const t = e.target as Element
+    const shapeId = t.closest?.('[data-shape]')?.getAttribute('data-shape')
+    const markId = t.closest?.('[data-mark]')?.getAttribute('data-mark')
+    const shape = shapeId ? mapShapes.find((s) => s.id === shapeId) : undefined
+    const mark = markId ? mapMarks.find((m) => m.id === markId) : undefined
+    if (shape) {
+      setSelected(shape.id)
+      startNaming({ shape })
+    } else if (mark) {
+      setSelected(mark.id)
+      startNaming({ mark })
+    }
+  }
+
   /** A zoom or a grow clicked mid-shape gives the keyboard back to the map,
    *  so the Return the hint asks for closes the shape rather than pressing
    *  the button again. Not from the keyboard: that writer may press it twice. */
   const backToDraft = (e: { detail: number }): void => {
     if (draft.length > 0 && e.detail > 0) scrollEl.current?.focus({ preventScroll: true })
+  }
+
+  /** The hint line, when nothing has gone wrong: what the tool does, or
+   *  what can be done with what is drawn, chosen or being named. */
+  const hintLine = (): string => {
+    if (naming)
+      return naming.what === 'new-label'
+        ? 'Type the label. Return keeps it; Esc drops it.'
+        : 'Type the name. Return keeps it; Esc leaves it as it was.'
+    if (draft.length > 0 && isShapeKind(tool))
+      return `${DRAFT_HELP[tool]} Backspace: undo a point. Esc: drop it.`
+    if (tool === 'hand' && selectedShape)
+      return 'Drag a corner to move it; click a dot to add one. Return names it; Delete removes it.'
+    if (tool === 'hand' && selectedMark)
+      return selectedMark.kind === 'label'
+        ? 'Drag it to move it. Return changes the words; Delete removes it.'
+        : 'Drag it to move it. Return names it; Delete removes it.'
+    return TOOL_HELP[tool]
+  }
+
+  /** The region's name for a screen reader: how to use the tool in hand. */
+  const regionLabel = (): string => {
+    if (tool === 'hand') return 'World map. Arrow keys move the view; Shift moves it further.'
+    const how = 'Option and the arrows move the cursor;'
+    if (isShapeKind(tool))
+      return `World map. Drawing ${KIND_NAME[tool].toLowerCase()}: ${how} Space puts a point down; ${isClosed(tool) ? 'Return closes the shape.' : `Return finishes the ${KIND_NAME[tool].toLowerCase()}.`}`
+    return tool === 'label'
+      ? `World map. Labelling: ${how} Space starts a label there.`
+      : `World map. Stamping ${MARK_NAME[tool].toLowerCase()}: ${how} Space puts one down.`
   }
 
   if (!project) return <div className="terminal" />
@@ -827,7 +1190,26 @@ export function WorldMap(): JSX.Element {
               onClick={() => chooseTool(t)}
             >
               <span className="board-tool-pin" aria-hidden="true" />
-              <span>{t === 'hand' ? 'Hand' : KIND_NAME[t]}</span>
+              <span>{toolName(t)}</span>
+            </button>
+          ))}
+        </span>
+        <span
+          className="map-tools-group"
+          data-help="map-marks"
+          role="group"
+          aria-label="Stamps and labels"
+        >
+          {MARK_TOOLS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`board-tool${tool === t ? ' on' : ''}`}
+              aria-pressed={tool === t}
+              onClick={() => chooseTool(t)}
+            >
+              <span className="board-tool-pin" aria-hidden="true" />
+              <span>{toolName(t)}</span>
             </button>
           ))}
         </span>
@@ -835,10 +1217,10 @@ export function WorldMap(): JSX.Element {
           <span className="map-tools-label">More map:</span>
           {(
             [
-              ['north', '↑ North'],
-              ['west', '← West'],
-              ['east', 'East →'],
-              ['south', '↓ South']
+              ['north', '↑'],
+              ['west', '←'],
+              ['east', '→'],
+              ['south', '↓']
             ] as const
           ).map(([side, label]) => (
             <button
@@ -859,10 +1241,7 @@ export function WorldMap(): JSX.Element {
       </div>
 
       <div className="map-hint" role="status">
-        {problem ??
-          (draft.length > 0
-            ? `${DRAFT_HELP[tool]} Backspace: undo a point. Esc: drop it.`
-            : TOOL_HELP[tool])}
+        {(!naming && problem) || notice || hintLine()}
       </div>
       <div className="map-body">
         <aside className="map-places" data-help="map-places" aria-label="Places" tabIndex={-1}>
@@ -937,7 +1316,7 @@ export function WorldMap(): JSX.Element {
           }
           onFocus={(e) => {
             if (e.target !== e.currentTarget || tool === 'hand') return
-            setCursor(roundPoint(clampTo(bounds, viewCentre())))
+            if (!returningFocus.current) setCursor(roundPoint(clampTo(bounds, viewCentre())))
             // Arrived by keyboard (Tab), not by a click: show the cursor.
             if (focusedByKeyboard(e.currentTarget)) setPointerDrawing(false)
           }}
@@ -946,11 +1325,8 @@ export function WorldMap(): JSX.Element {
           // keys move the view (Shift further), as dragging does.
           tabIndex={0}
           role="region"
-          aria-label={
-            tool === 'hand'
-              ? 'World map. Arrow keys move the view; Shift moves it further.'
-              : `World map. Drawing ${KIND_NAME[tool].toLowerCase()}: Option and the arrows move the cursor; Space puts a point down; ${isClosed(tool) ? 'Return closes the shape.' : `Return finishes the ${KIND_NAME[tool].toLowerCase()}.`}`
-          }
+          aria-label={regionLabel()}
+          onDoubleClick={onMapDoubleClick}
           onKeyDown={onScrollKey}
         >
           <div
@@ -1050,7 +1426,7 @@ export function WorldMap(): JSX.Element {
                           // same thing to a screen reader.
                           aria-label={
                             tool === 'hand'
-                              ? `${describeShape({ kind, points: pointsOf(shape) })}, ${n + 1} of ${ofKind.length}. ${isSelected ? 'Selected: its points follow.' : 'Return selects it'}; Delete removes it.`
+                              ? `${describeShape({ kind, points: pointsOf(shape) })}${shape.name ? `, “${shape.name}”` : ''}, ${n + 1} of ${ofKind.length}. ${isSelected ? 'Selected: its points follow. Return names it' : 'Return selects it'}; Delete removes it.`
                               : undefined
                           }
                           // Known here, not by CSS, because a road's casing is
@@ -1063,8 +1439,7 @@ export function WorldMap(): JSX.Element {
                             if (tool !== 'hand') return
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault()
-                              setSelected(shape.id)
-                              setProblem(null)
+                              chooseOrName({ shape })
                             } else if (e.key === 'Delete' || e.key === 'Backspace') {
                               e.preventDefault()
                               e.stopPropagation()
@@ -1091,7 +1466,38 @@ export function WorldMap(): JSX.Element {
                   })
                   return casings ? [casings, ...groups] : groups
                 })}
-                {draft.length > 0 && tool !== 'hand' && (
+                {/* Stamps, over everything drawn: engraved in ink on paper,
+                    scaled with the map like the rest of the art. */}
+                {mapMarks.map((mark) => {
+                  if (!isStamp(mark.kind)) return null
+                  const at = markAt(mark)
+                  const art = STAMP_ART[mark.kind]
+                  return (
+                    <g
+                      key={mark.id}
+                      className={`map-mark stamp ${mark.kind}${selected === mark.id ? ' selected' : ''}`}
+                      data-mark={mark.id}
+                      transform={`translate(${at.x - bounds.x - STAMP_W / 2} ${at.y - bounds.y - STAMP_H / 2})`}
+                      tabIndex={tool === 'hand' ? 0 : undefined}
+                      role={tool === 'hand' ? 'button' : undefined}
+                      aria-pressed={tool === 'hand' ? selected === mark.id : undefined}
+                      aria-label={
+                        tool === 'hand'
+                          ? `${describeMark(mark.kind, mark.name)}. ${selected === mark.id ? 'Return names it' : 'Return selects it'}; Option and the arrows move it; Delete removes it.`
+                          : undefined
+                      }
+                      onKeyDown={(e) => onMarkKey(e, mark)}
+                    >
+                      <rect className="map-mark-hit" width={STAMP_W} height={STAMP_H} />
+                      <g transform={`scale(${STAMP_SCALE})`}>
+                        {art.body && <path className="map-stamp-body" d={art.body} />}
+                        <path className="map-stamp-lines" d={art.lines} />
+                        {art.solid && <path className="map-stamp-solid" d={art.solid} />}
+                      </g>
+                    </g>
+                  )
+                })}
+                {draft.length > 0 && isShapeKind(tool) && (
                   <path
                     className={`map-draft ${tool}`}
                     d={
@@ -1108,7 +1514,7 @@ export function WorldMap(): JSX.Element {
                 the same size to grab at every zoom: the first point of a
                 shape being drawn (click it to close), and the corners and
                 edge middles of the selected shape. */}
-            {draft.length > 0 && tool !== 'hand' && (
+            {draft.length > 0 && isShapeKind(tool) && (
               <span
                 className={`map-handle first${isClosed(tool) && draft.length >= 3 ? ' closes' : ''}`}
                 style={{
@@ -1154,6 +1560,111 @@ export function WorldMap(): JSX.Element {
                   onKeyDown={(e) => onCornerKey(e, selectedShape, i)}
                 />
               ))}
+            {/* Names, unscaled like the pins so they read at every zoom, and
+                inert: a click on a name is a click on what it names. */}
+            {mapShapes.map((shape) => {
+              if (!shape.name || (naming?.what === 'shape' && naming.id === shape.id)) return null
+              const at = labelAnchor({ kind: shape.kind, points: pointsOf(shape) })
+              return (
+                <span
+                  key={`n${shape.id}`}
+                  className={`map-label feature ${shape.kind}`}
+                  style={{ left: (at.x - bounds.x) * zoom, top: (at.y - bounds.y) * zoom }}
+                  aria-hidden="true"
+                >
+                  {shape.name}
+                </span>
+              )
+            })}
+            {mapMarks.map((mark) => {
+              if (naming?.what === 'mark' && naming.id === mark.id) return null
+              const at = markAt(mark)
+              if (isStamp(mark.kind)) {
+                if (!mark.name) return null
+                const n = stampNameAt(at)
+                return (
+                  <span
+                    key={`n${mark.id}`}
+                    className="map-label stamp-name"
+                    style={{ left: (n.x - bounds.x) * zoom, top: (n.y - bounds.y) * zoom }}
+                    aria-hidden="true"
+                  >
+                    {mark.name}
+                  </span>
+                )
+              }
+              // A free label is itself the thing on the map: chosen, moved
+              // and named with the hand, like a stamp.
+              return (
+                <span
+                  key={mark.id}
+                  className={`map-label free${selected === mark.id ? ' selected' : ''}`}
+                  data-mark={mark.id}
+                  style={{ left: (at.x - bounds.x) * zoom, top: (at.y - bounds.y) * zoom }}
+                  tabIndex={tool === 'hand' ? 0 : -1}
+                  role="button"
+                  aria-hidden={tool === 'hand' ? undefined : true}
+                  aria-pressed={selected === mark.id}
+                  aria-label={`${describeMark(mark.kind, mark.name)}. ${selected === mark.id ? 'Return changes the words' : 'Return selects it'}; Option and the arrows move it; Delete removes it.`}
+                  onKeyDown={(e) => onMarkKey(e, mark)}
+                >
+                  {mark.name}
+                </span>
+              )
+            })}
+            {naming && (
+              <input
+                className={`map-name-field${naming.what === 'new-label' || mapMarks.find((m) => naming.what === 'mark' && m.id === naming.id)?.kind === 'label' ? ' free' : ''}`}
+                style={{
+                  left: (naming.at.x - bounds.x) * zoom,
+                  top: (naming.at.y - bounds.y) * zoom
+                }}
+                aria-label={naming.what === 'new-label' ? 'Label' : 'Name'}
+                aria-invalid={problem ? true : undefined}
+                aria-describedby={problem ? 'map-name-problem' : undefined}
+                autoFocus
+                value={naming.value}
+                spellCheck={false}
+                onChange={(e) => setNaming({ ...naming, value: e.target.value })}
+                // Its own, not the map's: a press here is not a click on the
+                // map (which, with Label up, would start another label).
+                onPointerDown={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    keepName('enter')
+                  } else if (e.key === 'Escape') {
+                    // Esc is also "back": it must not leave the map.
+                    e.preventDefault()
+                    e.stopPropagation()
+                    dropName()
+                  } else if (e.key === 'Backspace' || e.key === 'Delete') {
+                    e.stopPropagation()
+                  }
+                }}
+                // A window losing focus (⌘Tab, a menu, a native dialog) is not
+                // the writer leaving the field: it is still there, half-typed,
+                // when they come back.
+                onBlur={() => {
+                  if (document.hasFocus()) keepName('blur')
+                }}
+              />
+            )}
+            {naming && problem && (
+              <div
+                id="map-name-problem"
+                className="map-name-problem"
+                role="alert"
+                style={{
+                  left: (naming.at.x - bounds.x) * zoom,
+                  top: (naming.at.y - bounds.y) * zoom
+                }}
+              >
+                {problem}
+              </div>
+            )}
             {cursor && tool !== 'hand' && !pointerDrawing && (
               <span
                 className="map-cursor"
