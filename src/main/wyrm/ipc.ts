@@ -84,6 +84,7 @@ import {
   syncProject
 } from './sync'
 import {
+  clientIdOf,
   createPrivateRepo,
   fetchGithubLogin,
   listUserRepos,
@@ -435,7 +436,7 @@ export function registerIpc(): void {
       mode: project.mode,
       remoteUrl: await getRemoteUrl(path),
       login: settings.githubLogin ?? null,
-      clientIdSet: Boolean(settings.syncClientId),
+      clientIdSet: Boolean(clientIdOf(settings.syncClientId)),
       lastSyncAt: project.lastSyncAt,
       pendingSync: project.pendingSync
     }
@@ -462,7 +463,10 @@ export function registerIpc(): void {
   // computer is exactly when the writer needs to sign in first.
   const accountOf = async (): Promise<GithubAccount> => {
     const settings = await readSettings()
-    return { clientIdSet: Boolean(settings.syncClientId), login: settings.githubLogin ?? null }
+    return {
+      clientIdSet: Boolean(clientIdOf(settings.syncClientId)),
+      login: settings.githubLogin ?? null
+    }
   }
   ipcMain.handle('github:account', () => accountOf())
   ipcMain.handle('github:clientId', async (_e, clientId: string) => {
@@ -477,8 +481,7 @@ export function registerIpc(): void {
 
   ipcMain.handle('sync:signInStart', async () => {
     const { syncClientId } = await readSettings()
-    if (!syncClientId) throw new Error('Set the GitHub client id first.')
-    deviceSession = await startDeviceFlow(syncClientId)
+    deviceSession = await startDeviceFlow(clientIdOf(syncClientId))
     return {
       userCode: deviceSession.userCode,
       verificationUri: deviceSession.verificationUri,
@@ -488,8 +491,8 @@ export function registerIpc(): void {
 
   ipcMain.handle('sync:signInPoll', async () => {
     const { syncClientId } = await readSettings()
-    if (!deviceSession || !syncClientId) return { state: 'error', detail: 'No sign-in is running.' }
-    const result = await pollDeviceFlow(syncClientId, deviceSession)
+    if (!deviceSession) return { state: 'error', detail: 'No sign-in is running.' }
+    const result = await pollDeviceFlow(clientIdOf(syncClientId), deviceSession)
     if (result.state !== 'ok') {
       if (result.state === 'error') deviceSession = null
       return result

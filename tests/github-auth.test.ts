@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BUILT_IN_CLIENT_ID,
+  clientIdOf,
   createPrivateRepo,
   fetchGithubLogin,
   pollDeviceFlow,
@@ -105,5 +107,18 @@ describe('api calls', () => {
   it('explains a name collision instead of failing generically', async () => {
     const { fetchFn } = scriptedFetch([{ status: 422, json: {} }])
     await expect(createPrivateRepo('tok', 'novel', fetchFn)).rejects.toThrow(/already exists/)
+  })
+})
+
+describe('which client id signs in', () => {
+  it('uses the app’s own on a computer that has never set one', () => {
+    expect(clientIdOf(undefined)).toBe(BUILT_IN_CLIENT_ID)
+    expect(clientIdOf('')).toBe(BUILT_IN_CLIENT_ID)
+    expect(clientIdOf('   ')).toBe(BUILT_IN_CLIENT_ID)
+    expect(BUILT_IN_CLIENT_ID).toMatch(/^Ov23li[A-Za-z0-9]+$/)
+  })
+
+  it('lets a saved one win, trimmed', () => {
+    expect(clientIdOf('  Iv1.mine ')).toBe('Iv1.mine')
   })
 })

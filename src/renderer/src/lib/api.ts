@@ -358,7 +358,8 @@ export function createMockApi(): WyrmApi {
   let statsSettings: StatsSettings = { ...DEFAULT_STATS }
   let printSettings: PrintSettings = { ...DEFAULT_PRINT }
   const sync = new Map<string, SyncStatus>()
-  let mockClientIdSet = false
+  // The app carries its own client id now, as main does (`BUILT_IN_CLIENT_ID`).
+  let mockClientIdSet = true
   let mockLogin: string | null = null
   let mockPolls = 0
   // F-24: mirrors the main process's settings.json bookkeeping in memory —
