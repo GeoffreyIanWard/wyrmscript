@@ -1,6 +1,7 @@
 import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
+import { assertPlainId, isPlainId } from './plainId'
 import { MAP_MARK_KINDS } from '../../shared/types'
 import type { MapMark, MapMarkKind } from '../../shared/types'
 
@@ -9,25 +10,6 @@ const MARKS_DIR = 'map-marks'
 
 function marksDir(projectPath: string): string {
   return join(projectPath, MARKS_DIR)
-}
-
-/**
- * The id becomes a filename inside the project, so one carrying a separator
- * or `..` is refused outright rather than resolved to wherever it points.
- * Every id this app mints is base-36, so a real one never trips this.
- */
-function isPlainId(id: unknown): id is string {
-  return (
-    typeof id === 'string' &&
-    id !== '' &&
-    !id.includes('/') &&
-    !id.includes('\\') &&
-    !id.includes('..')
-  )
-}
-
-function assertPlainId(id: string): void {
-  if (!isPlainId(id)) throw new Error(`Not a valid mark id: ${JSON.stringify(id)}`)
 }
 
 function markPath(projectPath: string, id: string): string {
@@ -73,7 +55,7 @@ function parseMapMarkFile(raw: string): MapMark | null {
 }
 
 export async function writeMapMark(projectPath: string, mark: MapMark): Promise<void> {
-  assertPlainId(mark.id)
+  assertPlainId(mark.id, 'mark')
   await fsp.mkdir(marksDir(projectPath), { recursive: true })
   const meta: MapMarkFrontmatter = {
     id: mark.id,
@@ -119,7 +101,7 @@ export async function listMapMarks(projectPath: string): Promise<MapMark[]> {
 }
 
 export async function deleteMapMark(projectPath: string, id: string): Promise<void> {
-  assertPlainId(id)
+  assertPlainId(id, 'mark')
   // force: true means a missing file is not an error.
   await fsp.rm(markPath(projectPath, id), { force: true })
 }
