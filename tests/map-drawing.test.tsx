@@ -850,6 +850,54 @@ describe('changing a shape with the hand', () => {
     expect(deleteMapShape).toHaveBeenCalledWith(expect.objectContaining({ id: 'shape-1' }))
   })
 
+  it.each(['Delete', 'Backspace'])(
+    'removes a clicked shape on %s, with focus left on the map',
+    async (k) => {
+      const deleteMapShape = vi.fn(async () => {})
+      const border: MapShape = {
+        id: 'b1',
+        kind: 'border',
+        points: [
+          { x: 0, y: 0 },
+          { x: 200, y: 0 }
+        ],
+        created: now,
+        modified: now
+      }
+      await renderMap([land(), border], { deleteMapShape })
+      // A border is caught by its hit band, which takes no focus.
+      const hit = document.querySelector('[data-shape="b1"] .map-shape-hit')!
+      await act(async () => pointer(hit, 'pointerdown', 0, 0))
+      await act(async () => pointer(hit, 'pointerup', 0, 0))
+      await key(k)
+      expect(deleteMapShape).toHaveBeenCalledWith(expect.objectContaining({ id: 'b1' }))
+      expect(deleteMapShape).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('does nothing on Delete when nothing is chosen', async () => {
+    const deleteMapShape = vi.fn(async () => {})
+    await renderMap([land()], { deleteMapShape })
+    await key('Delete')
+    expect(deleteMapShape).not.toHaveBeenCalled()
+  })
+
+  it('takes out a corner, not the shape, when a corner has focus', async () => {
+    const deleteMapShape = vi.fn(async () => {})
+    const updateMapShapeAt = vi.fn(async () => {})
+    const four = land([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 }
+    ])
+    await renderMap([four], { deleteMapShape, updateMapShapeAt })
+    await select()
+    await key('Delete', corners()[0])
+    expect(updateMapShapeAt).toHaveBeenCalledTimes(1)
+    expect(deleteMapShape).not.toHaveBeenCalled()
+  })
+
   it('lets go of the shape on a click elsewhere on the map', async () => {
     await renderMap([land()])
     await select()
