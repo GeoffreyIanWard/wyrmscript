@@ -5,9 +5,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 import git from 'isomorphic-git'
+import matter from 'gray-matter'
 import type { Entity, SyncOutcome } from '../src/shared/types'
 import {
   PushRejectedError,
+  isFrontmattered,
+  isRecord,
   resolveSyncConflicts,
   syncProject,
   type SyncTransport
@@ -23,6 +26,11 @@ import {
 } from '../src/main/wyrm/project'
 import { deleteEntity, listEntities, writeEntity } from '../src/main/wyrm/entities'
 import { listMapMarks, writeMapMark } from '../src/main/wyrm/mapMarks'
+import { listMapShapes, writeMapShape } from '../src/main/wyrm/mapShapes'
+import { listMapPins, writeMapPin } from '../src/main/wyrm/worldMap'
+import { listBoardStrings, writeBoardString } from '../src/main/wyrm/boardStrings'
+import { listRelationships, writeRelationship } from '../src/main/wyrm/relationships'
+import { listPlotlines, writePlotline } from '../src/main/wyrm/plotlines'
 import { findNode, firstDoc } from '../src/renderer/src/lib/tree'
 
 /**
@@ -684,6 +692,606 @@ describe('corkboard and map records merge field by field', () => {
     expectStatus(await syncProject(w.a, w.transport), 'merged')
     const [merged] = await listMapMarks(w.a)
     expect(merged).toMatchObject({ x: 300, y: 400, name: 'Hollin Wood' })
+  })
+})
+
+const T0 = '2024-01-10T00:00:00.000Z'
+
+/** Device A with `setup` committed and pushed, and device B cloned from it. */
+async function twoDevices(setup: (a: string) => Promise<void>): Promise<{ w: World; b: string }> {
+  const w = await makeWorld()
+  await setup(w.a)
+  await commitAll(w.a, 'Setup')
+  expectStatus(await syncProject(w.a, w.transport), 'pushed')
+  return { w, b: await cloneB(w) }
+}
+
+/** B edits and pushes first; A then edits and is left unsynced. */
+async function bThenA(
+  w: World,
+  b: string,
+  editB: (dir: string) => Promise<void>,
+  editA: (dir: string) => Promise<void>
+): Promise<void> {
+  await editB(b)
+  await commitAll(b, 'B edits')
+  expectStatus(await syncProject(b, w.transport), 'pushed')
+  await editA(w.a)
+  await commitAll(w.a, 'A edits')
+}
+
+/** Set frontmatter keys exactly as given — the writers all restamp `modified`. */
+async function restamp(dir: string, rel: string, patch: Record<string, unknown>): Promise<void> {
+  const file = join(dir, rel)
+  const parsed = matter(await fsp.readFile(file, 'utf8'))
+  await fsp.writeFile(file, matter.stringify(parsed.content, { ...parsed.data, ...patch }), 'utf8')
+}
+
+async function frontmatterOf(dir: string, rel: string): Promise<Record<string, unknown>> {
+  return matter(await fsp.readFile(join(dir, rel), 'utf8')).data
+}
+
+const iso = (v: unknown): string => new Date(String(v)).toISOString()
+
+describe('a record field changed differently on both devices is the writer’s call', () => {
+  it('a relationship label renamed on both is a conflict, never this device winning', async () => {
+    const { w, b } = await twoDevices((a) =>
+      writeRelationship(a, {
+        id: 'r1',
+        fromId: 'e1',
+        toId: 'e2',
+        label: 'sibling of',
+        created: T0,
+        modified: T0
+      })
+    )
+    const rename = (label: string) => async (dir: string) => {
+      const [r] = await listRelationships(dir)
+      await writeRelationship(dir, { ...r, label })
+    }
+    await bThenA(w, b, rename('rival of'), rename('ally of'))
+
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    expect(outcome.conflicts.map((c) => c.path)).toEqual(['relationships/r1.md'])
+    expect(outcome.conflicts[0].kind).toBe('file')
+  })
+
+  it('a shape’s points edited at different vertices on both is a conflict, and “theirs” is B’s shape', async () => {
+    const square = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 }
+    ]
+    const { w, b } = await twoDevices((a) =>
+      writeMapShape(a, { id: 's1', kind: 'land', points: square, created: T0, modified: T0 })
+    )
+    const withPoint = (i: number, x: number, y: number) => async (dir: string) => {
+      const [s] = await listMapShapes(dir)
+      await writeMapShape(dir, {
+        ...s,
+        points: s.points.map((p, j) => (j === i ? { x, y } : p))
+      })
+    }
+    await bThenA(w, b, withPoint(0, 5, 5), withPoint(2, 90, 90))
+    const theirs = (await listMapShapes(b))[0].points
+
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    expect(outcome.conflicts.map((c) => c.path)).toEqual(['map-shapes/s1.md'])
+
+    await resolveSyncConflicts(
+      w.a,
+      [{ path: 'map-shapes/s1.md', resolution: 'theirs' }],
+      w.transport
+    )
+    expect((await listMapShapes(w.a))[0].points).toEqual(theirs)
+    expect(theirs[0]).toEqual({ x: 5, y: 5 })
+  })
+})
+
+describe('positions merge as a pair', () => {
+  it('a pin moved on x only on A and on y only on B is a conflict', async () => {
+    const { w, b } = await twoDevices((a) =>
+      writeMapPin(a, { id: 'p1', entityId: 'place1', x: 10, y: 20, created: T0, modified: T0 })
+    )
+    const move = (patch: { x?: number; y?: number }) => async (dir: string) => {
+      const [p] = await listMapPins(dir)
+      await writeMapPin(dir, { ...p, ...patch })
+    }
+    await bThenA(w, b, move({ y: 200 }), move({ x: 100 }))
+
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    expect(outcome.conflicts.map((c) => c.path)).toEqual(['map/p1.md'])
+  })
+
+  it('a scene’s boardX on A and boardY on B merge to A’s pair with the base boardY', async () => {
+    const w = await makeWorld()
+    const placeDoc = (x: number, y: number) => async (dir: string) => {
+      const doc = await readDoc(dir, w.docId)
+      await writeDoc(dir, { meta: { ...doc.meta, boardX: x, boardY: y }, body: doc.body })
+    }
+    await placeDoc(100, 50)(w.a)
+    await commitAll(w.a, 'Place')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+    const b = await cloneB(w)
+    await bThenA(
+      w,
+      b,
+      async (dir) => {
+        const doc = await readDoc(dir, w.docId)
+        await writeDoc(dir, { meta: { ...doc.meta, boardY: 90 }, body: doc.body })
+      },
+      async (dir) => {
+        const doc = await readDoc(dir, w.docId)
+        await writeDoc(dir, { meta: { ...doc.meta, boardX: 200 }, body: doc.body })
+      }
+    )
+
+    expectStatus(await syncProject(w.a, w.transport), 'merged')
+    const merged = (await readDoc(w.a, w.docId)).meta
+    expect({ x: merged.boardX, y: merged.boardY }).toEqual({ x: 200, y: 50 })
+  })
+
+  it('an entry’s boardX on A and boardY on B merge to A’s pair with the base boardY', async () => {
+    const entity: Entity = {
+      id: 'wyrmfire',
+      type: 'glossary',
+      name: 'Wyrmfire',
+      aliases: [],
+      body: 'A fire that does not go out.',
+      onBoard: true,
+      boardX: 10,
+      boardY: 20,
+      created: T0,
+      modified: T0
+    }
+    const { w, b } = await twoDevices((a) => writeEntity(a, entity))
+    const move = (patch: Partial<Entity>) => async (dir: string) => {
+      const e = (await listEntities(dir)).find((x) => x.id === entity.id)!
+      await writeEntity(dir, { ...e, ...patch })
+    }
+    await bThenA(w, b, move({ boardY: 900 }), move({ boardX: 700 }))
+
+    expectStatus(await syncProject(w.a, w.transport), 'merged')
+    const merged = (await listEntities(w.a)).find((e) => e.id === entity.id)!
+    expect({ x: merged.boardX, y: merged.boardY }).toEqual({ x: 700, y: 20 })
+  })
+})
+
+interface RecordCase {
+  name: string
+  path: string
+  setup: (dir: string) => Promise<void>
+  editB: (dir: string) => Promise<void>
+  editA: (dir: string) => Promise<void>
+  check: (dir: string) => Promise<void>
+}
+
+const RECORD_CASES: RecordCase[] = [
+  {
+    name: 'map pins',
+    path: 'map/p1.md',
+    setup: (d) =>
+      writeMapPin(d, { id: 'p1', entityId: 'place1', x: 10, y: 20, created: T0, modified: T0 }),
+    editB: async (d) => writeMapPin(d, { ...(await listMapPins(d))[0], entityId: 'place2' }),
+    editA: async (d) => writeMapPin(d, { ...(await listMapPins(d))[0], x: 300, y: 400 }),
+    check: async (d) =>
+      expect((await listMapPins(d))[0]).toMatchObject({ entityId: 'place2', x: 300, y: 400 })
+  },
+  {
+    name: 'map shapes',
+    path: 'map-shapes/s1.md',
+    setup: (d) =>
+      writeMapShape(d, {
+        id: 's1',
+        kind: 'river',
+        points: [
+          { x: 0, y: 0 },
+          { x: 50, y: 50 }
+        ],
+        created: T0,
+        modified: T0
+      }),
+    editB: async (d) => writeMapShape(d, { ...(await listMapShapes(d))[0], name: 'River Wend' }),
+    editA: async (d) =>
+      writeMapShape(d, {
+        ...(await listMapShapes(d))[0],
+        points: [
+          { x: 0, y: 0 },
+          { x: 80, y: 80 }
+        ]
+      }),
+    check: async (d) =>
+      expect((await listMapShapes(d))[0]).toMatchObject({
+        name: 'River Wend',
+        points: [
+          { x: 0, y: 0 },
+          { x: 80, y: 80 }
+        ]
+      })
+  },
+  {
+    name: 'map marks',
+    path: 'map-marks/m1.md',
+    setup: (d) =>
+      writeMapMark(d, { id: 'm1', kind: 'forest', x: 10, y: 20, created: T0, modified: T0 }),
+    editB: async (d) => writeMapMark(d, { ...(await listMapMarks(d))[0], kind: 'hills' }),
+    editA: async (d) => writeMapMark(d, { ...(await listMapMarks(d))[0], name: 'Hollin Wood' }),
+    check: async (d) =>
+      expect((await listMapMarks(d))[0]).toMatchObject({ kind: 'hills', name: 'Hollin Wood' })
+  },
+  {
+    name: 'board strings',
+    path: 'strings/st1.md',
+    setup: (d) =>
+      writeBoardString(d, {
+        id: 'st1',
+        from: { cardId: 'c1', dx: 1, dy: 2 },
+        to: { cardId: 'c2', dx: 3, dy: 4 },
+        created: T0,
+        modified: T0
+      }),
+    editB: async (d) => writeBoardString(d, { ...(await listBoardStrings(d))[0], label: 'owes' }),
+    editA: async (d) =>
+      writeBoardString(d, {
+        ...(await listBoardStrings(d))[0],
+        to: { cardId: 'c2', dx: 30, dy: 40 }
+      }),
+    check: async (d) =>
+      expect((await listBoardStrings(d))[0]).toMatchObject({
+        label: 'owes',
+        to: { cardId: 'c2', dx: 30, dy: 40 }
+      })
+  },
+  {
+    name: 'relationships',
+    path: 'relationships/r1.md',
+    setup: (d) =>
+      writeRelationship(d, {
+        id: 'r1',
+        fromId: 'e1',
+        toId: 'e2',
+        label: 'sibling of',
+        created: T0,
+        modified: T0
+      }),
+    editB: async (d) =>
+      writeRelationship(d, { ...(await listRelationships(d))[0], label: 'rival of' }),
+    editA: async (d) => writeRelationship(d, { ...(await listRelationships(d))[0], toId: 'e3' }),
+    check: async (d) =>
+      expect((await listRelationships(d))[0]).toMatchObject({ label: 'rival of', toId: 'e3' })
+  },
+  {
+    name: 'plotlines',
+    path: 'plotlines/pl1.md',
+    setup: (d) =>
+      writePlotline(d, {
+        id: 'pl1',
+        name: 'The Heist',
+        colour: 'red',
+        status: 'open',
+        created: T0,
+        modified: T0
+      }),
+    editB: async (d) =>
+      writePlotline(d, { ...(await listPlotlines(d))[0], name: 'The Long Heist' }),
+    editA: async (d) => writePlotline(d, { ...(await listPlotlines(d))[0], status: 'resolved' }),
+    check: async (d) =>
+      expect((await listPlotlines(d))[0]).toMatchObject({
+        name: 'The Long Heist',
+        status: 'resolved'
+      })
+  }
+]
+
+describe('every record collection merges different-field edits cleanly', () => {
+  it.each(RECORD_CASES)('$name', async (c) => {
+    const { w, b } = await twoDevices(async (a) => {
+      await c.setup(a)
+      // The folder this writer produces is one the engine merges field by field.
+      await fsp.access(join(a, c.path))
+      expect(isFrontmattered(c.path)).toBe(true)
+      expect(isRecord(c.path)).toBe(true)
+    })
+    await bThenA(w, b, c.editB, c.editA)
+
+    expectStatus(await syncProject(w.a, w.transport), 'merged')
+    await c.check(w.a)
+  })
+})
+
+describe('merging stamps and the non-strict rule', () => {
+  const ENTRY = 'glossary/g1.md'
+  const entry: Entity = {
+    id: 'g1',
+    type: 'glossary',
+    name: 'Alpha',
+    aliases: [],
+    body: 'An entry.',
+    tags: ['x'],
+    created: T0,
+    modified: T0
+  }
+
+  it.each([
+    {
+      name: 'A has the newer modified, B the older created',
+      a: { modified: '2024-05-02T00:00:00.000Z', created: '2024-01-12T00:00:00.000Z' },
+      b: { modified: '2024-03-01T00:00:00.000Z', created: '2024-01-03T00:00:00.000Z' }
+    },
+    {
+      name: 'B has the newer modified, A the older created',
+      a: { modified: '2024-03-01T00:00:00.000Z', created: '2024-01-03T00:00:00.000Z' },
+      b: { modified: '2024-05-02T00:00:00.000Z', created: '2024-01-12T00:00:00.000Z' }
+    }
+  ])('modified is the newer of the two and created the older: $name', async (c) => {
+    const { w, b } = await twoDevices((a) => writeEntity(a, entry))
+    await bThenA(
+      w,
+      b,
+      (dir) => restamp(dir, ENTRY, c.b),
+      (dir) => restamp(dir, ENTRY, c.a)
+    )
+
+    expectStatus(await syncProject(w.a, w.transport), 'merged')
+    const data = await frontmatterOf(w.a, ENTRY)
+    expect(iso(data.modified)).toBe('2024-05-02T00:00:00.000Z')
+    expect(iso(data.created)).toBe('2024-01-03T00:00:00.000Z')
+  })
+
+  it('an entry’s name and tags changed differently on both devices keep this device’s', async () => {
+    const { w, b } = await twoDevices((a) => writeEntity(a, entry))
+    const edit = (name: string, tags: string[]) => async (dir: string) => {
+      const e = (await listEntities(dir)).find((x) => x.id === entry.id)!
+      await writeEntity(dir, { ...e, name, tags })
+    }
+    await bThenA(w, b, edit('Alpha-B', ['b']), edit('Alpha-A', ['a']))
+
+    expectStatus(await syncProject(w.a, w.transport), 'merged')
+    const merged = (await listEntities(w.a)).find((e) => e.id === entry.id)!
+    expect(merged.name).toBe('Alpha-A')
+    expect(merged.tags).toEqual(['a'])
+    expect(merged.body.trim()).toBe('An entry.')
+  })
+})
+
+describe('a frontmattered file that is not UTF-8 goes to the writer as bytes', () => {
+  const FILE = 'characters/bin1.md'
+  const file = (name: string, modified: string): Buffer =>
+    Buffer.concat([
+      Buffer.from(
+        `---\nid: bin1\ntype: character\nname: ${name}\naliases: []\ncreated: '${T0}'\nmodified: '${modified}'\n---\nCaf`
+      ),
+      Buffer.from([0xe9]),
+      Buffer.from(' owner.\n')
+    ])
+  const FFFD = Buffer.from([0xef, 0xbf, 0xbd])
+
+  async function conflicted(): Promise<{ w: World; mine: Buffer; theirs: Buffer }> {
+    const base = file('Old Name', T0)
+    const mine = file('Old Name', '2024-02-01T00:00:00.000Z')
+    const theirs = file('New Name', T0)
+    const { w, b } = await twoDevices(async (a) => {
+      await fsp.mkdir(join(a, 'characters'), { recursive: true })
+      await fsp.writeFile(join(a, FILE), base)
+    })
+    await bThenA(
+      w,
+      b,
+      (dir) => fsp.writeFile(join(dir, FILE), theirs),
+      (dir) => fsp.writeFile(join(dir, FILE), mine)
+    )
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    expect(outcome.conflicts.map((c) => c.path)).toEqual([FILE])
+    return { w, mine, theirs }
+  }
+
+  it.each(['mine', 'theirs'] as const)(
+    'choosing %s keeps the 0xE9 and never writes U+FFFD',
+    async (side) => {
+      const { w, mine, theirs } = await conflicted()
+      await resolveSyncConflicts(w.a, [{ path: FILE, resolution: side }], w.transport)
+
+      const onDisk = await fsp.readFile(join(w.a, FILE))
+      expect(onDisk.includes(0xe9)).toBe(true)
+      expect(onDisk.includes(FFFD)).toBe(false)
+      expect(onDisk.equals(side === 'mine' ? mine : theirs)).toBe(true)
+    }
+  )
+})
+
+describe('text and bytes beside a real document conflict', () => {
+  const NOTES = 'notes.txt'
+  const numbered = (overrides: Record<number, string>, eol = '\n'): string =>
+    Array.from({ length: 10 }, (_, i) => `${overrides[i + 1] ?? `Line ${i + 1}.`}${eol}`).join('')
+
+  /** Both devices change notes; with `docConflict` they also rewrite the same scene. */
+  async function notesWorld(
+    base: string | Buffer,
+    theirs: string | Buffer,
+    mine: string | Buffer,
+    docConflict: boolean
+  ): Promise<World> {
+    const { w, b } = await twoDevices((a) => fsp.writeFile(join(a, NOTES), base))
+    await bThenA(
+      w,
+      b,
+      async (dir) => {
+        await fsp.writeFile(join(dir, NOTES), theirs)
+        if (docConflict) await writeEnding(dir, w.docId, 'Ending written on device B.\n')
+      },
+      async (dir) => {
+        await fsp.writeFile(join(dir, NOTES), mine)
+        if (docConflict) await writeEnding(dir, w.docId, 'Ending written on device A.\n')
+      }
+    )
+    return w
+  }
+
+  async function writeEnding(dir: string, docId: string, body: string): Promise<void> {
+    const doc = await readDoc(dir, docId)
+    await writeDoc(dir, { meta: doc.meta, body })
+  }
+
+  async function resolveDoc(w: World): Promise<void> {
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    expect(outcome.conflicts.map((c) => c.path)).toEqual([`documents/${w.docId}.md`])
+    await resolveSyncConflicts(
+      w.a,
+      [{ path: `documents/${w.docId}.md`, resolution: 'mine' }],
+      w.transport
+    )
+  }
+
+  it('a U+FFFD the writer typed is text: non-overlapping edits around it both survive', async () => {
+    const base = numbered({ 5: 'Line five � stays.' })
+    const w = await notesWorld(
+      base,
+      numbered({ 5: 'Line five � stays.', 9: 'Line nine, from B.' }),
+      numbered({ 2: 'Line two, from A.', 5: 'Line five � stays.' }),
+      true
+    )
+    await resolveDoc(w)
+
+    expect(await fsp.readFile(join(w.a, NOTES), 'utf8')).toBe(
+      numbered({ 2: 'Line two, from A.', 5: 'Line five � stays.', 9: 'Line nine, from B.' })
+    )
+  })
+
+  it('a binary with a shared base is a conflict, and “theirs” arrives byte for byte', async () => {
+    const PORTRAIT = 'characters/portrait.png'
+    const segment = (n: number, note: string, tail: number[]): Buffer =>
+      Buffer.concat([
+        Buffer.from(`segment ${n} ${note} `),
+        Buffer.from([0xff, 0xfe, 0x80, ...tail])
+      ])
+    const join0a = (parts: Buffer[]): Buffer =>
+      Buffer.concat(parts.flatMap((p, i) => (i === 0 ? [p] : [Buffer.from([0x0a]), p])))
+    const parts = (first: Buffer, last: Buffer): Buffer[] => [
+      first,
+      ...[1, 2, 3, 4].map((n) => segment(n, 'base', [0xc0])),
+      last
+    ]
+    const base = join0a(parts(segment(0, 'base', [0xc0]), segment(5, 'base', [0xc0])))
+    const theirs = join0a(
+      parts(segment(0, 'edited on B', [0xc1, 0xc1]), segment(5, 'base', [0xc0]))
+    )
+    const mine = join0a(parts(segment(0, 'base', [0xc0]), segment(5, 'edited on A', [0xc2])))
+
+    const { w, b } = await twoDevices(async (a) => {
+      await fsp.mkdir(join(a, 'characters'), { recursive: true })
+      await fsp.writeFile(join(a, PORTRAIT), base)
+    })
+    await bThenA(
+      w,
+      b,
+      (dir) => fsp.writeFile(join(dir, PORTRAIT), theirs),
+      (dir) => fsp.writeFile(join(dir, PORTRAIT), mine)
+    )
+
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    expect(outcome.conflicts.map((c) => c.path)).toEqual([PORTRAIT])
+    expect(outcome.conflicts[0].localBody).toBe('(not text — an image or other file)')
+    expect(outcome.conflicts[0].remoteBody).toBe('(not text — an image or other file)')
+
+    await resolveSyncConflicts(w.a, [{ path: PORTRAIT, resolution: 'theirs' }], w.transport)
+    expect((await fsp.readFile(join(w.a, PORTRAIT))).equals(theirs)).toBe(true)
+  })
+
+  it('a text file in conflict is shown as its full raw text, not as a placeholder', async () => {
+    const w = await notesWorld(
+      numbered({}),
+      numbered({ 4: 'Line four, from B.' }),
+      numbered({ 4: 'Line four, from A.' }),
+      false
+    )
+
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    expect(outcome.conflicts).toHaveLength(1)
+    const conflict = outcome.conflicts[0]
+    expect(conflict.path).toBe(NOTES)
+    expect(conflict.kind).toBe('file')
+    expect(conflict.localBody).toBe(numbered({ 4: 'Line four, from A.' }))
+    expect(conflict.remoteBody).toBe(numbered({ 4: 'Line four, from B.' }))
+    expect(conflict.localBody).not.toContain('(not text')
+    expect(conflict.remoteBody).not.toContain('(not text')
+  })
+
+  it('CRLF endings survive a plain clean merge byte for byte', async () => {
+    const w = await notesWorld(
+      numbered({}, '\r\n'),
+      numbered({ 9: 'Line nine, from B.' }, '\r\n'),
+      numbered({ 2: 'Line two, from A.' }, '\r\n'),
+      false
+    )
+
+    expectStatus(await syncProject(w.a, w.transport), 'merged')
+    const merged = await fsp.readFile(join(w.a, NOTES))
+    expect(
+      merged.equals(
+        Buffer.from(numbered({ 2: 'Line two, from A.', 9: 'Line nine, from B.' }, '\r\n'))
+      )
+    ).toBe(true)
+  })
+
+  it('CRLF endings survive the oracle’s merge beside a real conflict', async () => {
+    const w = await notesWorld(
+      numbered({}, '\r\n'),
+      numbered({ 9: 'Line nine, from B.' }, '\r\n'),
+      numbered({ 2: 'Line two, from A.' }, '\r\n'),
+      true
+    )
+    await resolveDoc(w)
+
+    const merged = await fsp.readFile(join(w.a, NOTES))
+    expect(
+      merged.equals(
+        Buffer.from(numbered({ 2: 'Line two, from A.', 9: 'Line nine, from B.' }, '\r\n'))
+      )
+    ).toBe(true)
+  })
+
+  it('a BOM survives the file-by-file merge a deletion forces', async () => {
+    const BOM = Buffer.from([0xef, 0xbb, 0xbf])
+    const withBom = (overrides: Record<number, string>): Buffer =>
+      Buffer.concat([BOM, Buffer.from(numbered(overrides))])
+    const entity: Entity = {
+      id: 'elara001',
+      type: 'character',
+      name: 'Elara Voss',
+      aliases: [],
+      body: 'Original biography.',
+      created: T0,
+      modified: T0
+    }
+    const { w, b } = await twoDevices(async (a) => {
+      await writeEntity(a, entity)
+      await fsp.writeFile(join(a, NOTES), withBom({}))
+    })
+    await bThenA(
+      w,
+      b,
+      async (dir) => {
+        await writeEntity(dir, { ...entity, body: 'Biography rewritten on B.' })
+        await fsp.writeFile(join(dir, NOTES), withBom({ 9: 'Line nine, from B.' }))
+      },
+      async (dir) => {
+        await deleteEntity(dir, 'character', entity.id)
+        await fsp.writeFile(join(dir, NOTES), withBom({ 2: 'Line two, from A.' }))
+      }
+    )
+
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    expect(outcome.conflicts.map((c) => c.path)).toEqual(['characters/elara001.md'])
+    await resolveSyncConflicts(
+      w.a,
+      [{ path: 'characters/elara001.md', resolution: 'mine' }],
+      w.transport
+    )
+
+    const merged = await fsp.readFile(join(w.a, NOTES))
+    expect(merged.subarray(0, 3).equals(BOM)).toBe(true)
+    expect(merged.equals(withBom({ 2: 'Line two, from A.', 9: 'Line nine, from B.' }))).toBe(true)
   })
 })
 
