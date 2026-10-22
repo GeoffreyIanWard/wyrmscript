@@ -2,6 +2,7 @@ import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
 import type { BoardString, StringEnd } from '../../shared/types'
+import { assertPlainId, isPlainId } from './plainId'
 
 const STRINGS_DIR = 'strings'
 
@@ -9,7 +10,10 @@ function stringsDir(projectPath: string): string {
   return join(projectPath, STRINGS_DIR)
 }
 
+/** Refuses an id that is not plain (see `plainId.ts`), so neither a write
+ *  nor a delete can reach outside the folder. */
 function boardStringPath(projectPath: string, id: string): string {
+  assertPlainId(id, 'board string')
   return join(stringsDir(projectPath), `${id}.md`)
 }
 
@@ -34,6 +38,9 @@ function parseEnd(end: StringEnd): StringEnd {
 function parseBoardStringFile(raw: string): BoardString {
   const parsed = matter(raw)
   const data = parsed.data as BoardStringFrontmatter
+  // Throws, and the list skips it: an id that isn't plain could never be
+  // written back or deleted safely.
+  if (!isPlainId(data.id)) throw new Error('Not a board string')
   return {
     id: data.id,
     from: parseEnd(data.from),
@@ -47,6 +54,7 @@ function parseBoardStringFile(raw: string): BoardString {
 }
 
 export async function writeBoardString(projectPath: string, s: BoardString): Promise<void> {
+  const path = boardStringPath(projectPath, s.id)
   await fsp.mkdir(stringsDir(projectPath), { recursive: true })
   const meta: BoardStringFrontmatter = {
     id: s.id,
@@ -59,7 +67,7 @@ export async function writeBoardString(projectPath: string, s: BoardString): Pro
     modified: new Date().toISOString()
   }
   const file = matter.stringify('', meta)
-  await fsp.writeFile(boardStringPath(projectPath, s.id), file, 'utf8')
+  await fsp.writeFile(path, file, 'utf8')
 }
 
 /**
