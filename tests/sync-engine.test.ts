@@ -22,6 +22,7 @@ import {
   writeDoc
 } from '../src/main/wyrm/project'
 import { deleteEntity, listEntities, writeEntity } from '../src/main/wyrm/entities'
+import { listMapMarks, writeMapMark } from '../src/main/wyrm/mapMarks'
 import { findNode, firstDoc } from '../src/renderer/src/lib/tree'
 
 /**
@@ -547,6 +548,142 @@ describe('genuine conflicts', () => {
     const onB = expectStatus(await syncProject(b, w.transport), 'pulled')
     expect(onB.pushed).toBe(true)
     expect((await readDoc(b, w.docId)).body).toBe('Ending written on device A.\n')
+  })
+})
+
+describe('clean merges beside a real conflict (I-13)', () => {
+  // A plain text file with ten lines: each device changes a different line,
+  // which diff3 merges cleanly, while the same document's prose conflicts.
+  const NOTES = 'notes.txt'
+  const lines = (overrides: Record<number, string>): string =>
+    Array.from({ length: 10 }, (_, i) => `${overrides[i + 1] ?? `Line ${i + 1}.`}\n`).join('')
+
+  async function writeNotes(dir: string, text: string, message: string): Promise<void> {
+    await fsp.writeFile(join(dir, NOTES), text)
+    await commitAll(dir, message)
+  }
+
+  async function worldWithNotes(): Promise<{ w: World; b: string }> {
+    const w = await makeWorld()
+    await writeNotes(w.a, lines({}), 'Notes')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+    const b = await cloneB(w)
+    await writeNotes(b, lines({ 9: 'Line nine, from B.' }), 'B notes')
+    await editDoc(b, w.docId, 'Ending written on device B.\n', 'B ending')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+    await writeNotes(w.a, lines({ 2: 'Line two, from A.' }), 'A notes')
+    await editDoc(w.a, w.docId, 'Ending written on device A.\n', 'A ending')
+    return { w, b }
+  }
+
+  it('keeps both devices’ halves of a file that merged cleanly, whatever the writer chose', async () => {
+    const { w } = await worldWithNotes()
+    const conflicts = expectStatus(await syncProject(w.a, w.transport), 'conflicts').conflicts
+    // Only the document is the writer's to decide.
+    expect(conflicts.map((c) => c.path)).toEqual([`documents/${w.docId}.md`])
+
+    await resolveSyncConflicts(w.a, [{ path: conflicts[0].path, resolution: 'mine' }], w.transport)
+    const notes = await fsp.readFile(join(w.a, NOTES), 'utf8')
+    expect(notes).toBe(lines({ 2: 'Line two, from A.', 9: 'Line nine, from B.' }))
+    expect((await readDoc(w.a, w.docId)).body).toBe('Ending written on device A.\n')
+  })
+
+  it('keeps them too when a deletion means the merge is assembled file by file', async () => {
+    const w = await makeWorld()
+    const now = new Date().toISOString()
+    const entity: Entity = {
+      id: 'elara001',
+      type: 'character',
+      name: 'Elara Voss',
+      aliases: [],
+      body: 'Original biography.',
+      created: now,
+      modified: now
+    }
+    await writeEntity(w.a, entity)
+    await writeNotes(w.a, lines({}), 'Elara and notes')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+    const b = await cloneB(w)
+
+    await writeEntity(b, { ...entity, body: 'Biography rewritten on B.' })
+    await writeNotes(b, lines({ 9: 'Line nine, from B.' }), 'B rewrites Elara')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+    await deleteEntity(w.a, 'character', entity.id)
+    await writeNotes(w.a, lines({ 2: 'Line two, from A.' }), 'A deletes Elara')
+
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    expect(outcome.conflicts.map((c) => c.path)).not.toContain(NOTES)
+    const conflict = outcome.conflicts.find((c) => c.kind === 'entity')!
+    await resolveSyncConflicts(w.a, [{ path: conflict.path, resolution: 'mine' }], w.transport)
+    expect(await fsp.readFile(join(w.a, NOTES), 'utf8')).toBe(
+      lines({ 2: 'Line two, from A.', 9: 'Line nine, from B.' })
+    )
+  })
+
+  it('reaches the other device intact', async () => {
+    const { w, b } = await worldWithNotes()
+    const conflicts = expectStatus(await syncProject(w.a, w.transport), 'conflicts').conflicts
+    await resolveSyncConflicts(
+      w.a,
+      [{ path: conflicts[0].path, resolution: 'theirs' }],
+      w.transport
+    )
+    expectStatus(await syncProject(b, w.transport), 'pulled')
+    expect(await fsp.readFile(join(b, NOTES), 'utf8')).toBe(
+      lines({ 2: 'Line two, from A.', 9: 'Line nine, from B.' })
+    )
+  })
+})
+
+describe('a file that is not text, changed on both devices (I-17)', () => {
+  const PORTRAIT = 'characters/portrait.png'
+  const png = (fill: number): Buffer =>
+    Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe]), Buffer.alloc(256, fill)])
+
+  it('is the writer’s choice, never a line merge, and the choice arrives byte for byte', async () => {
+    const w = await makeWorld()
+    const b = await cloneB(w)
+    const theirs = png(0xb1)
+    const mine = png(0xa1)
+    await fsp.mkdir(join(b, 'characters'), { recursive: true })
+    await fsp.writeFile(join(b, PORTRAIT), theirs)
+    await commitAll(b, 'B portrait')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+    await fsp.mkdir(join(w.a, 'characters'), { recursive: true })
+    await fsp.writeFile(join(w.a, PORTRAIT), mine)
+    await commitAll(w.a, 'A portrait')
+
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    const conflict = outcome.conflicts.find((c) => c.path === PORTRAIT)!
+    expect(conflict.kind).toBe('file')
+    expect(conflict.localBody).toBe('(not text — an image or other file)')
+    expect(conflict.remoteBody).toBe('(not text — an image or other file)')
+
+    await resolveSyncConflicts(w.a, [{ path: PORTRAIT, resolution: 'theirs' }], w.transport)
+    expect((await fsp.readFile(join(w.a, PORTRAIT))).equals(theirs)).toBe(true)
+  })
+})
+
+describe('corkboard and map records merge field by field', () => {
+  it('a stamp moved on one device and named on the other keeps both, with no conflict', async () => {
+    const w = await makeWorld()
+    const now = new Date().toISOString()
+    await writeMapMark(w.a, { id: 'm1', kind: 'forest', x: 10, y: 20, created: now, modified: now })
+    await commitAll(w.a, 'A forest')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+    const b = await cloneB(w)
+
+    const [onB] = await listMapMarks(b)
+    await writeMapMark(b, { ...onB, name: 'Hollin Wood' })
+    await commitAll(b, 'B names the forest')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+    const [onA] = await listMapMarks(w.a)
+    await writeMapMark(w.a, { ...onA, x: 300, y: 400 })
+    await commitAll(w.a, 'A moves the forest')
+
+    expectStatus(await syncProject(w.a, w.transport), 'merged')
+    const [merged] = await listMapMarks(w.a)
+    expect(merged).toMatchObject({ x: 300, y: 400, name: 'Hollin Wood' })
   })
 })
 

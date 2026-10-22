@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import { promises as fsp } from 'node:fs'
 import { dirname, join } from 'node:path'
 import git from 'isomorphic-git'
+import diff3Merge from 'diff3'
 import matter from 'gray-matter'
 import type { ConflictResolution, ProjectData, SyncConflict, SyncOutcome } from '../../shared/types'
 import { author, commitAll, commitMerge } from './git'
@@ -150,7 +151,8 @@ async function describeConflict(
 
   const kind: SyncConflict['kind'] = filepath.startsWith('documents/')
     ? 'doc'
-    : /^(glossary|characters|world)\//.test(filepath)
+    : // Entries only: a portrait sits in the same folder and is not one.
+      /^(glossary|characters|world)\/[^/]+\.md$/.test(filepath)
       ? 'entity'
       : filepath === 'project.json'
         ? 'project'
@@ -169,6 +171,13 @@ async function describeConflict(
     remoteBody = parsed[1] == null ? null : parsed[1].content.replace(/^\n/, '')
   } else if (kind === 'project') {
     title = 'Binder & project settings'
+  } else {
+    // A portrait or another file that is not text: its bytes mean nothing on
+    // the resolution screen, and decoded they are a screenful of garbage.
+    const notText = (raw: string | null): string | null =>
+      raw != null && raw.includes('\uFFFD') ? '(not text — an image or other file)' : raw
+    localBody = notText(localRaw)
+    remoteBody = notText(remoteRaw)
   }
 
   return { path: filepath, kind, title, localBody, remoteBody }
@@ -176,9 +185,48 @@ async function describeConflict(
 
 /* ---------- the merge machinery ---------- */
 
-/** Documents and story-bible entries: YAML frontmatter over a Markdown body. */
+/**
+ * Every one-file-per-record collection: YAML frontmatter over a Markdown body
+ * (often empty). Documents and story-bible entries, and the corkboard's and
+ * the map's records — strings, relationships, plotlines, pins, shapes, marks —
+ * which are written the same way and merge field by field the same way: one
+ * device moving a stamp while the other renames it is two changes to two
+ * fields, not a conflict. They used to be left out, so it reached the writer
+ * as a "file" conflict showing raw YAML.
+ */
 function isFrontmattered(filepath: string): boolean {
-  return /^(documents|glossary|characters|world)\/.+\.md$/.test(filepath)
+  return /^(documents|glossary|characters|world|strings|relationships|plotlines|map|map-shapes|map-marks)\/[^/]+\.md$/.test(
+    filepath
+  )
+}
+
+/** isomorphic-git's line splitter, for merging exactly as it does. */
+const LINEBREAKS = /^.*(\r?\n|$)/gm
+
+/**
+ * A three-way merge of one file's text, as isomorphic-git's default driver
+ * does it (its `mergeFile`, which it does not export, over the same `diff3`,
+ * pinned to the version it pins) — so a file merged cleanly here is merged
+ * byte for byte as the detector merged it. Two differences, both refusals:
+ * a file that is not text is never merged at all (two portraits interleaved
+ * by lines "merge cleanly" into a corrupt image — I-17), and a conflicting
+ * merge carries no markers, since nothing here ever writes one to disk.
+ */
+function mergeText(contents: string[]): { clean: boolean; text: string } {
+  const [base, ours, theirs] = contents
+  // Bytes that were not UTF-8 decode to U+FFFD on the way in.
+  if (contents.some((c) => c.includes('\uFFFD'))) return { clean: false, text: ours }
+  const result = diff3Merge(
+    ours.match(LINEBREAKS) ?? [],
+    base.match(LINEBREAKS) ?? [],
+    theirs.match(LINEBREAKS) ?? []
+  )
+  let text = ''
+  for (const item of result) {
+    if (item.conflict) return { clean: false, text: ours }
+    if (item.ok) text += item.ok.join('')
+  }
+  return { clean: true, text }
 }
 
 /**
@@ -277,7 +325,12 @@ async function analyseMerge(
       ours: SYNC_BRANCH,
       theirs: REMOTE_REF,
       author,
-      noUpdateBranch: true
+      noUpdateBranch: true,
+      // The default, except that a file which is not text is a conflict.
+      mergeDriver: ({ contents }) => {
+        const merged = mergeText(contents)
+        return { cleanMerge: merged.clean, mergedText: merged.text }
+      }
     })
     return { conflicts: [], autoResolved, oracle: clean.oid ?? null }
   } catch (e) {
@@ -322,10 +375,13 @@ async function analyseMerge(
       theirs: REMOTE_REF,
       author,
       noUpdateBranch: true,
-      // Content does not matter for the paths this run silences — writer
-      // choices and autoResolved entries overwrite them — so "ours" is just a
-      // well-formed placeholder.
-      mergeDriver: ({ contents }) => ({ cleanMerge: true, mergedText: contents[1] })
+      // Every both-changed file that diff3 merges cleanly keeps that merge.
+      // Only the paths this run silences — the conflicts, which the writer's
+      // choices or autoResolved entries overwrite — take "ours" as a
+      // well-formed placeholder. It used to give "ours" to every
+      // both-changed file, so one real conflict anywhere quietly threw away
+      // the other device's half of every clean merge alongside it (I-13).
+      mergeDriver: ({ contents }) => ({ cleanMerge: true, mergedText: mergeText(contents).text })
     })
     return { conflicts: [...conflicts], autoResolved, oracle: oracle.oid ?? null }
   }
@@ -451,18 +507,21 @@ async function completeMerge(
       continue
     }
 
-    // No oracle (delete-conflict case): per-file three-way without diff3.
+    // No oracle (delete-conflict case): per-file three-way. A file both
+    // devices changed was not listed as a conflict, so diff3 merges it
+    // cleanly; it used to be reduced to this device's copy (I-13 again).
     const local = await blobAt(dir, localHead, filepath)
     const remote = await blobAt(dir, remoteHead, filepath)
     const baseBlob = base ? await blobAt(dir, base, filepath) : null
-    const keep = sameBytes(local, remote)
-      ? local
-      : sameBytes(remote, baseBlob)
-        ? local
-        : sameBytes(local, baseBlob)
-          ? remote
-          : local
-    if (keep != null) target.set(filepath, keep)
+    if (sameBytes(local, remote) || sameBytes(remote, baseBlob)) {
+      if (local != null) target.set(filepath, local)
+    } else if (sameBytes(local, baseBlob)) {
+      if (remote != null) target.set(filepath, remote)
+    } else if (local != null && remote != null) {
+      const decode = (b: Uint8Array | null): string => (b ? new TextDecoder().decode(b) : '')
+      const merged = mergeText([decode(baseBlob), decode(local), decode(remote)])
+      target.set(filepath, merged.clean ? merged.text : local)
+    }
   }
 
   await materialize(dir, localHead, target)
