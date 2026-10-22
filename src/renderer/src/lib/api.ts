@@ -25,6 +25,7 @@ import type {
   PrinterInfo,
   PrintSettings,
   StatsSettings,
+  GithubAccount,
   GithubRepo,
   VariantInfo,
   WyrmApi
@@ -823,7 +824,17 @@ export function createMockApi(): WyrmApi {
       // Restoring needs real repositories on disk; the preview has neither.
       return null
     },
+    async getGithubAccount(): Promise<GithubAccount> {
+      return { clientIdSet: mockClientIdSet, login: mockLogin }
+    },
+    async setGithubClientId(): Promise<GithubAccount> {
+      mockClientIdSet = true
+      return { clientIdSet: true, login: mockLogin }
+    },
     async listGithubRepos(): Promise<GithubRepo[]> {
+      // As main does: the list is the signed-in account's, so there is none
+      // until someone signs in — which is what a new computer looks like.
+      if (!mockLogin) throw new Error('Sign in with GitHub first.')
       // Enough shape for the dialog's list, sorting and empty states to be
       // walked in the preview. Cloning itself needs git and a disk.
       return [

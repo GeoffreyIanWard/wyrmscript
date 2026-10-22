@@ -11,8 +11,6 @@ import type {
   StringEnd,
   CompileOptions,
   ConflictResolution,
-  DeviceCodeInfo,
-  SignInPoll,
   SyncConflict,
   SyncOutcome,
   WindowGeometry,
@@ -367,8 +365,6 @@ interface WyrmState {
   stale: boolean
   loadSyncStatus(): Promise<void>
   setSyncClientId(clientId: string): Promise<void>
-  signInStart(): Promise<DeviceCodeInfo>
-  signInPoll(): Promise<SignInPoll>
   signOutGithub(): Promise<void>
   connectSync(options: { create: boolean; name?: string; url?: string }): Promise<void>
   disconnectSync(): Promise<void>
@@ -1592,16 +1588,6 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { project } = get()
       if (!project) return
       set({ syncStatus: await api.setSyncClientId(project.path, clientId) })
-    },
-
-    async signInStart() {
-      return api.signInStart()
-    },
-
-    async signInPoll() {
-      const result = await api.signInPoll()
-      if (result.state === 'ok') await get().loadSyncStatus()
-      return result
     },
 
     async signOutGithub() {

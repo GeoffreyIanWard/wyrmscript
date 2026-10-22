@@ -3,6 +3,7 @@ import { existsSync, promises as fsp } from 'node:fs'
 import { join, basename } from 'node:path'
 import http from 'isomorphic-git/http/node'
 import type {
+  GithubAccount,
   AppearanceSettings,
   WindowGeometry,
   BoardString,
@@ -456,6 +457,18 @@ export function registerIpc(): void {
   let deviceSession: DeviceFlowSession | null = null
 
   ipcMain.handle('sync:status', (_e, path: string) => syncStatusOf(path))
+
+  // App-level, for when no project is open: bringing one down on a new
+  // computer is exactly when the writer needs to sign in first.
+  const accountOf = async (): Promise<GithubAccount> => {
+    const settings = await readSettings()
+    return { clientIdSet: Boolean(settings.syncClientId), login: settings.githubLogin ?? null }
+  }
+  ipcMain.handle('github:account', () => accountOf())
+  ipcMain.handle('github:clientId', async (_e, clientId: string) => {
+    await writeSettings({ syncClientId: clientId.trim() })
+    return accountOf()
+  })
 
   ipcMain.handle('sync:clientId', async (_e, path: string, clientId: string) => {
     await writeSettings({ syncClientId: clientId.trim() })
