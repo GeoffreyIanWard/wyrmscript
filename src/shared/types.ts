@@ -147,6 +147,17 @@ export interface MapBounds {
   height: number
 }
 
+/**
+ * The GitHub account this app is signed into, if any — app-level, not a
+ * project's: a writer on a new computer has no project open yet, and needs to
+ * sign in to bring one down.
+ */
+export interface GithubAccount {
+  /** Whether the OAuth app's client id has been entered on this computer. */
+  clientIdSet: boolean
+  login: string | null
+}
+
 /** A repository on the signed-in GitHub account (F-43). */
 export interface GithubRepo {
   name: string
@@ -899,6 +910,8 @@ export interface WyrmApi {
   restoreFromBackup(): Promise<ProjectInfo | null>
   /** F-43: the signed-in account's repositories, newest first. */
   listGithubRepos(): Promise<GithubRepo[]>
+  getGithubAccount(): Promise<GithubAccount>
+  setGithubClientId(clientId: string): Promise<GithubAccount>
   /**
    * F-43: make a local project from one that already exists on GitHub.
    * Resolves null when the writer cancels the folder picker.

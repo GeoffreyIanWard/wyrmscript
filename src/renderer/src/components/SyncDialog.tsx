@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
-import type { DeviceCodeInfo, SyncOutcome, SyncStatus } from '../../../shared/types'
+import type { SyncOutcome, SyncStatus } from '../../../shared/types'
 import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { GitHubSignIn } from './GitHubSignIn'
 
 type Screen =
   | 'loading'
@@ -134,8 +135,6 @@ export function SyncDialog({
   const backedUp = backupCount > 0
   const loadSyncStatus = useWyrm((s) => s.loadSyncStatus)
   const setSyncClientId = useWyrm((s) => s.setSyncClientId)
-  const signInStart = useWyrm((s) => s.signInStart)
-  const signInPoll = useWyrm((s) => s.signInPoll)
   const signOutGithub = useWyrm((s) => s.signOutGithub)
   const connectSync = useWyrm((s) => s.connectSync)
   const disconnectSync = useWyrm((s) => s.disconnectSync)
@@ -145,20 +144,13 @@ export function SyncDialog({
   // True once the writer has picked the GitHub path this time the dialog is
   // open — see computeScreen. Not persisted; a fresh mount re-asks.
   const [githubChosen, setGithubChosen] = useState(false)
-  const [busy, setBusy] = useState<
-    'local' | 'clientId' | 'signin' | 'connect' | 'sync' | 'disconnect' | 'signout' | null
-  >(null)
+  const [busy, setBusy] = useState<'local' | 'connect' | 'sync' | 'disconnect' | 'signout' | null>(
+    null
+  )
   const [error, setError] = useState<string | null>(null)
   const [outcome, setOutcome] = useState<SyncOutcome | null>(null)
 
-  const clientIdRef = useRef<HTMLInputElement>(null)
-
-  const [deviceInfo, setDeviceInfo] = useState<DeviceCodeInfo | null>(null)
-  const [expired, setExpired] = useState(false)
   const [justSignedIn, setJustSignedIn] = useState(false)
-  const [copied, setCopied] = useState(false)
-  /** Rises while waiting so the panel is visibly alive, not frozen. */
-  const [checks, setChecks] = useState(0)
 
   const [connectMode, setConnectMode] = useState<'create' | 'existing'>('create')
   const [repoName, setRepoName] = useState(() => slugify(project?.data.title ?? ''))
@@ -167,61 +159,6 @@ export function SyncDialog({
   useEffect(() => {
     void loadSyncStatus().catch((e: unknown) => setError(errorMessage(e)))
   }, [loadSyncStatus])
-
-  // Device-flow polling: every 5s until the code is approved, rejected, or
-  // its own clock runs out. Always cleaned up (unmount, or a fresh code
-  // replacing this one) so a closed dialog never keeps polling in the
-  // background — `active` guards state updates from a tick already in
-  // flight when that cleanup runs.
-  useEffect(() => {
-    if (!deviceInfo) return
-    const deadline = Date.now() + deviceInfo.expiresIn * 1000
-    let active = true
-    let timer: ReturnType<typeof setInterval> | null = null
-
-    const stop = (): void => {
-      active = false
-      if (timer) clearInterval(timer)
-    }
-
-    const check = (): void => {
-      if (!active) return
-      if (Date.now() >= deadline) {
-        stop()
-        setExpired(true)
-        setDeviceInfo(null)
-        return
-      }
-      setChecks((n) => n + 1)
-      void signInPoll()
-        .then((result) => {
-          if (!active) return
-          if (result.state === 'ok') {
-            stop()
-            setDeviceInfo(null)
-            // Say so out loud. Silently swapping to the next panel is what
-            // made a working sign-in look like a hang.
-            setJustSignedIn(true)
-          } else if (result.state === 'error') {
-            stop()
-            setDeviceInfo(null)
-            setError(result.detail)
-          }
-        })
-        .catch((e: unknown) => {
-          if (!active) return
-          stop()
-          setDeviceInfo(null)
-          setError(errorMessage(e))
-        })
-    }
-
-    // Check straight away rather than after a first blind 5s: approval is
-    // often already done by the time the writer looks back at the app.
-    check()
-    timer = setInterval(check, 5000)
-    return stop
-  }, [deviceInfo, signInPoll])
 
   const screen = computeScreen(syncStatus, githubChosen, justSignedIn)
 
@@ -235,38 +172,6 @@ export function SyncDialog({
 
   const pickGithub = (): void => {
     setGithubChosen(true)
-  }
-
-  const saveClientId = (): void => {
-    const value = clientIdRef.current?.value.trim()
-    if (!value) return
-    setBusy('clientId')
-    setError(null)
-    void setSyncClientId(value)
-      .catch((e: unknown) => setError(errorMessage(e)))
-      .finally(() => setBusy(null))
-  }
-
-  const startSignIn = (): void => {
-    setBusy('signin')
-    setError(null)
-    setExpired(false)
-    setChecks(0)
-    setCopied(false)
-    void signInStart()
-      .then(setDeviceInfo)
-      .catch((e: unknown) => setError(errorMessage(e)))
-      .finally(() => setBusy(null))
-  }
-
-  const copyCode = (): void => {
-    if (!deviceInfo) return
-    void navigator.clipboard
-      .writeText(deviceInfo.userCode)
-      .then(() => setCopied(true))
-      // Clipboard access can be refused; the code is selectable either way,
-      // so say what happened rather than failing silently.
-      .catch(() => setError('Could not reach the clipboard — select the code and copy it by hand.'))
   }
 
   const connect = (): void => {
@@ -395,81 +300,17 @@ export function SyncDialog({
             </>
           )}
 
-          {screen === 'client-id' && (
-            <fieldset className="fieldset">
-              <legend>CONNECT TO GITHUB</legend>
-              <div className="dialog-hint" style={{ marginTop: 0 }}>
-                One-time setup for this app: create an OAuth App at github.com → Settings →
-                Developer settings → OAuth Apps → New OAuth App, turn on Device Flow, then paste its
-                Client ID below. The Client ID is public, not a secret — no client secret is needed.
-              </div>
-              <div className="field-name" style={{ marginBottom: 6 }}>
-                CLIENT ID
-              </div>
-              <div className="control-row">
-                <input
-                  ref={clientIdRef}
-                  className="text-field"
-                  placeholder="Paste the Client ID here"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') saveClientId()
-                  }}
-                />
-                <button
-                  type="button"
-                  className="btn default"
-                  disabled={busy != null}
-                  onClick={saveClientId}
-                >
-                  {busy === 'clientId' ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            </fieldset>
-          )}
-
-          {screen === 'sign-in' && (
-            <fieldset className="fieldset">
-              <legend>SIGN IN</legend>
-              {deviceInfo == null ? (
-                <>
-                  {expired && (
-                    <div className="dialog-hint" style={{ marginTop: 0 }}>
-                      That code expired — start again.
-                    </div>
-                  )}
-                  <div className="control-row">
-                    <button
-                      type="button"
-                      className="btn default"
-                      disabled={busy != null}
-                      onClick={startSignIn}
-                    >
-                      {busy === 'signin' ? 'Starting…' : 'Sign in with GitHub'}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* Selectable on purpose: the chrome sets user-select:none
-                      globally, which silently made the one string the writer
-                      must reproduce by hand impossible to copy. */}
-                  <div className="device-code">{deviceInfo.userCode}</div>
-                  <div className="control-row" style={{ justifyContent: 'center' }}>
-                    <button type="button" className="btn" onClick={copyCode}>
-                      {copied ? 'Copied' : 'Copy Code'}
-                    </button>
-                  </div>
-                  <div className="dialog-hint" style={{ marginTop: 8 }}>
-                    enter it at {deviceInfo.verificationUri}
-                  </div>
-                  <div className="dialog-hint">
-                    Waiting for approval{'.'.repeat((checks % 3) + 1)} (checked {checks}
-                    {checks === 1 ? ' time' : ' times'}) — this panel changes by itself the moment
-                    GitHub says yes.
-                  </div>
-                </>
-              )}
-            </fieldset>
+          {(screen === 'client-id' || screen === 'sign-in') && (
+            <GitHubSignIn
+              clientIdSet={syncStatus?.clientIdSet ?? false}
+              onSaveClientId={setSyncClientId}
+              // Said out loud: silently swapping to the connect form is what
+              // made a working sign-in look like a hang.
+              onSignedIn={() => {
+                setJustSignedIn(true)
+                void loadSyncStatus().catch((e: unknown) => setError(errorMessage(e)))
+              }}
+            />
           )}
 
           {screen === 'signed-in' && (
