@@ -2,6 +2,7 @@ import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
 import type { MapPin } from '../../shared/types'
+import { MAP_STAMP_KINDS, MARK_SIZES } from '../../shared/types'
 import { assertPlainId, isPlainId } from './plainId'
 
 const MAP_DIR = 'map'
@@ -22,6 +23,8 @@ interface MapPinFrontmatter {
   entityId: string
   x: number
   y: number
+  stamp?: string
+  size?: number
   created: string
   modified: string
 }
@@ -38,7 +41,7 @@ function parseMapPinFile(raw: string): MapPin {
     !Number.isFinite(data.y)
   )
     throw new Error('Not a map pin')
-  return {
+  const pin: MapPin = {
     id: data.id,
     entityId: data.entityId,
     x: data.x,
@@ -46,6 +49,18 @@ function parseMapPinFile(raw: string): MapPin {
     created: data.created,
     modified: data.modified
   }
+  // Read field by field: an unknown stamp leaves a plain pin, and a size only
+  // means anything beside a stamp (and 1 is never stored).
+  const stamp = (MAP_STAMP_KINDS as readonly unknown[]).includes(data.stamp)
+    ? (data.stamp as MapPin['stamp'])
+    : undefined
+  if (stamp) {
+    pin.stamp = stamp
+    if ((MARK_SIZES as readonly unknown[]).includes(data.size) && data.size !== 1) {
+      pin.size = data.size
+    }
+  }
+  return pin
 }
 
 export async function writeMapPin(projectPath: string, pin: MapPin): Promise<void> {
@@ -58,6 +73,12 @@ export async function writeMapPin(projectPath: string, pin: MapPin): Promise<voi
     y: pin.y,
     created: pin.created,
     modified: new Date().toISOString()
+  }
+  if (pin.stamp && (MAP_STAMP_KINDS as readonly unknown[]).includes(pin.stamp)) {
+    meta.stamp = pin.stamp
+    if ((MARK_SIZES as readonly unknown[]).includes(pin.size) && pin.size !== 1) {
+      meta.size = pin.size
+    }
   }
   const file = matter.stringify('', meta)
   await fsp.writeFile(path, file, 'utf8')

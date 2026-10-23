@@ -1692,6 +1692,9 @@ button {
    Off the map's edge is the desk — the 50% dither — so where the map ends
    is never in doubt. */
 .world-map {
+  /* The positioning context for a place's palette, opened by its row in the
+     side panel but drawn over the map. */
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -2434,6 +2437,89 @@ button.map-place-name {
   background: var(--paper);
   border: 1px solid var(--ink);
   padding: 0 3px;
+}
+
+/* A place drawn as its stamp: the stamp's art, with its name under it in
+   the pin's tag. Engraved in the map's two inks like any stamp. */
+.world-map-pin.stamped {
+  gap: 1px;
+}
+
+.world-map-pin.stamped .stamp-glyph {
+  overflow: visible;
+}
+
+/* "Show as…": a small square button in a place's row, showing how the place
+   is drawn now. */
+/* A place's name takes the row's free room, so Show as… and Remove keep
+   together at the right edge in one column down the list. */
+.map-place-row .map-place-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.place-style-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+}
+
+/* Open: reversed, the house sign of the chosen one — distinct from focus. */
+.place-style-toggle.on {
+  color: var(--paper);
+  background: var(--ink);
+}
+
+.place-style-toggle.on .world-map-pin-glyph {
+  border-top-color: var(--paper);
+}
+
+.place-style-toggle.on .map-stamp-body {
+  fill: var(--ink);
+  stroke: var(--paper);
+}
+
+.place-style-toggle.on .map-stamp-lines {
+  stroke: var(--paper);
+}
+
+.place-style-toggle.on .map-stamp-solid {
+  fill: var(--paper);
+}
+
+.place-style-toggle:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.place-style-toggle .stamp-glyph {
+  margin: -2px;
+}
+
+.place-palette-anchor {
+  position: absolute;
+  z-index: 30;
+}
+
+/* The palette's "Pin" choice: the pin's own glyph in a stamp-sized box. */
+.pin-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 25px;
+}
+
+.stamp-palette-item.on .world-map-pin-glyph {
+  border-top-color: var(--paper);
 }
 
 /* F-24: Welcome's recents list. */

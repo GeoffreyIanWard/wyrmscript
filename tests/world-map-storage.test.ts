@@ -84,6 +84,78 @@ describe('writeMapPin / listMapPins', () => {
   })
 })
 
+describe('a pin drawn as a stamp', () => {
+  it('round-trips a stamp and a size', async () => {
+    const dir = await makeProject()
+    const pin = makePin({ stamp: 'castle', size: 1.5 })
+    await writeMapPin(dir, pin)
+    const [found] = await listMapPins(dir)
+    expect(found).toMatchObject({ stamp: 'castle', size: 1.5 })
+  })
+
+  it('keeps a stamp at the usual size without a size key', async () => {
+    const dir = await makeProject()
+    await writeMapPin(dir, makePin({ stamp: 'town' }))
+    const [found] = await listMapPins(dir)
+    expect(found.stamp).toBe('town')
+    expect('size' in found).toBe(false)
+  })
+
+  it('drops an unknown stamp but keeps the pin', async () => {
+    const dir = await makeProject()
+    const pin = makePin()
+    await fsp.mkdir(join(dir, 'map'), { recursive: true })
+    await fsp.writeFile(
+      join(dir, 'map', `${pin.id}.md`),
+      `---\nid: ${pin.id}\nentityId: e1\nx: 1\ny: 2\nstamp: spaceship\nsize: 2.2\n---\n`,
+      'utf8'
+    )
+    const [found] = await listMapPins(dir)
+    expect(found).toMatchObject({ id: pin.id, entityId: 'e1', x: 1, y: 2 })
+    expect('stamp' in found).toBe(false)
+    expect('size' in found).toBe(false)
+  })
+
+  it('does not keep a size on a pin with no stamp', async () => {
+    const dir = await makeProject()
+    const pin = makePin({ size: 2.2 })
+    await writeMapPin(dir, pin)
+    expect(await fsp.readFile(join(dir, 'map', `${pin.id}.md`), 'utf8')).not.toContain('size')
+    const [found] = await listMapPins(dir)
+    expect('size' in found).toBe(false)
+  })
+
+  it.each([[1], [3], [0], [-1], ['big']])('never writes or reads size %s', async (size) => {
+    const dir = await makeProject()
+    const pin = makePin({ stamp: 'castle', size: size as number })
+    await writeMapPin(dir, pin)
+    const file = join(dir, 'map', `${pin.id}.md`)
+    expect(await fsp.readFile(file, 'utf8')).not.toContain('size')
+    // And a hand-edited file carrying it is read without it.
+    await fsp.writeFile(
+      file,
+      `---\nid: ${pin.id}\nentityId: e1\nx: 1\ny: 2\nstamp: castle\nsize: ${JSON.stringify(size)}\n---\n`,
+      'utf8'
+    )
+    const [found] = await listMapPins(dir)
+    expect(found.stamp).toBe('castle')
+    expect('size' in found).toBe(false)
+  })
+
+  it('leaves an old-style pin exactly as it was', async () => {
+    const dir = await makeProject()
+    const pin = makePin()
+    await writeMapPin(dir, pin)
+    const text = await fsp.readFile(join(dir, 'map', `${pin.id}.md`), 'utf8')
+    expect(text).not.toContain('stamp')
+    expect(text).not.toContain('size')
+    const [found] = await listMapPins(dir)
+    expect(Object.keys(found).sort()).toEqual(
+      ['created', 'entityId', 'id', 'modified', 'x', 'y'].sort()
+    )
+  })
+})
+
 describe('deleteMapPin', () => {
   it('removes only the targeted pin and is a no-op for a missing id', async () => {
     const dir = await makeProject()
