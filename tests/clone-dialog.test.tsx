@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { StrictMode } from 'react'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { api } from '../src/renderer/src/lib/api'
 import { useWyrm, __disposeAll } from '../src/renderer/src/store'
@@ -34,6 +35,8 @@ const repos = [
 beforeEach(() => {
   vi.restoreAllMocks()
   onClose.mockClear()
+  // Signed in, as these cases assume; the not-signed-in path has its own tests.
+  vi.spyOn(api, 'getGithubAccount').mockResolvedValue({ clientIdSet: true, login: 'demo' })
 })
 
 afterEach(() => {
@@ -151,5 +154,102 @@ describe('bringing a project down', () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(useWyrm.getState().project?.path).toBe(path)
+  })
+})
+
+describe('on a new computer, not yet signed in', () => {
+  // The reported bug: the list said "Sign in with GitHub first" and the only
+  // place to sign in was Sync, which needs an open project — and a new
+  // computer has none.
+  const signedOut = (clientIdSet: boolean): void => {
+    vi.spyOn(api, 'getGithubAccount').mockResolvedValue({ clientIdSet, login: null })
+  }
+  const text = (): string => document.querySelector('.dialog')?.textContent ?? ''
+
+  it('signs in right here, from the client id to the list', async () => {
+    signedOut(false)
+    const setClientId = vi
+      .spyOn(api, 'setGithubClientId')
+      .mockResolvedValue({ clientIdSet: true, login: null })
+    vi.spyOn(api, 'signInStart').mockResolvedValue({
+      userCode: 'WYRM-1234',
+      verificationUri: 'https://github.com/login/device',
+      expiresIn: 900
+    })
+    vi.spyOn(api, 'signInPoll').mockResolvedValue({ state: 'ok', login: 'geoffrey' })
+    const list = vi.spyOn(api, 'listGithubRepos').mockResolvedValue(repos)
+    await renderDialog()
+
+    // Nothing is asked of GitHub's list before there is an account to list.
+    expect(list).not.toHaveBeenCalled()
+    expect(text()).not.toContain('Sign in with GitHub first')
+    const field = document.querySelector<HTMLInputElement>(
+      'input[placeholder="Paste the Client ID here"]'
+    )!
+    await act(async () => {
+      fireEvent.change(field, { target: { value: 'Iv1.test' } })
+      fireEvent.keyDown(field, { key: 'Enter' })
+    })
+    expect(setClientId).toHaveBeenCalledWith('Iv1.test')
+
+    const signIn = [...document.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Sign in with GitHub'
+    )!
+    await act(async () => {
+      fireEvent.click(signIn)
+    })
+    await waitFor(() => expect(text()).toContain('Signed in to GitHub as geoffrey'))
+    await waitFor(() =>
+      expect(document.querySelector('.row-title')?.textContent).toBe('demo/winter')
+    )
+    expect(list).toHaveBeenCalledTimes(1)
+  })
+
+  it('gets past “Looking…” under StrictMode, as the app runs it', async () => {
+    // StrictMode mounts, cleans up and mounts again; a "still open" flag only
+    // ever cleared on cleanup dropped every answer and the dialog never moved.
+    signedOut(true)
+    await act(async () => {
+      render(
+        <StrictMode>
+          <CloneDialog onClose={onClose} />
+        </StrictMode>
+      )
+    })
+    await waitFor(() =>
+      expect(
+        [...document.querySelectorAll('button')].some(
+          (b) => b.textContent === 'Sign in with GitHub'
+        )
+      ).toBe(true)
+    )
+    expect(text()).not.toContain('Looking…')
+  })
+
+  it('goes straight to signing in when this computer already has the client id', async () => {
+    signedOut(true)
+    await renderDialog()
+    expect(
+      [...document.querySelectorAll('button')].some((b) => b.textContent === 'Sign in with GitHub')
+    ).toBe(true)
+    expect(document.querySelector('input[placeholder="Paste the Client ID here"]')).toBeNull()
+  })
+
+  it('says a private address needs signing in, rather than letting it fail later', async () => {
+    signedOut(true)
+    await renderDialog()
+    expect(text()).toContain('A private one needs you signed in above first.')
+  })
+
+  it('says why an empty client id was not saved', async () => {
+    signedOut(false)
+    const setClientId = vi.spyOn(api, 'setGithubClientId')
+    await renderDialog()
+    const save = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Save')!
+    await act(async () => {
+      fireEvent.click(save)
+    })
+    expect(setClientId).not.toHaveBeenCalled()
+    expect(text()).toContain('Paste the Client ID first.')
   })
 })

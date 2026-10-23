@@ -24,6 +24,21 @@ export interface DeviceFlowSession {
 export type DevicePollResult =
   { state: 'pending' } | { state: 'ok'; token: string } | { state: 'error'; detail: string }
 
+/**
+ * WyrmStar's own OAuth app, built in so a new computer can sign in with no
+ * setup — it used to ask every writer to register an OAuth app of their own
+ * and paste its id, once per computer. Public by design, as above: it names
+ * the app, not an account, and each writer still signs in to their own
+ * GitHub and approves access there. A client id saved in settings (the old
+ * paste-it-in step, or a writer who wants their own app) still wins.
+ */
+export const BUILT_IN_CLIENT_ID = 'Ov23liudhPpDFxOdmR8M'
+
+/** The client id to sign in with: a saved one, else the built-in one. */
+export function clientIdOf(saved: string | undefined): string {
+  return saved?.trim() || BUILT_IN_CLIENT_ID
+}
+
 const DEVICE_CODE_URL = 'https://github.com/login/device/code'
 const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
 const API = 'https://api.github.com'

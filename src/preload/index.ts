@@ -87,6 +87,8 @@ const api: WyrmApi = {
   backupNow: (path) => ipcRenderer.invoke('backup:now', path),
   restoreFromBackup: () => ipcRenderer.invoke('backup:restore'),
   listGithubRepos: () => ipcRenderer.invoke('github:repos'),
+  getGithubAccount: () => ipcRenderer.invoke('github:account'),
+  setGithubClientId: (clientId) => ipcRenderer.invoke('github:clientId', clientId),
   cloneProject: (url: string) => ipcRenderer.invoke('project:clone', url),
 
   getSyncStatus: (path) => ipcRenderer.invoke('sync:status', path),
