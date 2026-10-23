@@ -358,10 +358,41 @@ export interface MapShape {
  * line. A stamp is a 1-bit picture of a feature (a mountain, a forest); a
  * label is free text for a sea, a region, anything not drawn.
  */
-export const MAP_STAMP_KINDS = ['mountain', 'hills', 'forest', 'marsh', 'town'] as const
+// Order is storage-irrelevant (a stamp is stored by its kind's name); the
+// palette groups them itself. 'forest' is the broadleaf wood, kept under its
+// first name so maps drawn before pines existed still read.
+export const MAP_STAMP_KINDS = [
+  'mountain',
+  'hills',
+  'mesa',
+  'cliffs',
+  'volcano',
+  'dunes',
+  'cave',
+  'forest',
+  'pine',
+  'marsh',
+  'waterfall',
+  'rocks',
+  'ship',
+  'lighthouse',
+  'town',
+  'city',
+  'castle',
+  'tower',
+  'ruins'
+] as const
 export type MapStampKind = (typeof MAP_STAMP_KINDS)[number]
 export type MapMarkKind = MapStampKind | 'label'
 export const MAP_MARK_KINDS: readonly MapMarkKind[] = [...MAP_STAMP_KINDS, 'label']
+
+/** The sizes a mark can be drawn at, small to extra large. 1 is the usual
+ *  size, and is never stored. */
+export const MARK_SIZES = [0.6, 1, 1.5, 2.2] as const
+
+/** A stored size, or 1 for one that is missing or not one of `MARK_SIZES`. */
+export const markSizeOf = (size: unknown): number =>
+  (MARK_SIZES as readonly unknown[]).includes(size) ? (size as number) : 1
 
 /**
  * One mark on the map, in map pixels. Stored one per file as
@@ -376,6 +407,9 @@ export interface MapMark {
   kind: MapMarkKind
   x: number
   y: number
+  /** How large it is drawn, as a multiple of its usual size (one of
+   *  `MARK_SIZES`). Omitted at the usual size. */
+  size?: number
   name?: string
   created: string
   modified: string

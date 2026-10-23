@@ -4,11 +4,16 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { MapMark, MapPin, MapShape, ProjectInfo } from '../src/shared/types'
 import { useWyrm } from '../src/renderer/src/store'
 import { WorldMap } from '../src/renderer/src/components/WorldMap'
+import { MAP_STAMP_KINDS } from '../src/shared/types'
 import {
   describeMark,
   labelAnchor,
+  MARK_NAME,
   STAMP_ART,
+  STAMP_GROUPS,
   STAMP_H,
+  STAMP_SCALE,
+  STAMP_W,
   stampNameAt
 } from '../src/renderer/src/lib/mapMarks'
 
@@ -74,9 +79,23 @@ describe('where names go', () => {
 
   it('puts a stamp’s name under it, and says what a mark is', () => {
     expect(stampNameAt({ x: 10, y: 10 })).toEqual({ x: 10, y: 10 + STAMP_H / 2 + 2 })
-    expect(describeMark('forest')).toBe('Forest')
-    expect(describeMark('forest', 'Hollin Wood')).toBe('Forest, “Hollin Wood”')
+    expect(describeMark('forest')).toBe('Woods')
+    expect(describeMark('forest', 'Hollin Wood')).toBe('Woods, “Hollin Wood”')
     expect(describeMark('label', 'The Grey Sound')).toBe('Label “The Grey Sound”')
+  })
+
+  it('offers every stamp in exactly one group of the palette', () => {
+    const grouped = STAMP_GROUPS.flatMap((g) => g.kinds)
+    expect([...grouped].sort()).toEqual([...MAP_STAMP_KINDS].sort())
+    expect(new Set(grouped).size).toBe(grouped.length)
+    for (const kind of MAP_STAMP_KINDS) expect(MARK_NAME[kind]).toBeTruthy()
+  })
+
+  it('puts a stamp’s name just under it, at every size', () => {
+    expect(stampNameAt({ x: 0, y: 0 }, 2.2)).toEqual({ x: 0, y: STAMP_H * 1.1 + 2 })
+    expect(stampNameAt({ x: 0, y: 0 }, 0.6)).toEqual({ x: 0, y: STAMP_H * 0.3 + 2 })
+    for (const size of [0.6, 1, 1.5, 2.2])
+      expect(stampNameAt({ x: 0, y: 0 }, size).y).toBeGreaterThan((STAMP_H * size) / 2)
   })
 
   it('has art for every stamp, all of it ink lines on paper bodies', () => {
@@ -202,6 +221,18 @@ const tool = async (name: string): Promise<void> => {
     fireEvent.click(screen.getByRole('button', { name }))
   })
 }
+/** Choose a stamp from the palette, as a writer does: open it, pick one. */
+const stampTool = async (name: string): Promise<void> => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /^Stamps/ }))
+  })
+  const item = [...document.querySelectorAll<HTMLElement>('.stamp-palette-item')].find(
+    (b) => b.textContent === name
+  )!
+  await act(async () => {
+    fireEvent.click(item, { detail: 1 })
+  })
+}
 const region = (): HTMLElement => screen.getByRole('region', { name: /^World map\./ })
 const key = async (
   k: string,
@@ -259,36 +290,36 @@ afterEach(() => {
 describe('stamping', () => {
   it('puts a stamp down at every click', async () => {
     const m = await renderMap()
-    await tool('Mountain')
+    await stampTool('Mountain')
     await clickMap(120, 80)
     await clickMap(150, 90)
-    expect(m.createMapMarkAt).toHaveBeenNthCalledWith(1, '/demo', 'mountain', 120, 80)
-    expect(m.createMapMarkAt).toHaveBeenNthCalledWith(2, '/demo', 'mountain', 150, 90)
-    await tool('Town')
+    expect(m.createMapMarkAt).toHaveBeenNthCalledWith(1, '/demo', 'mountain', 120, 80, undefined, 1)
+    expect(m.createMapMarkAt).toHaveBeenNthCalledWith(2, '/demo', 'mountain', 150, 90, undefined, 1)
+    await stampTool('Town')
     await clickMap(300, 300)
-    expect(m.createMapMarkAt).toHaveBeenLastCalledWith('/demo', 'town', 300, 300)
+    expect(m.createMapMarkAt).toHaveBeenLastCalledWith('/demo', 'town', 300, 300, undefined, 1)
   })
 
   it('says each stamp went down, and takes a double-click as one stamp', async () => {
     const m = await renderMap()
     m.createMapMarkAt.mockImplementation(async () => mark())
-    await tool('Mountain')
+    await stampTool('Mountain')
     await clickMap(120, 80)
     expect(hint()).toContain('Mountain put down.')
     await clickMap(120, 80)
     expect(m.createMapMarkAt).toHaveBeenCalledTimes(1)
     // The swallowed second click does not take the news away either.
     expect(hint()).toContain('Mountain put down.')
-    await tool('Hills')
+    await stampTool('Hills')
     expect(hint()).not.toContain('put down')
   })
 
   it('stamps from the keyboard, at the cursor', async () => {
     const m = await renderMap()
-    await tool('Marsh')
+    await stampTool('Marsh')
     for (let i = 0; i < 5; i++) await key('ArrowRight', region(), { altKey: true })
     await key(' ')
-    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'marsh', 40, 0)
+    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'marsh', 40, 0, undefined, 1)
     expect(region().getAttribute('aria-label')).toContain('Space puts one down')
   })
 
@@ -306,11 +337,11 @@ describe('stamping', () => {
   it('keeps pins out of the way while stamping', async () => {
     const pin: MapPin = { id: 'p1', entityId: 'e1', x: 200, y: 200 }
     const m = await renderMap([], [], [pin])
-    await tool('Forest')
+    await stampTool('Woods')
     const el = document.querySelector('.world-map-pin[data-pin="p1"]')!
     await clickOn(el, 200, 200)
     expect(m.showEntity).not.toHaveBeenCalled()
-    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'forest', 200, 200)
+    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'forest', 200, 200, undefined, 1)
   })
 })
 
@@ -331,7 +362,7 @@ describe('free labels', () => {
     expect(field()).toBeTruthy()
     await typeIn('  The Grey Sound ')
     await key('Enter', field()!)
-    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 300, 250, 'The Grey Sound')
+    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 300, 250, 'The Grey Sound', 1)
     expect(field()).toBeNull()
   })
 
@@ -364,7 +395,7 @@ describe('free labels', () => {
     await clickMap(200, 200)
     await typeIn('Northreach')
     await key('Enter', field()!)
-    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 200, 200, 'Northreach')
+    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 200, 200, 'Northreach', 1)
   })
 
   it('keeps a label typed and then clicked away from', async () => {
@@ -374,7 +405,7 @@ describe('free labels', () => {
     await clickMap(100, 100)
     await typeIn('The Shallows')
     await act(async () => field()!.blur())
-    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 100, 100, 'The Shallows')
+    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 100, 100, 'The Shallows', 1)
   })
 
   it('leaves the field open, half-typed, when the window loses focus', async () => {
@@ -394,7 +425,7 @@ describe('free labels', () => {
     await clickMap(120, 90)
     await typeIn('The Sunless Sea')
     m.r.unmount()
-    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 120, 90, 'The Sunless Sea')
+    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 120, 90, 'The Sunless Sea', 1)
   })
 
   it('keeps a name being typed when the map goes away under it', async () => {
@@ -414,7 +445,7 @@ describe('free labels', () => {
     await typeIn('The Narrow Sea')
     await key('Enter', field()!)
     await settle()
-    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 40, 0, 'The Narrow Sea')
+    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 40, 0, 'The Narrow Sea', 1)
     expect(document.activeElement).toBe(region())
     expect(document.querySelector<HTMLElement>('.map-cursor')!.style.left).toBe('40px')
   })
@@ -589,9 +620,9 @@ describe('the hand, on marks', () => {
 
   it('offers marks to the keyboard and a screen reader only with the hand', async () => {
     await renderMap([mark({ name: 'Hollin Wood' }), mark({ id: 'm2', kind: 'label', name: 'Sea' })])
-    expect(screen.getByRole('button', { name: /^Forest, “Hollin Wood”\./ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Woods, “Hollin Wood”\./ })).toBeTruthy()
     await tool('Land')
-    expect(screen.queryByRole('button', { name: /^Forest, “Hollin Wood”/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Woods, “Hollin Wood”/ })).toBeNull()
     expect((stamp('m2') as HTMLElement).tabIndex).toBe(-1)
   })
 })
@@ -628,7 +659,7 @@ describe('naming shapes', () => {
 
   it('does nothing on a double-click with a drawing tool', async () => {
     await renderMap([], [land])
-    await tool('Mountain')
+    await stampTool('Mountain')
     await act(async () => {
       fireEvent.doubleClick(document.querySelector('[data-shape="s1"] .map-shape-body')!)
     })
@@ -642,5 +673,335 @@ describe('the map’s extent', () => {
     const style = (sizer() as HTMLElement).style
     expect(parseFloat(style.width)).toBeGreaterThanOrEqual(6000)
     expect(parseFloat(style.height)).toBeGreaterThanOrEqual(4000)
+  })
+})
+
+describe('the stamp palette', () => {
+  const toggle = (): HTMLElement => screen.getByRole('button', { name: /^Stamps/ })
+  const palette = (): HTMLElement | null => document.querySelector('.stamp-palette')
+
+  it('opens from one toolbar button, every stamp drawn and grouped', async () => {
+    await renderMap()
+    expect(palette()).toBeNull()
+    expect(toggle().getAttribute('aria-expanded')).toBe('false')
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+    expect(toggle().getAttribute('aria-expanded')).toBe('true')
+    expect(document.querySelectorAll('.stamp-palette-item')).toHaveLength(MAP_STAMP_KINDS.length)
+    expect(document.querySelectorAll('.stamp-palette-item .stamp-glyph')).toHaveLength(
+      MAP_STAMP_KINDS.length
+    )
+    expect(palette()!.textContent).toContain('SETTLEMENTS')
+    // The first stamp takes the keyboard as it opens.
+    expect(document.activeElement).toBe(document.querySelector('[data-stamp="mountain"]'))
+  })
+
+  it('chooses a stamp, says which on its toggle, and hands the keyboard to the map', async () => {
+    const m = await renderMap()
+    await stampTool('Castle')
+    expect(palette()).toBeNull()
+    expect(toggle().getAttribute('aria-label')).toBe('Stamps: Castle')
+    expect(toggle().querySelector('.stamp-glyph')).toBeTruthy()
+    expect(document.activeElement).toBe(region())
+    await clickMap(50, 60)
+    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'castle', 50, 60, undefined, 1)
+  })
+
+  it('reopens on the stamp in hand, walks with the arrows, and closes on Esc without leaving the map', async () => {
+    const { back, done } = listenForBack()
+    try {
+      await renderMap()
+      await stampTool('Mesa')
+      await act(async () => {
+        fireEvent.click(toggle())
+      })
+      expect(document.activeElement).toBe(document.querySelector('[data-stamp="mesa"]'))
+      await key('ArrowRight', document.activeElement!)
+      expect(document.activeElement).toBe(document.querySelector('[data-stamp="cliffs"]'))
+      await key('ArrowLeft', document.activeElement!)
+      await key('ArrowLeft', document.activeElement!)
+      expect(document.activeElement).toBe(document.querySelector('[data-stamp="hills"]'))
+      await key('Escape', document.activeElement!)
+      await settle()
+      expect(palette()).toBeNull()
+      expect(back).not.toHaveBeenCalled()
+      expect(document.activeElement).toBe(toggle())
+    } finally {
+      done()
+    }
+  })
+
+  it('closes on a press anywhere else', async () => {
+    await renderMap()
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+    await act(async () => pointer(document.body, 'pointerdown', 0, 0))
+    expect(palette()).toBeNull()
+  })
+
+  it('only closes on a press on the map, never stamps there too', async () => {
+    const m = await renderMap()
+    await stampTool('Pines')
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+    await clickMap(70, 80)
+    expect(palette()).toBeNull()
+    expect(m.createMapMarkAt).not.toHaveBeenCalled()
+    await clickMap(70, 80)
+    expect(m.createMapMarkAt).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes and reopens from its own toggle', async () => {
+    await renderMap()
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+    await act(async () => {
+      pointer(toggle(), 'pointerdown', 0, 0)
+      fireEvent.click(toggle())
+    })
+    expect(palette()).toBeNull()
+    expect(toggle().getAttribute('aria-expanded')).toBe('false')
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+    expect(palette()).toBeTruthy()
+  })
+
+  it('is one Tab stop, a dialog with named groups, and closes when focus leaves', async () => {
+    await renderMap()
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+    expect(palette()!.getAttribute('role')).toBe('dialog')
+    expect(toggle().getAttribute('aria-haspopup')).toBe('dialog')
+    expect(toggle().getAttribute('aria-controls')).toBe(palette()!.id)
+    expect(document.querySelectorAll('.stamp-palette-item[tabindex="0"]')).toHaveLength(1)
+    const grids = [...document.querySelectorAll('.stamp-palette-grid')]
+    expect(
+      grids.map((g) => document.getElementById(g.getAttribute('aria-labelledby')!)?.textContent)
+    ).toEqual(['LAND', 'WOODS AND WETLAND', 'WATER', 'SETTLEMENTS'])
+    const label = screen.getByRole('button', { name: 'Label' })
+    await act(async () => {
+      fireEvent.blur(document.activeElement!, { relatedTarget: label })
+    })
+    expect(palette()).toBeNull()
+  })
+
+  it('moves by row with Up and Down, keeping the column, across groups', async () => {
+    await renderMap()
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+    const at = (): string | null => document.activeElement?.getAttribute('data-stamp') ?? null
+    expect(at()).toBe('mountain')
+    await key('ArrowUp', document.activeElement!)
+    expect(at()).toBe('mountain')
+    await key('ArrowDown', document.activeElement!)
+    expect(at()).toBe('volcano')
+    await key('ArrowRight', document.activeElement!)
+    await key('ArrowRight', document.activeElement!)
+    expect(at()).toBe('cave')
+    await key('ArrowDown', document.activeElement!)
+    // Woods and wetland has three: column three is as near as it goes.
+    expect(at()).toBe('marsh')
+    await key('ArrowUp', document.activeElement!)
+    expect(at()).toBe('cave')
+    expect(document.activeElement!.getAttribute('tabindex')).toBe('0')
+  })
+
+  it('closes on Esc from its toggle without leaving the map', async () => {
+    const { back, done } = listenForBack()
+    try {
+      await renderMap()
+      await act(async () => {
+        fireEvent.click(toggle())
+      })
+      await key('Escape', toggle())
+      expect(palette()).toBeNull()
+      expect(back).not.toHaveBeenCalled()
+    } finally {
+      done()
+    }
+  })
+
+  it('hands the keyboard to the map only once Return is let go', async () => {
+    await renderMap()
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+    const item = document.querySelector<HTMLElement>('[data-stamp="hills"]')!
+    await act(async () => {
+      fireEvent.keyDown(item, { key: 'Enter', code: 'Enter' })
+      fireEvent.click(item, { detail: 0 })
+    })
+    expect(toggle().getAttribute('aria-label')).toBe('Stamps: Hills')
+    // The map does not take the keyboard while Return is down: it would
+    // receive that Return and put a stamp down at the cursor.
+    await settle()
+    expect(document.activeElement).not.toBe(region())
+    // Released where focus now is: the palette, and the item, are gone.
+    await act(async () => {
+      fireEvent.keyUp(document.body, { key: 'Enter', code: 'Enter' })
+    })
+    await settle()
+    expect(palette()).toBeNull()
+    expect(document.activeElement).toBe(region())
+  })
+})
+
+describe('sizes', () => {
+  const sizeButton = (name: string): HTMLElement =>
+    screen.getByRole('group', { name: 'Size' }).querySelector(`[aria-label^="${name} ("]`)!
+
+  it('shows the size control only while a stamp or a label is in play', async () => {
+    await renderMap([mark()])
+    expect(screen.queryByRole('group', { name: 'Size' })).toBeNull()
+    await stampTool('Pines')
+    expect(screen.getByRole('group', { name: 'Size' })).toBeTruthy()
+    await tool('Land')
+    expect(screen.queryByRole('group', { name: 'Size' })).toBeNull()
+    await tool('Hand')
+    await clickOn(stamp().querySelector('.map-mark-hit')!, 200, 150)
+    expect(screen.getByRole('group', { name: 'Size' })).toBeTruthy()
+  })
+
+  it('makes new stamps and labels at the size chosen', async () => {
+    const m = await renderMap()
+    await stampTool('Ruins')
+    await act(async () => {
+      fireEvent.click(sizeButton('Large'))
+    })
+    expect(sizeButton('Large').getAttribute('aria-pressed')).toBe('true')
+    await clickMap(30, 40)
+    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'ruins', 30, 40, undefined, 1.5)
+    await tool('Label')
+    await clickMap(90, 90)
+    await typeIn('The Waste')
+    await key('Enter', field()!)
+    expect(m.createMapMarkAt).toHaveBeenLastCalledWith('/demo', 'label', 90, 90, 'The Waste', 1.5)
+  })
+
+  it('resizes a chosen stamp from the control, or with [ and ]', async () => {
+    const m = await renderMap([mark({ size: 1.5 })])
+    await clickOn(stamp().querySelector('.map-mark-hit')!, 200, 150)
+    expect(sizeButton('Large').getAttribute('aria-pressed')).toBe('true')
+    await act(async () => {
+      fireEvent.click(sizeButton('Extra large'))
+    })
+    expect(m.updateMapMarkAt).toHaveBeenLastCalledWith('/demo', 'm1', { size: 2.2 })
+    // With focus on the map, not the stamp, as after a click.
+    await key('[')
+    expect(m.updateMapMarkAt).toHaveBeenLastCalledWith('/demo', 'm1', { size: 1 })
+    await key(']', stamp())
+    expect(m.updateMapMarkAt).toHaveBeenLastCalledWith('/demo', 'm1', { size: 2.2 })
+    // The mark's own [ and ] stop there: one write, not two.
+    expect(m.updateMapMarkAt).toHaveBeenCalledTimes(3)
+  })
+
+  it('resizes a stamp that only has focus, not yet chosen', async () => {
+    const m = await renderMap([mark({ size: 1.5 })])
+    await act(async () => (stamp() as SVGElement).focus())
+    await key(']', stamp())
+    expect(m.updateMapMarkAt).toHaveBeenCalledTimes(1)
+    expect(m.updateMapMarkAt).toHaveBeenCalledWith('/demo', 'm1', { size: 2.2 })
+  })
+
+  it('says each size step, and that the last press did nothing at an end', async () => {
+    await renderMap([mark({ size: 2.2 })])
+    await clickOn(stamp().querySelector('.map-mark-hit')!, 200, 150)
+    await key(']')
+    expect(hint()).toContain('Already extra large, the largest size.')
+    await key('[')
+    expect(hint()).toContain('Woods: large.')
+  })
+
+  it('never resizes from [ or ] typed into a name', async () => {
+    const m = await renderMap([mark({ size: 1.5, name: 'Fort' })])
+    await clickOn(stamp().querySelector('.map-mark-hit')!, 200, 150)
+    await key('Enter', stamp())
+    await key('[', field()!)
+    await key(']', field()!)
+    expect(m.updateMapMarkAt).not.toHaveBeenCalledWith(
+      '/demo',
+      'm1',
+      expect.objectContaining({ size: expect.anything() })
+    )
+    expect(field()).toBeTruthy()
+  })
+
+  it('sizes a label being typed without closing it', async () => {
+    const m = await renderMap()
+    await tool('Label')
+    await clickMap(90, 90)
+    await typeIn('The Grey Sea')
+    const xl = sizeButton('Extra large')
+    // The press does not take focus from the field (its default is stopped).
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    xl.dispatchEvent(press)
+    expect(press.defaultPrevented).toBe(true)
+    await act(async () => {
+      fireEvent.click(xl)
+    })
+    expect(field()).toBeTruthy()
+    await key('Enter', field()!)
+    expect(m.createMapMarkAt).toHaveBeenCalledWith('/demo', 'label', 90, 90, 'The Grey Sea', 2.2)
+  })
+
+  it('draws a small stamp no smaller than small on screen when zoomed out', async () => {
+    await renderMap([mark({ size: 0.6 })])
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }))
+    })
+    const w = Number(stamp().querySelector('.map-mark-hit')!.getAttribute('width'))
+    expect(w).toBeCloseTo(STAMP_W * 1.2)
+  })
+
+  it('widens the map north and west for a large stamp at its top-left corner', async () => {
+    await renderMap([mark({ x: 0, y: 0, size: 2.2 })])
+    const style = (sizer() as HTMLElement).style
+    expect(parseFloat(style.width)).toBeGreaterThanOrEqual(2400 + (STAMP_W * 2.2) / 2)
+    expect(parseFloat(style.height)).toBeGreaterThanOrEqual(1600 + (STAMP_H * 2.2) / 2)
+  })
+
+  it('widens the map to take in a large stamp at its edge', async () => {
+    await renderMap([mark({ x: 2400, y: 1600, size: 2.2, name: 'Edge' })])
+    const style = (sizer() as HTMLElement).style
+    expect(parseFloat(style.width)).toBeGreaterThanOrEqual(2400 + (STAMP_W * 2.2) / 2)
+    expect(parseFloat(style.height)).toBeGreaterThanOrEqual(1600 + (STAMP_H * 2.2) / 2 + 16)
+  })
+
+  it('does not step past the smallest size', async () => {
+    const m = await renderMap([mark({ size: 0.6 })])
+    await clickOn(stamp().querySelector('.map-mark-hit')!, 200, 150)
+    await key('[')
+    expect(m.updateMapMarkAt).not.toHaveBeenCalled()
+  })
+
+  it('draws a stamp, its name and a label at their sizes', async () => {
+    await renderMap([
+      mark({ size: 2.2, name: 'Hollin Wood' }),
+      mark({ id: 'm2', kind: 'label', name: 'Sea', size: 0.6 })
+    ])
+    const hit = stamp().querySelector('.map-mark-hit')!
+    expect(Number(hit.getAttribute('width'))).toBeCloseTo(STAMP_W * 2.2)
+    expect(stamp().querySelector('g')!.getAttribute('transform')).toBe(
+      `scale(${STAMP_SCALE * 2.2})`
+    )
+    const name = document.querySelector<HTMLElement>('.map-label.stamp-name')!
+    expect(name.style.top).toBe(`${150 + STAMP_H * 1.1 + 2}px`)
+    // Centred on its point at any size: half the drawing either side.
+    const [tx, ty] = stamp()
+      .getAttribute('transform')!
+      .match(/translate\(([-\d.]+) ([-\d.]+)\)/)!
+      .slice(1)
+      .map(Number)
+    expect(tx + (STAMP_W * 2.2) / 2).toBeCloseTo(200)
+    expect(ty + (STAMP_H * 2.2) / 2).toBeCloseTo(150)
+    expect(stamp().getAttribute('aria-label')).toContain('Woods, “Hollin Wood”, extra large.')
+    expect((stamp('m2') as HTMLElement).style.fontSize).toBe(`${14 * 0.6}px`)
   })
 })

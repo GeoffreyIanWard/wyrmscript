@@ -37,10 +37,18 @@ function parkWith(parkedMark: MapMark, front: MapMark[]): void {
 
 const T0 = new Date('2030-01-01T00:00:00.000Z')
 
-function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (v: T) => void
+  reject: (e: Error) => void
+} {
   let resolve!: (v: T) => void
-  const promise = new Promise<T>((r) => (resolve = r))
-  return { promise, resolve }
+  let reject!: (e: Error) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 /**
@@ -92,6 +100,50 @@ describe('map marks in the store', () => {
     const second = await useWyrm.getState().createMapMark('town', 1, 1)
     expect(useWyrm.getState().mapMarks.map((x) => x.id)).toEqual([m!.id, second!.id])
     expect(second!.id).not.toBe(m!.id)
+  })
+
+  it('creates a mark with a size, and omits the key at size 1 or an invalid size', async () => {
+    const path = await openDemo()
+    const big = await useWyrm.getState().createMapMark('mountain', 1, 1, undefined, 2.2)
+    expect(big!.size).toBe(2.2)
+    expect((await api.listMapMarks(path)).find((m) => m.id === big!.id)!.size).toBe(2.2)
+    const viaAt = await useWyrm.getState().createMapMarkAt(path, 'hills', 1, 1, 'Hi', 0.6)
+    expect(viaAt).toMatchObject({ name: 'Hi', size: 0.6 })
+    for (const size of [1, 3, 0, -1, NaN]) {
+      const m = await useWyrm.getState().createMapMark('town', 1, 1, undefined, size)
+      expect('size' in m!).toBe(false)
+    }
+  })
+
+  it('updates a size, and size 1 deletes the key rather than assigning it', async () => {
+    const path = await openDemo()
+    const m = (await useWyrm.getState().createMapMark('town', 5, 6))!
+    await useWyrm.getState().updateMapMarkAt(path, m.id, { size: 1.5 })
+    expect(useWyrm.getState().mapMarks[0].size).toBe(1.5)
+    expect((await api.listMapMarks(path))[0].size).toBe(1.5)
+    const write = vi.spyOn(api, 'writeMapMark')
+    await useWyrm.getState().updateMapMarkAt(path, m.id, { size: 1 })
+    expect(write).toHaveBeenCalledTimes(1)
+    expect('size' in write.mock.calls[0][1]).toBe(false)
+    expect('size' in useWyrm.getState().mapMarks[0]).toBe(false)
+    expect('size' in (await api.listMapMarks(path))[0]).toBe(false)
+  })
+
+  it('ignores an invalid size, writing nothing', async () => {
+    const path = await openDemo()
+    const m = (await useWyrm.getState().createMapMark('town', 5, 6, undefined, 0.6))!
+    const write = vi.spyOn(api, 'writeMapMark')
+    for (const size of [0, 3, -1, NaN]) {
+      await useWyrm.getState().updateMapMarkAt(path, m.id, { size })
+    }
+    // Same size again, and size 1 on a mark already at 1, are no changes either.
+    await useWyrm.getState().updateMapMarkAt(path, m.id, { size: 0.6 })
+    expect(write).not.toHaveBeenCalled()
+    expect(useWyrm.getState().mapMarks[0].size).toBe(0.6)
+    // An invalid size beside a real move still moves, leaving the size alone.
+    await useWyrm.getState().updateMapMarkAt(path, m.id, { x: 9, size: 3 })
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(write.mock.calls[0][1]).toMatchObject({ x: 9, size: 0.6 })
   })
 
   it('keeps a stamp’s trimmed name, and drops a blank one', async () => {
@@ -378,5 +430,107 @@ describe('map marks in the store', () => {
     listed.x = 999
     expect((await api.listMapMarks(path))[0].x).toBe(1)
     expect(m.x).toBe(1)
+  })
+})
+
+describe('concurrent updates to one mark', () => {
+  /** Every write waits on its own gate, so a test decides when each lands. */
+  function gated(): {
+    writes: MapMark[]
+    gates: ReturnType<typeof deferred<void>>[]
+  } {
+    const writes: MapMark[] = []
+    const gates: ReturnType<typeof deferred<void>>[] = []
+    vi.spyOn(api, 'writeMapMark').mockImplementation((_path, m) => {
+      writes.push({ ...m })
+      const gate = deferred<void>()
+      gates.push(gate)
+      return gate.promise
+    })
+    return { writes, gates }
+  }
+
+  async function seed(over: Partial<MapMark> = {}): Promise<string> {
+    const path = await openDemo()
+    useWyrm.setState({ mapMarks: [mark({ id: 'a', kind: 'town', ...over })] })
+    return path
+  }
+
+  const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
+
+  it.each([['in order'], ['reversed']])(
+    'a rename then a size click keeps both (%s)',
+    async (order) => {
+      const path = await seed()
+      const { writes, gates } = gated()
+      const { updateMapMarkAt } = useWyrm.getState()
+      const a = updateMapMarkAt(path, 'a', { name: 'Ironhold' })
+      const b = updateMapMarkAt(path, 'a', { size: 2.2 })
+      await settle()
+      expect(writes).toHaveLength(1) // the second waits for the first
+      if (order === 'in order') {
+        gates[0].resolve()
+        await vi.waitFor(() => expect(writes).toHaveLength(2))
+        gates[1].resolve()
+      } else {
+        // Landing out of order is impossible once serialized: resolving the
+        // second gate early changes nothing.
+        gates[0].resolve()
+        await vi.waitFor(() => expect(gates).toHaveLength(2))
+        gates[1].resolve()
+      }
+      await Promise.all([a, b])
+      expect(writes[writes.length - 1]).toMatchObject({ name: 'Ironhold', size: 2.2 })
+      expect(useWyrm.getState().mapMarks[0]).toMatchObject({ name: 'Ironhold', size: 2.2 })
+    }
+  )
+
+  it('a move then a size keeps both', async () => {
+    const path = await seed()
+    const { writes, gates } = gated()
+    const { updateMapMarkAt } = useWyrm.getState()
+    const a = updateMapMarkAt(path, 'a', { x: 40.4, y: 50.6 })
+    const b = updateMapMarkAt(path, 'a', { size: 1.5 })
+    await settle()
+    gates[0].resolve()
+    await vi.waitFor(() => expect(gates).toHaveLength(2))
+    gates[1].resolve()
+    await Promise.all([a, b])
+    expect(writes[writes.length - 1]).toMatchObject({ x: 40, y: 51, size: 1.5 })
+    expect(useWyrm.getState().mapMarks[0]).toMatchObject({ x: 40, y: 51, size: 1.5 })
+  })
+
+  it('a failed write does not block the next update for that mark', async () => {
+    const path = await seed()
+    const { writes, gates } = gated()
+    const { updateMapMarkAt } = useWyrm.getState()
+    const a = updateMapMarkAt(path, 'a', { name: 'Doomed' })
+    const aOutcome = a.then(
+      () => 'ok',
+      () => 'failed'
+    )
+    const b = updateMapMarkAt(path, 'a', { size: 2.2 })
+    await settle()
+    gates[0].reject(new Error('disk'))
+    await vi.waitFor(() => expect(gates).toHaveLength(2))
+    gates[1].resolve()
+    await b
+    expect(await aOutcome).toBe('failed')
+    // The failed rename never reached the store, so the size write is the
+    // whole truth and carries no name.
+    expect(writes[1]).toMatchObject({ size: 2.2 })
+    expect(writes[1].name).toBeUndefined()
+    expect(useWyrm.getState().mapMarks[0].size).toBe(2.2)
+  })
+
+  it('updates to different marks are not serialized against each other', async () => {
+    const path = await openDemo()
+    useWyrm.setState({ mapMarks: [mark({ id: 'a' }), mark({ id: 'b' })] })
+    const { writes } = gated()
+    const { updateMapMarkAt } = useWyrm.getState()
+    void updateMapMarkAt(path, 'a', { size: 2.2 })
+    void updateMapMarkAt(path, 'b', { size: 1.5 })
+    await settle()
+    expect(writes.map((w) => w.id).sort()).toEqual(['a', 'b'])
   })
 })
