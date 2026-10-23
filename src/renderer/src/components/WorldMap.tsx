@@ -1005,6 +1005,18 @@ export function WorldMap(): JSX.Element {
    */
   const onMapKey = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (draft.length === 0 && !selected) return
+    // Delete takes off whatever is chosen, wherever focus is on the map. A
+    // click chooses a shape or a stamp without always giving it focus — a
+    // road or a border is usually caught by its hit band, which cannot take
+    // focus — so a Delete handled only on the focused item did nothing.
+    if (draft.length === 0 && selected && (e.key === 'Delete' || e.key === 'Backspace')) {
+      if ((e.target as Element).closest?.('input, textarea, [contenteditable="true"]')) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (selectedShape) removeShape(selectedShape)
+      else if (selectedMark) removeMark(selectedMark)
+      return
+    }
     if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()

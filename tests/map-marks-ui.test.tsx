@@ -542,6 +542,25 @@ describe('the hand, on marks', () => {
     expect(m.updateMapMarkAt).toHaveBeenCalledWith('/demo', 'm1', { x: 192, y: 150 })
   })
 
+  it('removes a clicked stamp or label on Delete, with focus left on the map', async () => {
+    const m = await renderMap([mark(), mark({ id: 'm2', kind: 'label', name: 'Sea' })])
+    await clickOn(stamp().querySelector('.map-mark-hit')!, 200, 150)
+    await key('Delete')
+    expect(m.deleteMapMark).toHaveBeenCalledWith(expect.objectContaining({ id: 'm1' }))
+    await clickOn(stamp('m2'), 200, 150)
+    await key('Backspace')
+    expect(m.deleteMapMark).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'm2' }))
+  })
+
+  it('never deletes the chosen stamp from a Backspace typed in its name', async () => {
+    const m = await renderMap([mark({ name: 'Hollin Wood' })])
+    await key('Enter', stamp())
+    await key('Enter', stamp())
+    await key('Backspace', field()!)
+    expect(m.deleteMapMark).not.toHaveBeenCalled()
+    expect(field()).toBeTruthy()
+  })
+
   it('leaves a name as it was on Esc', async () => {
     const m = await renderMap([mark({ name: 'Hollin Wood' })])
     await key('Enter', stamp())
