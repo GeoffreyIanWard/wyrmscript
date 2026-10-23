@@ -34,7 +34,13 @@ import type {
   PrintSettings,
   CompileBlock
 } from '../../shared/types'
-import { minShapePoints, PLOTLINE_COLOURS, SCENE_TAG } from '../../shared/types'
+import {
+  MARK_SIZES,
+  markSizeOf,
+  minShapePoints,
+  PLOTLINE_COLOURS,
+  SCENE_TAG
+} from '../../shared/types'
 import { api } from './lib/api'
 import { isConnected } from './lib/syncState'
 import { compile, compileFileName, renderHtml } from './lib/compile'
@@ -600,7 +606,13 @@ interface WyrmState {
    * is trimmed: a label needs one (empty gives null and writes nothing), a
    * stamp's is optional and omitted when empty. Null with no project open.
    */
-  createMapMark(kind: MapMarkKind, x: number, y: number, name?: string): Promise<MapMark | null>
+  createMapMark(
+    kind: MapMarkKind,
+    x: number,
+    y: number,
+    name?: string,
+    size?: number
+  ): Promise<MapMark | null>
   /**
    * `createMapMark` addressed by path: the mark is written to `path` and,
    * once the write lands, added to whichever slice holds that project now
@@ -612,20 +624,22 @@ interface WyrmState {
     kind: MapMarkKind,
     x: number,
     y: number,
-    name?: string
+    name?: string,
+    size?: number
   ): Promise<MapMark | null>
   /**
-   * Move and/or rename a mark, in the project at `path` whether or not it is
+   * Move, rename and/or resize a mark, in the project at `path` whether or not it is
    * still in front (the same reason as `updateMapShapeAt`). A mark removed
    * in the meantime is not brought back. x/y are rounded; the name is
    * trimmed, and an empty one removes a stamp's name but is refused for a
-   * label (which would be left with no text). Nothing is written when
+   * label (which would be left with no text). A size in `MARK_SIZES` is set,
+   * 1 removes the key, anything else is ignored. Nothing is written when
    * nothing changed.
    */
   updateMapMarkAt(
     path: string,
     id: string,
-    patch: { x?: number; y?: number; name?: string }
+    patch: { x?: number; y?: number; name?: string; size?: number }
   ): Promise<void>
   deleteMapMark(mark: MapMark): Promise<void>
 
@@ -667,6 +681,13 @@ interface ProjectRuntime {
   commitTimer: ReturnType<typeof setInterval> | null
   /** Written to disk since the last checkpoint. */
   commitDirty: boolean
+  /**
+   * Per-record write chains for read-copy-write updates (map marks and shapes).
+   * Two updates to one record started before the first write lands would both
+   * copy the same old record and the later write would erase the earlier
+   * one's field; each waits for the one before it and re-reads the record.
+   */
+  chains: Map<string, Promise<void>>
 }
 
 const runtimes = new Map<string, ProjectRuntime>()
@@ -674,10 +695,26 @@ const runtimes = new Map<string, ProjectRuntime>()
 function runtimeFor(path: string): ProjectRuntime {
   let runtime = runtimes.get(path)
   if (!runtime) {
-    runtime = { saveTimer: null, commitTimer: null, commitDirty: false }
+    runtime = { saveTimer: null, commitTimer: null, commitDirty: false, chains: new Map() }
     runtimes.set(path, runtime)
   }
   return runtime
+}
+
+/**
+ * Runs `run` after every earlier call for the same record has settled (its
+ * failure is swallowed here so one bad write never blocks the next; the caller
+ * still sees its own). Records are independent of each other.
+ */
+function serializeRecord(path: string, key: string, run: () => Promise<void>): Promise<void> {
+  const chains = runtimeFor(path).chains
+  const next = (chains.get(key) ?? Promise.resolve()).catch(() => undefined).then(run)
+  chains.set(key, next)
+  const clear = (): void => {
+    if (chains.get(key) === next) chains.delete(key)
+  }
+  next.then(clear, clear)
+  return next
 }
 
 /**
@@ -2409,28 +2446,33 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async updateMapShapeAt(path, id, points) {
-      const now = get()
-      const focused = now.project?.path === path
-      const shapes = focused ? now.mapShapes : now.parked[path]?.mapShapes
-      const found = shapes?.find((s) => s.id === id)
-      if (!found) return
-      const rounded = roundPoints(points)
-      if (rounded.length < minShapePoints(found.kind)) return
-      const updated: MapShape = { ...found, points: rounded }
-      await api.writeMapShape(path, updated)
-      const after = get()
-      if (after.project?.path === path) {
-        set({ mapShapes: after.mapShapes.map((s) => (s.id === id ? updated : s)) })
-      } else if (after.parked[path]) {
-        const slice = after.parked[path]
-        set({
-          parked: {
-            ...after.parked,
-            [path]: { ...slice, mapShapes: slice.mapShapes.map((s) => (s.id === id ? updated : s)) }
-          }
-        })
-      }
-      runtimeFor(path).commitDirty = true
+      return serializeRecord(path, `shape\0${id}`, async () => {
+        const now = get()
+        const focused = now.project?.path === path
+        const shapes = focused ? now.mapShapes : now.parked[path]?.mapShapes
+        const found = shapes?.find((s) => s.id === id)
+        if (!found) return
+        const rounded = roundPoints(points)
+        if (rounded.length < minShapePoints(found.kind)) return
+        const updated: MapShape = { ...found, points: rounded }
+        await api.writeMapShape(path, updated)
+        const after = get()
+        if (after.project?.path === path) {
+          set({ mapShapes: after.mapShapes.map((s) => (s.id === id ? updated : s)) })
+        } else if (after.parked[path]) {
+          const slice = after.parked[path]
+          set({
+            parked: {
+              ...after.parked,
+              [path]: {
+                ...slice,
+                mapShapes: slice.mapShapes.map((s) => (s.id === id ? updated : s))
+              }
+            }
+          })
+        }
+        runtimeFor(path).commitDirty = true
+      })
     },
 
     async deleteMapShape(shape) {
@@ -2442,30 +2484,35 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async renameMapShapeAt(path, id, name) {
-      const now = get()
-      const focused = now.project?.path === path
-      const shapes = focused ? now.mapShapes : now.parked[path]?.mapShapes
-      const found = shapes?.find((s) => s.id === id)
-      if (!found) return
-      const trimmed = name.trim()
-      if (trimmed === (found.name ?? '')) return
-      const updated: MapShape = { ...found }
-      if (trimmed) updated.name = trimmed
-      else delete updated.name
-      await api.writeMapShape(path, updated)
-      const after = get()
-      if (after.project?.path === path) {
-        set({ mapShapes: after.mapShapes.map((s) => (s.id === id ? updated : s)) })
-      } else if (after.parked[path]) {
-        const slice = after.parked[path]
-        set({
-          parked: {
-            ...after.parked,
-            [path]: { ...slice, mapShapes: slice.mapShapes.map((s) => (s.id === id ? updated : s)) }
-          }
-        })
-      }
-      runtimeFor(path).commitDirty = true
+      return serializeRecord(path, `shape\0${id}`, async () => {
+        const now = get()
+        const focused = now.project?.path === path
+        const shapes = focused ? now.mapShapes : now.parked[path]?.mapShapes
+        const found = shapes?.find((s) => s.id === id)
+        if (!found) return
+        const trimmed = name.trim()
+        if (trimmed === (found.name ?? '')) return
+        const updated: MapShape = { ...found }
+        if (trimmed) updated.name = trimmed
+        else delete updated.name
+        await api.writeMapShape(path, updated)
+        const after = get()
+        if (after.project?.path === path) {
+          set({ mapShapes: after.mapShapes.map((s) => (s.id === id ? updated : s)) })
+        } else if (after.parked[path]) {
+          const slice = after.parked[path]
+          set({
+            parked: {
+              ...after.parked,
+              [path]: {
+                ...slice,
+                mapShapes: slice.mapShapes.map((s) => (s.id === id ? updated : s))
+              }
+            }
+          })
+        }
+        runtimeFor(path).commitDirty = true
+      })
     },
 
     /* ---------- map marks (F-12 part 4) ---------- */
@@ -2476,12 +2523,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({ mapMarks: await api.listMapMarks(project.path) })
     },
 
-    async createMapMark(kind, x, y, name) {
+    async createMapMark(kind, x, y, name, size) {
       const path = get().project?.path
-      return path ? get().createMapMarkAt(path, kind, x, y, name) : null
+      return path ? get().createMapMarkAt(path, kind, x, y, name, size) : null
     },
 
-    async createMapMarkAt(path, kind, x, y, name) {
+    async createMapMarkAt(path, kind, x, y, name, size) {
       const before = get()
       if (before.project?.path !== path && !before.parked[path]) return null
       const trimmed = (name ?? '').trim()
@@ -2495,6 +2542,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
         created: now,
         modified: now
       }
+      if (size !== undefined && markSizeOf(size) !== 1) mark.size = size
       if (trimmed) mark.name = trimmed
       await api.writeMapMark(path, mark)
       const after = get()
@@ -2511,42 +2559,49 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async updateMapMarkAt(path, id, patch) {
-      const now = get()
-      const focused = now.project?.path === path
-      const marks = focused ? now.mapMarks : now.parked[path]?.mapMarks
-      const found = marks?.find((m) => m.id === id)
-      if (!found) return
-      const updated: MapMark = { ...found }
-      if (patch.x !== undefined) updated.x = Math.round(patch.x)
-      if (patch.y !== undefined) updated.y = Math.round(patch.y)
-      if (patch.name !== undefined) {
-        const trimmed = patch.name.trim()
-        if (trimmed) updated.name = trimmed
-        else if (found.kind === 'label') return
-        else delete updated.name
-      }
-      if (
-        updated.x === found.x &&
-        updated.y === found.y &&
-        (updated.name ?? '') === (found.name ?? '')
-      ) {
-        return
-      }
-      updated.modified = new Date().toISOString()
-      await api.writeMapMark(path, updated)
-      const after = get()
-      if (after.project?.path === path) {
-        set({ mapMarks: after.mapMarks.map((m) => (m.id === id ? updated : m)) })
-      } else if (after.parked[path]) {
-        const slice = after.parked[path]
-        set({
-          parked: {
-            ...after.parked,
-            [path]: { ...slice, mapMarks: slice.mapMarks.map((m) => (m.id === id ? updated : m)) }
-          }
-        })
-      }
-      runtimeFor(path).commitDirty = true
+      return serializeRecord(path, `mark\0${id}`, async () => {
+        const now = get()
+        const focused = now.project?.path === path
+        const marks = focused ? now.mapMarks : now.parked[path]?.mapMarks
+        const found = marks?.find((m) => m.id === id)
+        if (!found) return
+        const updated: MapMark = { ...found }
+        if (patch.x !== undefined) updated.x = Math.round(patch.x)
+        if (patch.y !== undefined) updated.y = Math.round(patch.y)
+        if (patch.name !== undefined) {
+          const trimmed = patch.name.trim()
+          if (trimmed) updated.name = trimmed
+          else if (found.kind === 'label') return
+          else delete updated.name
+        }
+        if (patch.size !== undefined && (MARK_SIZES as readonly number[]).includes(patch.size)) {
+          if (patch.size === 1) delete updated.size
+          else updated.size = patch.size
+        }
+        if (
+          updated.x === found.x &&
+          updated.y === found.y &&
+          (updated.name ?? '') === (found.name ?? '') &&
+          updated.size === found.size
+        ) {
+          return
+        }
+        updated.modified = new Date().toISOString()
+        await api.writeMapMark(path, updated)
+        const after = get()
+        if (after.project?.path === path) {
+          set({ mapMarks: after.mapMarks.map((m) => (m.id === id ? updated : m)) })
+        } else if (after.parked[path]) {
+          const slice = after.parked[path]
+          set({
+            parked: {
+              ...after.parked,
+              [path]: { ...slice, mapMarks: slice.mapMarks.map((m) => (m.id === id ? updated : m)) }
+            }
+          })
+        }
+        runtimeFor(path).commitDirty = true
+      })
     },
 
     async deleteMapMark(mark) {

@@ -2,7 +2,7 @@ import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
 import { assertPlainId, isPlainId } from './plainId'
-import { MAP_MARK_KINDS } from '../../shared/types'
+import { MAP_MARK_KINDS, MARK_SIZES } from '../../shared/types'
 import type { MapMark, MapMarkKind } from '../../shared/types'
 
 /** Their own folder: `map/` is the pins', `map-shapes/` the drawn shapes'. */
@@ -21,9 +21,15 @@ interface MapMarkFrontmatter {
   kind: MapMarkKind
   x: number
   y: number
+  size?: number
   name?: string
   created: string
   modified: string
+}
+
+/** A size worth storing: one of `MARK_SIZES`, and not the usual 1. */
+function isStoredSize(value: unknown): value is number {
+  return value !== 1 && (MARK_SIZES as readonly unknown[]).includes(value)
 }
 
 function isKind(value: unknown): value is MapMarkKind {
@@ -50,6 +56,7 @@ function parseMapMarkFile(raw: string): MapMark | null {
     created: typeof data.created === 'string' ? data.created : '',
     modified: typeof data.modified === 'string' ? data.modified : ''
   }
+  if (isStoredSize(data.size)) mark.size = data.size
   if (name !== undefined) mark.name = name
   return mark
 }
@@ -66,6 +73,7 @@ export async function writeMapMark(projectPath: string, mark: MapMark): Promise<
     modified: new Date().toISOString()
   }
   // Written only when set: gray-matter throws on an undefined value.
+  if (isStoredSize(mark.size)) meta.size = mark.size
   if (typeof mark.name === 'string' && mark.name !== '') meta.name = mark.name
   const file = matter.stringify('', meta)
   await fsp.writeFile(markPath(projectPath, mark.id), file, 'utf8')

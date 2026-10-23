@@ -2246,16 +2246,143 @@ button.map-place-name {
 /* One line, always the same height: the line changes as a shape is drawn,
    and when it wrapped to two it pushed the map down mid-drawing — the click
    meant to close a coast on its first point landed ten pixels off it. */
-.map-hint {
+/* The hint line, with the size control at its right when a stamp or label
+   is in play. One fixed-height row either way. */
+.map-hint-row {
   flex: none;
+  display: flex;
+  align-items: center;
   height: 26px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.map-hint {
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
-  padding: 6px 20px;
+  padding: 0 20px;
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-bottom: 1px solid var(--ink);
+}
+
+/* S M L XL: a segmented strip, the chosen size in reverse. */
+.map-size {
+  flex: none;
+  display: flex;
+  margin-right: 16px;
+  border: 1px solid var(--ink);
+}
+
+.map-size-step {
+  min-width: 26px;
+  padding: 1px 6px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 0;
+  border-left: 1px solid var(--ink);
+  cursor: pointer;
+}
+
+.map-size-step:first-child {
+  border-left: 0;
+}
+
+.map-size-step.on {
+  color: var(--paper);
+  background: var(--ink);
+}
+
+.map-size-step:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+/* ---------- the stamp palette ---------- */
+
+/* The drop-down's anchor: it opens under its own toggle. */
+.stamp-palette-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.stamp-palette-toggle .stamp-glyph {
+  margin: -4px 0;
+}
+
+/* Over the map, within the window (the window's own stacking keeps it under
+   the menu bar and any dialog). */
+.stamp-palette {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  width: 344px;
+  padding: 8px 10px 10px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.stamp-palette-group + .stamp-palette-group {
+  margin-top: 8px;
+}
+
+.stamp-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.stamp-palette-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px;
+  font: inherit;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.stamp-palette-item:hover {
+  border-color: var(--ink);
+}
+
+/* The stamp in hand: in reverse, its art in paper on ink. */
+.stamp-palette-item.on {
+  color: var(--paper);
+  background: var(--ink);
+}
+
+.stamp-palette-item.on .map-stamp-body,
+.stamp-palette-toggle.on .map-stamp-body {
+  fill: var(--ink);
+  stroke: var(--paper);
+}
+
+.stamp-palette-item.on .map-stamp-lines,
+.stamp-palette-toggle.on .map-stamp-lines {
+  stroke: var(--paper);
+}
+
+.stamp-palette-item.on .map-stamp-solid,
+.stamp-palette-toggle.on .map-stamp-solid {
+  fill: var(--paper);
+}
+
+.stamp-palette-item:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
 }
 
 /* The graticule: dotted ink every hundred map pixels, a surveyor's grid

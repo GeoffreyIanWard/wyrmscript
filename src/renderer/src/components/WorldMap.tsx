@@ -1,8 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
-import { MAP_SHAPE_KINDS } from '../../../shared/types'
-import type { MapMark, MapMarkKind, MapPin, MapShape, MapShapeKind } from '../../../shared/types'
+import { MAP_SHAPE_KINDS, MARK_SIZES, markSizeOf } from '../../../shared/types'
+import type {
+  MapMark,
+  MapMarkKind,
+  MapPin,
+  MapShape,
+  MapShapeKind,
+  MapStampKind
+} from '../../../shared/types'
 import { useWyrm } from '../store'
+import { StampGlyph, StampPalette } from './StampPalette'
 import { afterKeysUp } from '../lib/keys'
 import {
   closesOn,
@@ -93,13 +101,18 @@ const TOOL_HELP: Record<Tool, string> = {
   river: 'Click along the river, point by point: it bends through them. Return finishes it.',
   road: 'Click along the road, point by point. Return finishes it.',
   rail: 'Click along the railway, point by point. Return finishes it.',
-  mountain: 'Click to put a mountain down. Every click is another.',
-  hills: 'Click to put hills down. Every click is another.',
-  forest: 'Click to put a forest down. Every click is another.',
-  marsh: 'Click to put a marsh down. Every click is another.',
-  town: 'Click to put a town down. Every click is another.',
-  label: 'Click where the words go, then type them.'
+  label: 'Click where the words go, then type them.',
+  ...(Object.fromEntries(
+    STAMP_ORDER.map((k) => [
+      k,
+      `Stamping ${MARK_NAME[k].toLowerCase()}: every click puts one down. Size is at the right.`
+    ])
+  ) as Record<MapStampKind, string>)
 }
+
+/** The sizes' names, on their buttons and to a screen reader. */
+const SIZE_LABEL = ['S', 'M', 'L', 'XL']
+const SIZE_NAME = ['Small', 'Medium', 'Large', 'Extra large']
 
 /** The line while a shape is part-drawn: short, so it stays one line. */
 const DRAFT_HELP: Record<MapShapeKind, string> = {
@@ -113,14 +126,12 @@ const DRAFT_HELP: Record<MapShapeKind, string> = {
 
 /** The drawing tools, in the bar's order: outlines, then lines. */
 const TOOLS: Tool[] = ['hand', 'land', 'area', 'border', 'river', 'road', 'rail']
-/** Then the marks: stamps, and free labels. */
-const MARK_TOOLS: Tool[] = [...STAMP_ORDER, 'label']
 
 /** A name being written: for a shape or a mark already on the map, or for
  *  a free label not yet made (made only once it has words). */
 type Naming =
   | { what: 'shape' | 'mark'; id: string; at: Point; value: string }
-  | { what: 'new-label'; at: Point; value: string }
+  | { what: 'new-label'; at: Point; value: string; size: number }
 
 const ARROWS: Record<string, Point | undefined> = {
   ArrowUp: { x: 0, y: -1 },
@@ -191,7 +202,21 @@ export function WorldMap(): JSX.Element {
   // Everything on the map widens it, shapes as well as pins: a pin taken
   // off must never shrink the map under land drawn out beside it.
   const extent = useMemo(
-    () => [...mapPins, ...mapShapes.flatMap((s) => s.points), ...mapMarks],
+    () => [
+      ...mapPins,
+      ...mapShapes.flatMap((s) => s.points),
+      // A stamp's whole drawing and the name under it, not just its centre:
+      // an XL castle at the corner was otherwise half off the map.
+      ...mapMarks.flatMap((m) => {
+        const size = markSizeOf(m.size)
+        const w = (isStamp(m.kind) ? STAMP_W : 120) * size
+        const h = (isStamp(m.kind) ? STAMP_H : 20) * size
+        return [
+          { x: m.x - w / 2, y: m.y - h / 2 },
+          { x: m.x + w / 2, y: m.y + h / 2 + (isStamp(m.kind) && m.name ? 16 : 0) }
+        ]
+      })
+    ],
     [mapPins, mapShapes, mapMarks]
   )
   const bounds = boundsOf(project?.data.mapBounds, extent)
@@ -408,6 +433,8 @@ export function WorldMap(): JSX.Element {
   /* ---------- drawing ---------- */
 
   const [tool, setTool] = useState<Tool>('hand')
+  // The stamp in hand, if the tool in hand is a stamp.
+  const stampTool: MapStampKind | null = isMarkKind(tool) && isStamp(tool) ? tool : null
   // The shape being drawn: points placed so far, and where the pointer is,
   // for the line to the next point. Not stored until it is finished.
   const [draft, setDraft] = useState<Point[]>([])
@@ -415,6 +442,10 @@ export function WorldMap(): JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
   // What just happened, for the hint line until the next thing does.
   const [notice, setNotice] = useState<string | null>(null)
+  // The size new stamps and labels are made at, until it is changed.
+  const [stampSize, setStampSize] = useState(1)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const paletteToggle = useRef<HTMLButtonElement | null>(null)
   // Where the keyboard draws: a cursor moved by Option and the arrows, which
   // Space puts a point down at. Shown only when the map has keyboard focus.
   const [cursor, setCursor] = useState<Point | null>(null)
@@ -426,6 +457,7 @@ export function WorldMap(): JSX.Element {
 
   const chooseTool = (next: Tool): void => {
     setTool(next)
+    setPaletteOpen(false)
     setNaming(null)
     setNotice(null)
     setDraft([])
@@ -675,7 +707,7 @@ export function WorldMap(): JSX.Element {
     if (!isMarkKind(tool)) return
     setProblem(null)
     if (!isStamp(tool)) {
-      openNaming({ what: 'new-label', at, value: '' })
+      openNaming({ what: 'new-label', at, value: '', size: stampSize })
       return
     }
     const kind = tool
@@ -691,7 +723,7 @@ export function WorldMap(): JSX.Element {
       return
     setNotice(null)
     if (projectPath)
-      void createMapMarkAt(projectPath, kind, at.x, at.y).then(
+      void createMapMarkAt(projectPath, kind, at.x, at.y, undefined, stampSize).then(
         // Said, so a writer at the keyboard (or a screen reader) knows it went
         // down and does not press again, stacking a second on the first.
         (made) => made && setNotice(`${MARK_NAME[kind]} put down. The Hand moves it.`)
@@ -728,7 +760,7 @@ export function WorldMap(): JSX.Element {
       openNaming({
         what: 'mark',
         id: mark.id,
-        at: isStamp(mark.kind) ? stampNameAt(at) : at,
+        at: isStamp(mark.kind) ? stampNameAt(at, markSizeOf(mark.size)) : at,
         value: mark.name ?? ''
       })
     }
@@ -771,7 +803,7 @@ export function WorldMap(): JSX.Element {
           setProblem('A label needs some words — type them, or Esc to drop it.')
           return
         }
-      } else if (path) void createMapMarkAt(path, 'label', n.at.x, n.at.y, value)
+      } else if (path) void createMapMarkAt(path, 'label', n.at.x, n.at.y, value, n.size)
     } else if (n.what === 'shape') {
       if (path) void renameMapShapeAt(path, n.id, value)
     } else {
@@ -807,7 +839,7 @@ export function WorldMap(): JSX.Element {
       const value = n.value.trim()
       const state = useWyrm.getState()
       if (n.what === 'new-label') {
-        if (value) void state.createMapMarkAt(path, 'label', n.at.x, n.at.y, value)
+        if (value) void state.createMapMarkAt(path, 'label', n.at.x, n.at.y, value, n.size)
       } else if (n.what === 'shape') void state.renameMapShapeAt(path, n.id, value)
       // The store refuses an empty label, so nothing is lost there either.
       else void state.updateMapMarkAt(path, n.id, { name: value })
@@ -833,8 +865,63 @@ export function WorldMap(): JSX.Element {
     }
   }
 
+  /**
+   * The size a stamp is drawn at: its own, but never so small on screen that
+   * it smudges. At 50% a small stamp was about eleven pixels of sub-pixel
+   * strokes, and a ship and a rock could not be told apart; below the
+   * smallest size on screen, it is drawn at that.
+   */
+  const drawnSize = (mark: MapMark): number => Math.max(markSizeOf(mark.size), MARK_SIZES[0] / zoom)
+  /** A mark's size in words, for a screen reader, when it is not the usual. */
+  const sizeWords = (mark: MapMark): string => {
+    const i = (MARK_SIZES as readonly number[]).indexOf(markSizeOf(mark.size))
+    return i === 1 ? '' : `, ${SIZE_NAME[i].toLowerCase()}`
+  }
+
+  /** A chosen mark's size, or the size new ones are made at. */
+  const sizeTarget = tool === 'hand' ? selectedMark : null
+  const currentSize = sizeTarget ? markSizeOf(sizeTarget.size) : stampSize
+  const setSize = (size: number): void => {
+    if (!sizeTarget) {
+      setStampSize(size)
+      // A label being typed is made at the size shown when it is kept.
+      if (naming?.what === 'new-label') setNaming({ ...naming, size })
+      return
+    }
+    if (projectPath)
+      void updateMapMarkAt(projectPath, sizeTarget.id, { size }).then(() =>
+        setNotice(
+          `${describeMark(sizeTarget.kind, sizeTarget.name)}: ${SIZE_NAME[MARK_SIZES.indexOf(size as never)].toLowerCase()}.`
+        )
+      )
+  }
+  /** [ and ] step a size down and up. */
+  const stepSize = (mark: MapMark, dir: -1 | 1): void => {
+    const sizes = MARK_SIZES as readonly number[]
+    const at = sizes.indexOf(markSizeOf(mark.size))
+    const to = Math.max(0, Math.min(sizes.length - 1, at + dir))
+    // Said, so a writer at the keyboard (or a screen reader) hears each step
+    // land — and hears that the last press did nothing, at either end.
+    if (to === at) {
+      setNotice(
+        `Already ${SIZE_NAME[at].toLowerCase()}, the ${dir < 0 ? 'smallest' : 'largest'} size.`
+      )
+      return
+    }
+    if (projectPath)
+      void updateMapMarkAt(projectPath, mark.id, { size: sizes[to] }).then(() =>
+        setNotice(`${describeMark(mark.kind, mark.name)}: ${SIZE_NAME[to].toLowerCase()}.`)
+      )
+  }
+
   const onMarkKey = (e: KeyboardEvent<Element>, mark: MapMark): void => {
     if (tool !== 'hand') return
+    if (e.key === '[' || e.key === ']') {
+      e.preventDefault()
+      e.stopPropagation()
+      stepSize(mark, e.key === '[' ? -1 : 1)
+      return
+    }
     const dir = ARROWS[e.key]
     if (dir && e.altKey && !e.metaKey && !e.ctrlKey) {
       e.preventDefault()
@@ -861,6 +948,12 @@ export function WorldMap(): JSX.Element {
   const [panning, setPanning] = useState(false)
   const onMapDown = (e: ReactPointerEvent<HTMLDivElement>): void => {
     if (e.button !== 0) return
+    // The press that dismisses the palette only dismisses it: with a stamp in
+    // hand it otherwise also put one down where the writer clicked away.
+    if (paletteOpen) {
+      setPaletteOpen(false)
+      return
+    }
     // On the map itself, not its scroll bars: grabbing a bar must only scroll.
     if (!(e.target as Element).closest?.('.map-sizer')) return
     const el = scrollEl.current
@@ -1009,6 +1102,13 @@ export function WorldMap(): JSX.Element {
     // click chooses a shape or a stamp without always giving it focus — a
     // road or a border is usually caught by its hit band, which cannot take
     // focus — so a Delete handled only on the focused item did nothing.
+    if (draft.length === 0 && selectedMark && tool === 'hand' && (e.key === '[' || e.key === ']')) {
+      if ((e.target as Element).closest?.('input, textarea, [contenteditable="true"]')) return
+      e.preventDefault()
+      e.stopPropagation()
+      stepSize(selectedMark, e.key === '[' ? -1 : 1)
+      return
+    }
     if (draft.length === 0 && selected && (e.key === 'Delete' || e.key === 'Backspace')) {
       if ((e.target as Element).closest?.('input, textarea, [contenteditable="true"]')) return
       e.preventDefault()
@@ -1131,8 +1231,8 @@ export function WorldMap(): JSX.Element {
       return 'Drag a corner to move it; click a dot to add one. Return names it; Delete removes it.'
     if (tool === 'hand' && selectedMark)
       return selectedMark.kind === 'label'
-        ? 'Drag it to move it. Return changes the words; Delete removes it.'
-        : 'Drag it to move it. Return names it; Delete removes it.'
+        ? 'Drag it to move it. [ and ] size it. Return changes the words; Delete removes it.'
+        : 'Drag it to move it. [ and ] size it. Return names it; Delete removes it.'
     return TOOL_HELP[tool]
   }
 
@@ -1212,18 +1312,51 @@ export function WorldMap(): JSX.Element {
           role="group"
           aria-label="Stamps and labels"
         >
-          {MARK_TOOLS.map((t) => (
+          <span className="stamp-palette-anchor">
             <button
-              key={t}
+              ref={paletteToggle}
               type="button"
-              className={`board-tool${tool === t ? ' on' : ''}`}
-              aria-pressed={tool === t}
-              onClick={() => chooseTool(t)}
+              className={`board-tool stamp-palette-toggle${stampTool ? ' on' : ''}`}
+              aria-haspopup="dialog"
+              aria-expanded={paletteOpen}
+              aria-controls={paletteOpen ? 'stamp-palette' : undefined}
+              onKeyDown={(e) => {
+                // Esc on the toggle closes an open palette, not the map.
+                if (e.key === 'Escape' && paletteOpen) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setPaletteOpen(false)
+                }
+              }}
+              aria-label={stampTool ? `Stamps: ${MARK_NAME[stampTool]}` : 'Stamps'}
+              onClick={() => setPaletteOpen((open) => !open)}
             >
-              <span className="board-tool-pin" aria-hidden="true" />
-              <span>{toolName(t)}</span>
+              {stampTool && <StampGlyph kind={stampTool} scale={0.75} />}
+              <span>{stampTool ? MARK_NAME[stampTool] : 'Stamps'}</span>
+              <span aria-hidden="true">▾</span>
             </button>
-          ))}
+            {paletteOpen && (
+              <StampPalette
+                id="stamp-palette"
+                current={stampTool}
+                onPick={(kind) => chooseTool(kind)}
+                onClose={(focus) => {
+                  setPaletteOpen(false)
+                  if (focus === 'toggle') afterKeysUp(() => paletteToggle.current?.focus())
+                  else if (focus === 'map') scrollEl.current?.focus({ preventScroll: true })
+                }}
+              />
+            )}
+          </span>
+          <button
+            type="button"
+            className={`board-tool${tool === 'label' ? ' on' : ''}`}
+            aria-pressed={tool === 'label'}
+            onClick={() => chooseTool('label')}
+          >
+            <span className="board-tool-pin" aria-hidden="true" />
+            <span>{toolName('label')}</span>
+          </button>
         </span>
         <span className="map-tools-group" data-help="map-grow">
           <span className="map-tools-label">More map:</span>
@@ -1252,8 +1385,32 @@ export function WorldMap(): JSX.Element {
         </span>
       </div>
 
-      <div className="map-hint" role="status">
-        {(!naming && problem) || notice || hintLine()}
+      <div className="map-hint-row">
+        <div className="map-hint" role="status">
+          {(!naming && problem) || notice || hintLine()}
+        </div>
+        {(isMarkKind(tool) || sizeTarget != null) && (
+          <span className="map-size" role="group" aria-label="Size" data-help="map-size">
+            {MARK_SIZES.map((size, i) => (
+              <button
+                key={size}
+                type="button"
+                className={`map-size-step${size === currentSize ? ' on' : ''}`}
+                aria-pressed={size === currentSize}
+                aria-label={`${SIZE_NAME[i]} (${SIZE_LABEL[i]})`}
+                // Pressing one must not take focus from a name being typed:
+                // the blur kept the name (or dropped an empty label) at the
+                // old size before the click could change it.
+                onMouseDown={(e) => {
+                  if (naming) e.preventDefault()
+                }}
+                onClick={() => setSize(size)}
+              >
+                {SIZE_LABEL[i]}
+              </button>
+            ))}
+          </span>
+        )}
       </div>
       <div className="map-body">
         <aside className="map-places" data-help="map-places" aria-label="Places" tabIndex={-1}>
@@ -1484,24 +1641,27 @@ export function WorldMap(): JSX.Element {
                   if (!isStamp(mark.kind)) return null
                   const at = markAt(mark)
                   const art = STAMP_ART[mark.kind]
+                  const size = drawnSize(mark)
+                  const w = STAMP_W * size
+                  const h = STAMP_H * size
                   return (
                     <g
                       key={mark.id}
                       className={`map-mark stamp ${mark.kind}${selected === mark.id ? ' selected' : ''}`}
                       data-mark={mark.id}
-                      transform={`translate(${at.x - bounds.x - STAMP_W / 2} ${at.y - bounds.y - STAMP_H / 2})`}
+                      transform={`translate(${at.x - bounds.x - w / 2} ${at.y - bounds.y - h / 2})`}
                       tabIndex={tool === 'hand' ? 0 : undefined}
                       role={tool === 'hand' ? 'button' : undefined}
                       aria-pressed={tool === 'hand' ? selected === mark.id : undefined}
                       aria-label={
                         tool === 'hand'
-                          ? `${describeMark(mark.kind, mark.name)}. ${selected === mark.id ? 'Return names it' : 'Return selects it'}; Option and the arrows move it; Delete removes it.`
+                          ? `${describeMark(mark.kind, mark.name)}${sizeWords(mark)}. ${selected === mark.id ? 'Return names it' : 'Return selects it'}; [ and ] size it; Option and the arrows move it; Delete removes it.`
                           : undefined
                       }
                       onKeyDown={(e) => onMarkKey(e, mark)}
                     >
-                      <rect className="map-mark-hit" width={STAMP_W} height={STAMP_H} />
-                      <g transform={`scale(${STAMP_SCALE})`}>
+                      <rect className="map-mark-hit" width={w} height={h} />
+                      <g transform={`scale(${STAMP_SCALE * size})`}>
                         {art.body && <path className="map-stamp-body" d={art.body} />}
                         <path className="map-stamp-lines" d={art.lines} />
                         {art.solid && <path className="map-stamp-solid" d={art.solid} />}
@@ -1593,7 +1753,7 @@ export function WorldMap(): JSX.Element {
               const at = markAt(mark)
               if (isStamp(mark.kind)) {
                 if (!mark.name) return null
-                const n = stampNameAt(at)
+                const n = stampNameAt(at, drawnSize(mark))
                 return (
                   <span
                     key={`n${mark.id}`}
@@ -1612,12 +1772,16 @@ export function WorldMap(): JSX.Element {
                   key={mark.id}
                   className={`map-label free${selected === mark.id ? ' selected' : ''}`}
                   data-mark={mark.id}
-                  style={{ left: (at.x - bounds.x) * zoom, top: (at.y - bounds.y) * zoom }}
+                  style={{
+                    left: (at.x - bounds.x) * zoom,
+                    top: (at.y - bounds.y) * zoom,
+                    fontSize: 14 * markSizeOf(mark.size)
+                  }}
                   tabIndex={tool === 'hand' ? 0 : -1}
                   role="button"
                   aria-hidden={tool === 'hand' ? undefined : true}
                   aria-pressed={selected === mark.id}
-                  aria-label={`${describeMark(mark.kind, mark.name)}. ${selected === mark.id ? 'Return changes the words' : 'Return selects it'}; Option and the arrows move it; Delete removes it.`}
+                  aria-label={`${describeMark(mark.kind, mark.name)}${sizeWords(mark)}. ${selected === mark.id ? 'Return changes the words' : 'Return selects it'}; [ and ] size it; Option and the arrows move it; Delete removes it.`}
                   onKeyDown={(e) => onMarkKey(e, mark)}
                 >
                   {mark.name}

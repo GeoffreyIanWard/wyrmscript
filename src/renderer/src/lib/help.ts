@@ -112,7 +112,11 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'map-marks': {
     title: 'Stamps and labels',
-    body: 'Mountain, Hills, Forest, Marsh and Town each put one engraved stamp down per click (or Space at the keyboard cursor). Label puts words anywhere — a sea, a region — typed in place: Return keeps them, Esc drops them. With the Hand, drag a stamp or a label to move it (or Option and the arrows), and Delete to take it off. To name anything — a coast, a river, a forest — choose it with the Hand and press Return again, or double-click it.'
+    body: 'Stamps opens a palette of mountains, mesas, woods, waterfalls, ships, castles, ruins and more, grouped by kind: choose one, and each click on the map puts one down (or Space at the keyboard cursor). Label puts words anywhere — a sea, a region — typed in place: Return keeps them, Esc drops them. With the Hand, drag a stamp or a label to move it (or Option and the arrows), [ and ] to size it, and Delete to take it off. To name anything — a coast, a river, a forest — choose it with the Hand and press Return again, or double-click it.'
+  },
+  'map-size': {
+    title: 'Size',
+    body: 'How large a stamp or a label is drawn: small, medium, large or extra large. With a stamp or Label in hand it sets the size of the next one; with a stamp or label chosen, it changes that one.'
   },
   'map-grow': {
     title: 'More map',

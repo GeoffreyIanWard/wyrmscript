@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import matter from 'gray-matter'
 import { deleteMapMark, listMapMarks, writeMapMark } from '../src/main/wyrm/mapMarks'
 import { createProject } from '../src/main/wyrm/project'
-import { MAP_MARK_KINDS } from '../src/shared/types'
+import { MAP_MARK_KINDS, MAP_STAMP_KINDS, MARK_SIZES } from '../src/shared/types'
 import type { MapMark, MapMarkKind } from '../src/shared/types'
 
 /**
@@ -65,6 +65,41 @@ describe('writeMapMark / listMapMarks', () => {
     }
   })
 
+  it('round-trips every stamp kind, with and without a size', async () => {
+    const project = await makeProject()
+    const marks = MAP_STAMP_KINDS.flatMap((kind) => [makeMark(kind), makeMark(kind, { size: 1.5 })])
+    for (const m of marks) await writeMapMark(project, m)
+    const byId = new Map((await listMapMarks(project)).map((m) => [m.id, m]))
+    expect(byId.size).toBe(marks.length)
+    for (const m of marks) {
+      expect(byId.get(m.id)!.kind).toBe(m.kind)
+      expect(byId.get(m.id)!.size).toBe(m.size)
+    }
+  })
+
+  it.each(MARK_SIZES.filter((s) => s !== 1))('round-trips size %s', async (size) => {
+    const project = await makeProject()
+    const mark = makeMark('hills', { size })
+    await writeMapMark(project, mark)
+    const raw = await fsp.readFile(join(project, 'map-marks', `${mark.id}.md`), 'utf8')
+    expect(matter(raw).data.size).toBe(size)
+    expect((await listMapMarks(project))[0].size).toBe(size)
+  })
+
+  it.each([1, 0, 3, -1, 'big', NaN, null])('does not store or read size %s', async (size) => {
+    const project = await makeProject()
+    const mark = makeMark('hills', { size: size as number })
+    await writeMapMark(project, mark)
+    const raw = await fsp.readFile(join(project, 'map-marks', `${mark.id}.md`), 'utf8')
+    expect(raw).not.toContain('size')
+    expect(raw).not.toMatch(/undefined|null|NaN/)
+    expect('size' in (await listMapMarks(project))[0]).toBe(false)
+    const text = typeof size === 'string' ? `'${size}'` : String(size)
+    await writeRaw(project, 'raw.md', `---\nid: raw\nkind: hills\nx: 1\ny: 2\nsize: ${text}\n---\n`)
+    const raws = (await listMapMarks(project)).find((m) => m.id === 'raw')!
+    expect('size' in raws).toBe(false)
+  })
+
   it('writes to <project>/map-marks/<id>.md and stamps modified', async () => {
     const project = await makeProject()
     const mark = makeMark('forest', { modified: '2000-01-01T00:00:00.000Z' })
@@ -118,7 +153,7 @@ describe('writeMapMark / listMapMarks', () => {
     await writeRaw(project, 'noid.md', '---\nkind: forest\nx: 1\ny: 1\n---\n')
     await writeRaw(project, 'numid.md', '---\nid: 42\nkind: forest\nx: 1\ny: 1\n---\n')
     await writeRaw(project, 'nokind.md', '---\nid: nokind\nx: 1\ny: 1\n---\n')
-    await writeRaw(project, 'badkind.md', '---\nid: badkind\nkind: volcano\nx: 1\ny: 1\n---\n')
+    await writeRaw(project, 'badkind.md', '---\nid: badkind\nkind: dragon\nx: 1\ny: 1\n---\n')
     await writeRaw(project, 'nox.md', '---\nid: nox\nkind: forest\ny: 1\n---\n')
     await writeRaw(project, 'noy.md', '---\nid: noy\nkind: forest\nx: 1\n---\n')
     await writeRaw(project, 'strx.md', '---\nid: strx\nkind: forest\nx: "5"\ny: 1\n---\n')
