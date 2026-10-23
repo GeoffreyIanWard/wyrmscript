@@ -172,6 +172,7 @@ export function WorldMap(): JSX.Element {
   const createMapMarkAt = useWyrm((s) => s.createMapMarkAt)
   const updateMapMarkAt = useWyrm((s) => s.updateMapMarkAt)
   const deleteMapMark = useWyrm((s) => s.deleteMapMark)
+  const styleMapPinAt = useWyrm((s) => s.styleMapPinAt)
   const returnedTo = useWyrm((s) => (s.mainView.kind === 'map' ? s.mainView : null))
   const settleMapReturn = useWyrm((s) => s.settleMapReturn)
 
@@ -203,7 +204,17 @@ export function WorldMap(): JSX.Element {
   // off must never shrink the map under land drawn out beside it.
   const extent = useMemo(
     () => [
-      ...mapPins,
+      // A place drawn as a stamp is a box, like a stamp (below); a pin, its point.
+      ...mapPins.flatMap((p) => {
+        if (!p.stamp) return [p]
+        const size = markSizeOf(p.size)
+        const w = STAMP_W * size
+        const h = STAMP_H * size
+        return [
+          { x: p.x - w / 2, y: p.y - h / 2 },
+          { x: p.x + w / 2, y: p.y + h / 2 + 16 }
+        ]
+      }),
       ...mapShapes.flatMap((s) => s.points),
       // A stamp's whole drawing and the name under it, not just its centre:
       // an XL castle at the corner was otherwise half off the map.
@@ -407,6 +418,24 @@ export function WorldMap(): JSX.Element {
   }
 
   const onPinKey = (e: KeyboardEvent<HTMLButtonElement>, pin: MapPin): void => {
+    if (pin.stamp && (e.key === '[' || e.key === ']')) {
+      e.preventDefault()
+      e.stopPropagation()
+      const sizes = MARK_SIZES as readonly number[]
+      const at = sizes.indexOf(markSizeOf(pin.size))
+      const to = Math.max(0, Math.min(sizes.length - 1, at + (e.key === '[' ? -1 : 1)))
+      if (to === at) {
+        setNotice(
+          `Already ${SIZE_NAME[at].toLowerCase()}, the ${to === 0 ? 'smallest' : 'largest'} size.`
+        )
+        return
+      }
+      if (projectPath)
+        void styleMapPinAt(projectPath, pin.id, { size: sizes[to] }).then(() =>
+          setNotice(`${nameOf(pin.entityId)}: ${SIZE_NAME[to].toLowerCase()}.`)
+        )
+      return
+    }
     const dir = ARROWS[e.key]
     if (dir && e.altKey && !e.metaKey && !e.ctrlKey) {
       e.preventDefault()
@@ -445,6 +474,27 @@ export function WorldMap(): JSX.Element {
   // The size new stamps and labels are made at, until it is changed.
   const [stampSize, setStampSize] = useState(1)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  // The place whose look is being chosen, and where its palette opens: by
+  // its row in the side panel, measured against the map view (the panel
+  // scrolls and would clip a palette opened inside it).
+  const [placeStyle, setPlaceStyle] = useState<{ pinId: string; top: number; left: number } | null>(
+    null
+  )
+  // Measured once against its row, so it closes when the row moves away
+  // under it — the side panel scrolled, the window resized — rather than
+  // hang beside a different place while still changing this one.
+  const placeOpen = placeStyle != null
+  useEffect(() => {
+    if (!placeOpen) return
+    const close = (): void => setPlaceStyle(null)
+    const panel = document.querySelector('.map-places')
+    panel?.addEventListener('scroll', close, { passive: true })
+    window.addEventListener('resize', close)
+    return () => {
+      panel?.removeEventListener('scroll', close)
+      window.removeEventListener('resize', close)
+    }
+  }, [placeOpen])
   const paletteToggle = useRef<HTMLButtonElement | null>(null)
   // Where the keyboard draws: a cursor moved by Option and the arrows, which
   // Space puts a point down at. Shown only when the map has keyboard focus.
@@ -1339,7 +1389,7 @@ export function WorldMap(): JSX.Element {
               <StampPalette
                 id="stamp-palette"
                 current={stampTool}
-                onPick={(kind) => chooseTool(kind)}
+                onPick={(kind) => kind !== 'pin' && chooseTool(kind)}
                 onClose={(focus) => {
                   setPaletteOpen(false)
                   if (focus === 'toggle') afterKeysUp(() => paletteToggle.current?.focus())
@@ -1385,6 +1435,52 @@ export function WorldMap(): JSX.Element {
         </span>
       </div>
 
+      {(() => {
+        const pin = placeStyle ? mapPins.find((p) => p.id === placeStyle.pinId) : undefined
+        if (!placeStyle || !pin) return null
+        const focusToggle = (): void =>
+          document
+            .querySelector<HTMLElement>(`[data-style-pin="${pin.id}"]`)
+            ?.focus({ preventScroll: true })
+        return (
+          <div
+            // Its own palette per place: switching rows starts afresh —
+            // fitted to the new row, opened on that place's choice.
+            key={pin.id}
+            className="place-palette-anchor"
+            style={{ top: placeStyle.top, left: placeStyle.left }}
+          >
+            <StampPalette
+              id="place-palette"
+              label={`Show ${nameOf(pin.entityId)} as`}
+              current={pin.stamp ?? 'pin'}
+              allowPin
+              toggle=".place-style-toggle"
+              closeOnPick={false}
+              sizes={
+                pin.stamp
+                  ? {
+                      current: markSizeOf(pin.size),
+                      names: SIZE_NAME,
+                      labels: SIZE_LABEL,
+                      values: MARK_SIZES,
+                      onSize: (size) =>
+                        projectPath && void styleMapPinAt(projectPath, pin.id, { size })
+                    }
+                  : undefined
+              }
+              onPick={(kind) =>
+                projectPath &&
+                void styleMapPinAt(projectPath, pin.id, { stamp: kind === 'pin' ? null : kind })
+              }
+              onClose={(focus) => {
+                setPlaceStyle(null)
+                if (focus === 'toggle') afterKeysUp(focusToggle)
+              }}
+            />
+          </div>
+        )
+      })()}
       <div className="map-hint-row">
         <div className="map-hint" role="status">
           {(!naming && problem) || notice || hintLine()}
@@ -1458,6 +1554,37 @@ export function WorldMap(): JSX.Element {
                             {name}
                           </button>
                         )}
+                        <button
+                          type="button"
+                          className={`place-style-toggle${placeStyle?.pinId === pin.id ? ' on' : ''}`}
+                          data-help="map-place-style"
+                          data-style-pin={pin.id}
+                          title="Show as…"
+                          aria-label={`Show ${name} as… (now ${pin.stamp ? MARK_NAME[pin.stamp].toLowerCase() : 'a pin'})`}
+                          aria-haspopup="dialog"
+                          aria-expanded={placeStyle?.pinId === pin.id}
+                          onClick={(e) => {
+                            if (placeStyle?.pinId === pin.id) {
+                              setPlaceStyle(null)
+                              return
+                            }
+                            const frame = e.currentTarget
+                              .closest('.world-map')
+                              ?.getBoundingClientRect()
+                            const box = e.currentTarget.getBoundingClientRect()
+                            setPlaceStyle({
+                              pinId: pin.id,
+                              top: box.bottom - (frame?.top ?? 0) + 4,
+                              left: box.left - (frame?.left ?? 0)
+                            })
+                          }}
+                        >
+                          {pin.stamp ? (
+                            <StampGlyph kind={pin.stamp} scale={0.75} />
+                          ) : (
+                            <span className="world-map-pin-glyph" aria-hidden="true" />
+                          )}
+                        </button>
                         <button
                           type="button"
                           className="btn small"
@@ -1854,19 +1981,28 @@ export function WorldMap(): JSX.Element {
             {mapPins.map((pin) => {
               const at = posOf(pin)
               const name = nameOf(pin.entityId)
+              // A place drawn as its stamp: at the stamp's size, scaled with
+              // the map like any stamp, with a floor so it never smudges,
+              // and centred on its point (a pin hangs from it instead).
+              const size = pin.stamp ? Math.max(markSizeOf(pin.size), MARK_SIZES[0] / zoom) : 1
+              const glyph = STAMP_SCALE * size * zoom
               return (
                 <button
                   key={pin.id}
                   type="button"
                   data-pin={pin.id}
                   data-help="map-pin"
-                  className="world-map-pin"
+                  className={`world-map-pin${pin.stamp ? ` stamped ${pin.stamp}` : ''}`}
                   // While drawing, a pin is only part of the map: a click on a
                   // town is a point of the coast, not a trip to the World Book.
                   tabIndex={tool === 'hand' ? undefined : -1}
                   aria-hidden={tool === 'hand' ? undefined : true}
-                  style={{ left: (at.x - bounds.x) * zoom, top: (at.y - bounds.y) * zoom }}
-                  aria-label={`${name}. Return opens it; Option and the arrows move it.`}
+                  style={{
+                    left: (at.x - bounds.x) * zoom,
+                    top: (at.y - bounds.y) * zoom,
+                    ...(pin.stamp ? { transform: `translate(-50%, -${(20 * glyph) / 2}px)` } : {})
+                  }}
+                  aria-label={`${name}${pin.stamp ? `, shown as ${MARK_NAME[pin.stamp].toLowerCase()}` : ''}. Return opens it; Option and the arrows move it${pin.stamp ? '; [ and ] size it' : ''}.`}
                   onPointerDown={(e) => tool === 'hand' && onPinDown(e, pin)}
                   onKeyDown={(e) => {
                     if (tool !== 'hand') return
@@ -1877,7 +2013,11 @@ export function WorldMap(): JSX.Element {
                     }
                   }}
                 >
-                  <span className="world-map-pin-glyph" aria-hidden="true" />
+                  {pin.stamp ? (
+                    <StampGlyph kind={pin.stamp} scale={glyph} />
+                  ) : (
+                    <span className="world-map-pin-glyph" aria-hidden="true" />
+                  )}
                   <span className="world-map-pin-label">{name}</span>
                 </button>
               )
