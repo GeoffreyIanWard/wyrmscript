@@ -1711,6 +1711,8 @@ button {
   padding: 8px 16px;
   flex: none;
   border-bottom: 1px solid var(--ink);
+  /* The Export panel hangs from here. */
+  position: relative;
 }
 
 .map-tools-group {
@@ -2384,6 +2386,17 @@ button.map-place-name {
   border: 2px solid var(--ink);
   box-shadow: 4px 4px 0 var(--ink);
   font-size: 11px;
+}
+
+/* Export Map Image: the same panel, hung from the toolbar's right — not
+   from its button, which the wrapping bar can carry to the left edge. */
+.map-export-panel {
+  width: 320px;
+}
+
+.map-export-panel .control-row {
+  display: flex;
+  width: 100%;
 }
 
 .map-scale-row {

@@ -12,6 +12,8 @@ import type {
 import { useWyrm } from '../store'
 import { StampGlyph, StampPalette } from './StampPalette'
 import { MapScalePanel } from './MapScalePanel'
+import { MapExportPanel } from './MapExportPanel'
+import { drawnExtent } from '../lib/mapPicture'
 import { describeRoute, formatDistance, routeLength, scaleBar, validScale } from '../lib/mapScale'
 import { afterKeysUp } from '../lib/keys'
 import {
@@ -165,6 +167,7 @@ export function WorldMap(): JSX.Element {
   const removeMapPin = useWyrm((s) => s.removeMapPin)
   const setMapBounds = useWyrm((s) => s.setMapBounds)
   const setMapScale = useWyrm((s) => s.setMapScale)
+  const exportMapImage = useWyrm((s) => s.exportMapImage)
   const showEntity = useWyrm((s) => s.showEntity)
   const mapShapes = useWyrm((s) => s.mapShapes)
   const loadMapShapes = useWyrm((s) => s.loadMapShapes)
@@ -208,31 +211,7 @@ export function WorldMap(): JSX.Element {
   // Everything on the map widens it, shapes as well as pins: a pin taken
   // off must never shrink the map under land drawn out beside it.
   const extent = useMemo(
-    () => [
-      // A place drawn as a stamp is a box, like a stamp (below); a pin, its point.
-      ...mapPins.flatMap((p) => {
-        if (!p.stamp) return [p]
-        const size = markSizeOf(p.size)
-        const w = STAMP_W * size
-        const h = STAMP_H * size
-        return [
-          { x: p.x - w / 2, y: p.y - h / 2 },
-          { x: p.x + w / 2, y: p.y + h / 2 + 16 }
-        ]
-      }),
-      ...mapShapes.flatMap((s) => s.points),
-      // A stamp's whole drawing and the name under it, not just its centre:
-      // an XL castle at the corner was otherwise half off the map.
-      ...mapMarks.flatMap((m) => {
-        const size = markSizeOf(m.size)
-        const w = (isStamp(m.kind) ? STAMP_W : 120) * size
-        const h = (isStamp(m.kind) ? STAMP_H : 20) * size
-        return [
-          { x: m.x - w / 2, y: m.y - h / 2 },
-          { x: m.x + w / 2, y: m.y + h / 2 + (isStamp(m.kind) && m.name ? 16 : 0) }
-        ]
-      })
-    ],
+    () => drawnExtent(mapPins, mapShapes, mapMarks),
     [mapPins, mapShapes, mapMarks]
   )
   const bounds = boundsOf(project?.data.mapBounds, extent)
@@ -485,6 +464,8 @@ export function WorldMap(): JSX.Element {
   const [route, setRoute] = useState<Point[]>([])
   const [routeDone, setRouteDone] = useState(false)
   const [scaleOpen, setScaleOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportButton = useRef<HTMLButtonElement | null>(null)
   // The route's length in map pixels, out to the pointer — null until there
   // are two points to measure between.
   const routeNow = !routeDone && hover && route.length > 0 ? [...route, hover] : route
@@ -533,6 +514,7 @@ export function WorldMap(): JSX.Element {
   const chooseTool = (next: Tool): void => {
     setTool(next)
     setScaleOpen(false)
+    setExportOpen(false)
     setRoute([])
     setRouteDone(false)
     setPaletteOpen(false)
@@ -1192,6 +1174,10 @@ export function WorldMap(): JSX.Element {
    * the map's own, so they stop here: Esc is also "back".
    */
   const onMapKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    // A panel open over the map (the scale, the export) has its own keys: a
+    // Backspace or a Delete on its buttons is not one aimed at the map, and
+    // must not take a point off the route or the chosen shape off the map.
+    if ((e.target as Element).closest?.('[role="dialog"]')) return
     // A route being measured: Esc clears it (and stops there — Esc is also
     // "back"), Backspace takes the last point back, Return finishes it.
     if (tool === 'measure' && route.length > 0) {
@@ -1527,6 +1513,44 @@ export function WorldMap(): JSX.Element {
             </button>
           ))}
         </span>
+        <span className="map-tools-group">
+          <button
+            ref={exportButton}
+            type="button"
+            className="board-tool map-export-toggle"
+            data-help="map-export"
+            aria-haspopup="dialog"
+            aria-expanded={exportOpen}
+            onClick={() => {
+              setScaleOpen(false)
+              setExportOpen((o) => !o)
+            }}
+          >
+            <span className="board-tool-pin" aria-hidden="true" />
+            <span>Export…</span>
+          </button>
+        </span>
+        {/* Hung from the bar, not from its button: the bar wraps, and a
+            panel hung from a button at the start of a row ran off the left. */}
+        {exportOpen && (
+          <MapExportPanel
+            hasScale={scale != null}
+            // What the picture would draw: a place whose entry has gone is
+            // left out of it, so it does not count.
+            empty={
+              mapShapes.length + mapMarks.length === 0 &&
+              !mapPins.some((p) => placeIds.has(p.entityId))
+            }
+            toggle=".map-export-toggle"
+            onExport={exportMapImage}
+            onClose={(written, focus) => {
+              setExportOpen(false)
+              // The hint is one line: the file's name, not a path it cuts off.
+              if (written) setNotice(`Map written: ${written.split(/[\\/]/).pop()}.`)
+              if (focus) afterKeysUp(() => exportButton.current?.focus({ preventScroll: true }))
+            }}
+          />
+        )}
       </div>
 
       {(() => {
@@ -1591,7 +1615,10 @@ export function WorldMap(): JSX.Element {
             data-help="map-scale"
             aria-haspopup="dialog"
             aria-expanded={scaleOpen}
-            onClick={() => setScaleOpen((o) => !o)}
+            onClick={() => {
+              setExportOpen(false)
+              setScaleOpen((o) => !o)
+            }}
           >
             {scale ? 'Scale…' : 'Set Scale…'}
           </button>
@@ -1645,6 +1672,7 @@ export function WorldMap(): JSX.Element {
             onClick={() => {
               // Measure first: choosing a tool closes the scale panel.
               if (tool !== 'measure') chooseTool('measure')
+              setExportOpen(false)
               setScaleOpen(true)
             }}
           >

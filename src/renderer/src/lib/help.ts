@@ -122,6 +122,10 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'Scale and travel',
     body: 'What a distance on the map is in your story — miles, leagues, days’ sail — and how far a day’s travel goes on foot, on horseback and by ship. Set it from a route you have just measured between two places whose distance you know, or from one square of the grid. Then Measure tells you how far a route is, and how long it takes.'
   },
+  'map-export': {
+    title: 'Export map image',
+    body: 'A clean copy of the map for the book: black on white whatever the palette, with none of the tools on it. PNG is a picture drawn at print size; SVG stays sharp at any size. To put the map at the front of the book itself, tick Map at the front when you compile to .docx or PDF.'
+  },
   'map-size': {
     title: 'Size',
     body: 'How large a stamp or a label is drawn: small, medium, large or extra large. With a stamp or Label in hand it sets the size of the next one; with a stamp or label chosen, it changes that one.'

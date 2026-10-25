@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 import type { BinderNode, CompileFormat, CompileOptions, DocFile } from '../../../shared/types'
-import { DEFAULT_COMPILE_OPTIONS, allDocIds, compile } from '../lib/compile'
+import { DEFAULT_COMPILE_OPTIONS, PAGED_FORMATS, allDocIds, compile } from '../lib/compile'
+import { DEFAULT_PICTURE_OPTIONS } from '../lib/mapPicture'
 import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
 import { useFocusTrap } from '../lib/useFocusTrap'
@@ -15,10 +16,6 @@ const FORMATS: { value: CompileFormat; label: string }[] = [
   { value: 'docx', label: 'Word (.docx)' },
   { value: 'pdf', label: 'PDF (.pdf)' }
 ]
-
-/** Formats with real pages, where a page break between folders means
- *  something. F-38 added PDF to what was previously .docx alone. */
-const PAGED_FORMATS: CompileFormat[] = ['docx', 'pdf']
 
 type SeparatorMode = 'hash' | 'stars' | 'blank' | 'custom'
 
@@ -137,6 +134,11 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
   const [docTitles, setDocTitles] = useState(false)
   const [folderTitles, setFolderTitles] = useState(false)
   const [pageBreaks, setPageBreaks] = useState(false)
+  const [mapFirst, setMapFirst] = useState(false)
+  // Whether there is a map to put at the front: unknown until it is read,
+  // and 'unread' if reading it failed (which is not the same as empty).
+  const [hasMap, setHasMap] = useState<boolean | 'unread' | null>(null)
+  const mapPicture = useWyrm((s) => s.mapPicture)
   const [busy, setBusy] = useState(false)
   const [written, setWritten] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -158,6 +160,17 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
     }
   }, [project, loadAllDocs])
 
+  useEffect(() => {
+    let live = true
+    void mapPicture(DEFAULT_PICTURE_OPTIONS)
+      .then((picture) => live && setHasMap(picture != null))
+      .catch(() => live && setHasMap('unread'))
+    return () => {
+      live = false
+    }
+  }, [mapPicture])
+
+  const paged = PAGED_FORMATS.includes(format)
   const options: CompileOptions = useMemo(
     () => ({
       format,
@@ -167,9 +180,22 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
       titlePage,
       docTitles,
       folderTitles,
-      pageBreakBetweenFolders: pageBreaks && PAGED_FORMATS.includes(format)
+      pageBreakBetweenFolders: pageBreaks && paged,
+      frontispiece: mapFirst && paged && hasMap === true
     }),
-    [format, selected, sepMode, customSep, titlePage, docTitles, folderTitles, pageBreaks]
+    [
+      format,
+      selected,
+      sepMode,
+      customSep,
+      titlePage,
+      docTitles,
+      folderTitles,
+      pageBreaks,
+      paged,
+      mapFirst,
+      hasMap
+    ]
   )
 
   const result = useMemo(
@@ -280,9 +306,27 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
               <Check label="Folder titles" on={folderTitles} onToggle={setFolderTitles} />
               <Check
                 label="Page break between folders"
-                on={pageBreaks && PAGED_FORMATS.includes(format)}
-                disabled={!PAGED_FORMATS.includes(format)}
+                on={pageBreaks && paged}
+                disabled={!paged}
                 onToggle={setPageBreaks}
+              />
+              {/* Says why when it cannot be had: a box that only greys out
+                  leaves the writer guessing. */}
+              <Check
+                label={
+                  !paged
+                    ? 'Map at the front (.docx and PDF)'
+                    : hasMap === null
+                      ? 'Map at the front (reading the map…)'
+                      : hasMap === 'unread'
+                        ? 'Map at the front (the map could not be read)'
+                        : hasMap
+                          ? 'Map at the front'
+                          : 'Map at the front (nothing is drawn on the map)'
+                }
+                on={mapFirst && paged && hasMap === true}
+                disabled={!paged || hasMap !== true}
+                onToggle={setMapFirst}
               />
             </fieldset>
           </div>

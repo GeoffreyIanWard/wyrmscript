@@ -545,22 +545,31 @@ export function registerIpc(): void {
       recordOutcome(path, await resolveSyncConflicts(path, choices, transport))
   )
 
-  ipcMain.handle('compile:export', async (_e, defaultName: string, data: string | Uint8Array) => {
-    const win = focusedWindow()
-    if (!win) return null
-    const result = await dialog.showSaveDialog(win, {
-      title: 'Compile Manuscript',
-      defaultPath: join(app.getPath('documents'), defaultName),
-      buttonLabel: 'Compile'
-    })
-    if (result.canceled || !result.filePath) return null
-    // Compiled output leaves the project entirely — it is a deliverable, not
-    // project data, so it is written wherever the writer asks and never
-    // touched again.
-    if (typeof data === 'string') await fsp.writeFile(result.filePath, data, 'utf8')
-    else await fsp.writeFile(result.filePath, Buffer.from(data))
-    return result.filePath
-  })
+  ipcMain.handle(
+    'compile:export',
+    async (
+      _e,
+      defaultName: string,
+      data: string | Uint8Array,
+      named?: { title?: unknown; buttonLabel?: unknown }
+    ) => {
+      const win = focusedWindow()
+      if (!win) return null
+      const result = await dialog.showSaveDialog(win, {
+        // The map's picture is written through here too; it says so.
+        title: typeof named?.title === 'string' ? named.title : 'Compile Manuscript',
+        defaultPath: join(app.getPath('documents'), defaultName),
+        buttonLabel: typeof named?.buttonLabel === 'string' ? named.buttonLabel : 'Compile'
+      })
+      if (result.canceled || !result.filePath) return null
+      // Compiled output leaves the project entirely — it is a deliverable, not
+      // project data, so it is written wherever the writer asks and never
+      // touched again.
+      if (typeof data === 'string') await fsp.writeFile(result.filePath, data, 'utf8')
+      else await fsp.writeFile(result.filePath, Buffer.from(data))
+      return result.filePath
+    }
+  )
 
   /**
    * F-38: HTML in, PDF bytes out, paginated by Chromium's own print engine

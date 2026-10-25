@@ -10,6 +10,7 @@ import type {
   BinderNode,
   BoardString,
   StringEnd,
+  CompileMap,
   CompileOptions,
   ConflictResolution,
   SyncConflict,
@@ -46,7 +47,16 @@ import {
 } from '../../shared/types'
 import { api } from './lib/api'
 import { isConnected } from './lib/syncState'
-import { compile, compileFileName, renderHtml } from './lib/compile'
+import { compile, compileFileName, PAGED_FORMATS, renderHtml } from './lib/compile'
+import { validScale } from './lib/mapScale'
+import {
+  mapHasDrawing,
+  mapPicturePng,
+  mapPictureSvg,
+  pngSize,
+  type MapPicture,
+  type MapPictureOptions
+} from './lib/mapPicture'
 import { docToMarkdown, markdownToDoc, countWords } from './lib/markdown'
 import { buildEntityIndex, type EntityIndex } from './lib/entities'
 import { refreshEntityLinks } from './lib/entityLinks'
@@ -405,6 +415,20 @@ interface WyrmState {
    * would produce. False means the writer cancelled the dialog.
    */
   printManuscript(options: CompileOptions): Promise<boolean>
+  /**
+   * F-12: the focused project's map as a picture for the book, read from
+   * disk rather than from the map's loaded layers (Compile can run without
+   * the map ever having been opened). Places whose entry has gone from the
+   * World Book are left out: the book has no "(deleted)". Null when nothing
+   * is drawn, or no project is open.
+   */
+  mapPicture(options: MapPictureOptions): Promise<MapPicture | null>
+  /**
+   * Write the map's picture wherever the writer picks, as PNG (drawn at
+   * print size) or SVG. Resolves to the path written, or null if they
+   * cancelled — or if there was nothing to draw.
+   */
+  exportMapImage(format: 'png' | 'svg', options: MapPictureOptions): Promise<string | null>
   /** Checkpoint, then compile the manuscript and write it wherever the writer picks. */
   compileManuscript(
     options: CompileOptions
@@ -843,6 +867,16 @@ export const useWyrm = create<WyrmState>((set, get) => {
   function clearDirty(): void {
     const path = get().project?.path
     if (path) runtimeFor(path).commitDirty = false
+  }
+
+  /** The map for the front of a paged compile, if it was asked for and there
+   *  is anything drawn: SVG for PDF, a PNG as well for .docx. */
+  async function frontispiece(options: CompileOptions): Promise<CompileMap | undefined> {
+    if (!options.frontispiece || !PAGED_FORMATS.includes(options.format)) return undefined
+    const picture = await get().mapPicture({ grid: false, trim: true, scaleBar: true })
+    if (!picture) return undefined
+    const png = options.format === 'docx' ? await mapPicturePng(picture) : undefined
+    return { svg: picture.svg, png, ...pngSize(picture) }
   }
 
   async function persistProject(): Promise<void> {
@@ -1812,14 +1846,15 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (committed) set({ lastCommitAt: Date.now() })
 
       const docs = await get().loadAllDocs()
-      const result = compile(project.data, docs, options, true)
+      const map = await frontispiece(options)
+      const result = compile(project.data, docs, options, true, map)
       const name = compileFileName(project.data.title, result.extension)
       // PDF bytes cannot be built here: pagination is Chromium's job (F-38),
       // which lives in the main process and is async — unlike .docx, whose
       // container `compile` can assemble synchronously.
       let data: string | Uint8Array = result.bytes ?? result.text
       if (options.format === 'pdf') {
-        const pdf = await api.renderPdf(renderHtml(result.blocks))
+        const pdf = await api.renderPdf(renderHtml(result.blocks, map))
         if (!pdf) throw new Error('PDF export needs the desktop app.')
         data = pdf
       }
@@ -1839,7 +1874,40 @@ export const useWyrm = create<WyrmState>((set, get) => {
 
       const docs = await get().loadAllDocs()
       const result = compile(project.data, docs, options)
-      return api.printHtml(renderHtml(result.blocks))
+      return api.printHtml(renderHtml(result.blocks, await frontispiece(options)))
+    },
+
+    async mapPicture(options) {
+      const { project } = get()
+      if (!project) return null
+      // Everything from the one project, as it is on disk: the names too,
+      // since Compile can run before the World Book has been read.
+      const [pins, shapes, marks, entries] = await Promise.all([
+        api.listMapPins(project.path),
+        api.listMapShapes(project.path),
+        api.listMapMarks(project.path),
+        api.listEntities(project.path)
+      ])
+      const places = new Map(entries.filter((e) => e.type === 'world').map((e) => [e.id, e.name]))
+      const input = {
+        mapBounds: project.data.mapBounds,
+        shapes,
+        marks,
+        pins: pins.filter((p) => places.has(p.entityId)),
+        nameOf: (id: string) => places.get(id) ?? '',
+        scale: validScale(project.data.mapScale) ? project.data.mapScale : undefined
+      }
+      return mapHasDrawing(input) ? mapPictureSvg(input, options) : null
+    },
+
+    async exportMapImage(format, options) {
+      const { project } = get()
+      if (!project) return null
+      const picture = await get().mapPicture(options)
+      if (!picture) return null
+      const data = format === 'svg' ? picture.svg : await mapPicturePng(picture)
+      const name = compileFileName(`${project.data.title} map`, format)
+      return api.exportFile(name, data, { title: 'Export Map Image', buttonLabel: 'Export' })
     },
 
     async addDoc(parentId) {

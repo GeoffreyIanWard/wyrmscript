@@ -3,7 +3,9 @@ import type {
   BinderNode,
   CompileBlock,
   CompileInline,
+  CompileMap,
   CompileOptions,
+  CompileFormat,
   CompileResult,
   CompileRun,
   DocFile,
@@ -27,6 +29,10 @@ import { docxBytes } from './docx'
  */
 
 export const SEPARATOR_PRESETS = ['#', '* * *', '~', ''] as const
+
+/** Formats with real pages: where a page break between folders, or a map
+ *  on a page of its own, means something. */
+export const PAGED_FORMATS: CompileFormat[] = ['docx', 'pdf']
 
 export const DEFAULT_COMPILE_OPTIONS: CompileOptions = {
   format: 'txt',
@@ -158,6 +164,9 @@ export function buildBlocks(
       lines: [`${words.toLocaleString()} words`]
     })
   }
+  // A frontispiece faces the title page, so it comes before it: first of all.
+  if (options.frontispiece && PAGED_FORMATS.includes(options.format))
+    blocks.unshift({ kind: 'map', alt: `Map of ${project.title}` })
   return blocks
 }
 
@@ -218,6 +227,10 @@ export function renderText(blocks: CompileBlock[]): string {
         // Form feed is the plain-text page break, and has been since teletypes.
         chunks.push('\f')
         break
+      case 'map':
+        // Only the paged formats carry the map; this is their preview.
+        chunks.push('[ The map, on a page of its own ]')
+        break
       case 'paragraph':
         chunks.push(runsToPlain(block.runs, '\n'))
         break
@@ -263,6 +276,9 @@ export function renderMarkdown(blocks: CompileBlock[]): string {
       case 'pageBreak':
         chunks.push('---')
         break
+      case 'map':
+        // A Markdown file carries no picture; the option is not offered.
+        break
       case 'paragraph':
         chunks.push(docToMarkdown(runsToJson(block.runs)).replace(/\n$/, ''))
         break
@@ -282,6 +298,20 @@ function escapeHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+/**
+ * Text as base64 of its UTF-8. The map goes into the print HTML this way, not
+ * percent-encoded: the PDF path loads the whole page as a percent-encoded
+ * data: URL, so a percent-encoded picture inside it was encoded twice over —
+ * near three times its size — against Chromium's limit on a URL's length.
+ */
+function base64Utf8(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(binary)
 }
 
 function runsToHtml(runs: CompileInline[]): string {
@@ -312,10 +342,18 @@ function runsToHtml(runs: CompileInline[]): string {
  * margins, indented paragraphs — which is both what fiction submissions
  * expect and, conveniently, what this app already looks like.
  */
-export function renderHtml(blocks: CompileBlock[]): string {
+export function renderHtml(blocks: CompileBlock[], map?: CompileMap): string {
   const body: string[] = []
   for (const block of blocks) {
     switch (block.kind) {
+      case 'map':
+        // Drawn as SVG, so it prints as sharp as the type; without a picture
+        // there is nothing to draw, and the book goes on without it.
+        if (map)
+          body.push(
+            `<section class="map-page"><img alt="${escapeHtml(block.alt)}" src="data:image/svg+xml;base64,${base64Utf8(map.svg)}"></section>`
+          )
+        break
       case 'titlePage':
         body.push(
           `<section class="title-page"><h1>${escapeHtml(block.title)}</h1>` +
@@ -357,6 +395,8 @@ export function renderHtml(blocks: CompileBlock[]): string {
   .page-break { page-break-after: always; }
   .title-page { text-align: center; page-break-after: always; }
   .title-page p { text-indent: 0; }
+  .map-page { text-align: center; page-break-after: always; }
+  .map-page img { max-width: 100%; max-height: 8.9in; }
 </style></head><body>
 ${body.join('\n')}
 </body></html>`
@@ -380,7 +420,8 @@ export function compile(
   project: ProjectData,
   docs: Map<string, DocFile>,
   options: CompileOptions,
-  withBytes = false
+  withBytes = false,
+  map?: CompileMap
 ): CompileResult {
   const blocks = buildBlocks(project, docs, options)
   const result: CompileResult = {
@@ -392,7 +433,7 @@ export function compile(
   }
   // The .docx preview shows the plain-text rendering; the bytes are what gets
   // written to disk.
-  if (withBytes && options.format === 'docx') result.bytes = docxBytes(blocks)
+  if (withBytes && options.format === 'docx') result.bytes = docxBytes(blocks, map)
   return result
 }
 
