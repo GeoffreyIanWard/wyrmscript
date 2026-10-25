@@ -63,7 +63,8 @@ const api: WyrmApi = {
   writeBoardString: (path, s: BoardString) => ipcRenderer.invoke('boardString:write', path, s),
   deleteBoardString: (path, id) => ipcRenderer.invoke('boardString:delete', path, id),
 
-  exportFile: (defaultName, data) => ipcRenderer.invoke('compile:export', defaultName, data),
+  exportFile: (defaultName, data, dialog) =>
+    ipcRenderer.invoke('compile:export', defaultName, data, dialog),
   renderPdf: (html) => ipcRenderer.invoke('compile:pdf', html),
   printHtml: (html, options) => ipcRenderer.invoke('compile:print', html, options),
   listPrinters: () => ipcRenderer.invoke('print:printers'),

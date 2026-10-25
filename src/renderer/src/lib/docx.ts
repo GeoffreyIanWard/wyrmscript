@@ -1,4 +1,4 @@
-import type { CompileBlock, CompileInline } from '../../../shared/types'
+import type { CompileBlock, CompileInline, CompileMap } from '../../../shared/types'
 
 /**
  * A dependency-free Office Open XML (.docx) writer. A .docx is a ZIP of a
@@ -10,6 +10,20 @@ import type { CompileBlock, CompileInline } from '../../../shared/types'
  */
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+const WP_NS = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
+const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+const PIC_NS = 'http://schemas.openxmlformats.org/drawingml/2006/picture'
+
+/** The map's picture: its part, and the relationship document.xml names it by. */
+const MAP_PART = 'media/map.png'
+const MAP_REL = 'rIdMap'
+
+/** EMUs to an inch (DrawingML's unit), and the room inside the margins of a
+ *  Letter page: 6.5in across, and a little short of 9in down. */
+const EMU_PER_INCH = 914400
+const ROOM_W = 6.5 * EMU_PER_INCH
+const ROOM_H = 8.9 * EMU_PER_INCH
 
 // Manuscript-ish serif default. Applied per-run (not via a shared style,
 // since there is no styles.xml part) so bold/italic/highlight can layer on
@@ -79,8 +93,35 @@ function centeredParagraphXml(text: string, style: RunStyle): string {
   return `<w:p>${CENTER_PPR}${textRunXml(text, style)}</w:p>`
 }
 
-function blockXml(block: CompileBlock): string {
+/**
+ * The map, as large as fits inside the margins and keeping its shape, centred
+ * on a page of its own: an inline DrawingML picture of the embedded PNG.
+ */
+function mapXml(alt: string, map: CompileMap): string {
+  const fit = Math.min(ROOM_W / map.width, ROOM_H / map.height)
+  const cx = Math.round(map.width * fit)
+  const cy = Math.round(map.height * fit)
+  const name = escapeXml(alt)
+  return (
+    `<w:p>${CENTER_PPR}<w:r><w:drawing>` +
+    `<wp:inline distT="0" distB="0" distL="0" distR="0">` +
+    `<wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="1" name="Map" descr="${name}"/>` +
+    `<a:graphic xmlns:a="${A_NS}"><a:graphicData uri="${PIC_NS}">` +
+    `<pic:pic xmlns:pic="${PIC_NS}">` +
+    `<pic:nvPicPr><pic:cNvPr id="1" name="map.png" descr="${name}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${MAP_REL}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+    `</pic:pic></a:graphicData></a:graphic></wp:inline>` +
+    `</w:drawing></w:r></w:p>${PAGE_BREAK_P}`
+  )
+}
+
+function blockXml(block: CompileBlock, map?: CompileMap): string {
   switch (block.kind) {
+    case 'map':
+      // No picture, nothing to draw: the book goes on without it.
+      return map?.png ? mapXml(block.alt, map) : ''
     case 'titlePage': {
       const paras = [centeredParagraphXml(block.title, { bold: true, size: TITLE_SIZE })]
       for (const line of block.lines) {
@@ -108,19 +149,21 @@ const SECT_PR =
   '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>' +
   '</w:sectPr>'
 
-function documentXml(blocks: CompileBlock[]): string {
-  const body = blocks.map(blockXml).join('')
+function documentXml(blocks: CompileBlock[], map?: CompileMap): string {
+  const body = blocks.map((b) => blockXml(b, map)).join('')
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    `<w:document xmlns:w="${W_NS}"><w:body>${body}${SECT_PR}</w:body></w:document>`
+    `<w:document xmlns:w="${W_NS}" xmlns:r="${R_NS}" xmlns:wp="${WP_NS}">` +
+    `<w:body>${body}${SECT_PR}</w:body></w:document>`
   )
 }
 
-const CONTENT_TYPES_XML =
+const contentTypesXml = (png: boolean): string =>
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
   '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
   '<Default Extension="xml" ContentType="application/xml"/>' +
+  (png ? '<Default Extension="png" ContentType="image/png"/>' : '') +
   '<Override PartName="/word/document.xml" ' +
   'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
   '</Types>'
@@ -133,12 +176,17 @@ const PACKAGE_RELS_XML =
   'Target="word/document.xml"/>' +
   '</Relationships>'
 
-// document.xml references nothing external (no images, no styles part), but
-// the part still has to exist and be well-formed — Word looks for it by
-// convention even when it's empty.
-const DOCUMENT_RELS_XML =
+// document.xml references nothing external but the map's picture, when there
+// is one; the part still has to exist and be well-formed without it — Word
+// looks for it by convention even when it's empty.
+const documentRelsXml = (png: boolean): string =>
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>'
+  (png
+    ? '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      `<Relationship Id="${MAP_REL}" ` +
+      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" ' +
+      `Target="${MAP_PART}"/></Relationships>`
+    : '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>')
 
 /* ---------- ZIP container (stored, i.e. uncompressed, entries) ---------- */
 //
@@ -260,15 +308,18 @@ function buildZip(entries: ZipEntry[]): Uint8Array {
   return concatBytes([...localParts, centralDir, end])
 }
 
-/** Serialize compiled manuscript blocks into a .docx file's bytes. */
-export function docxBytes(blocks: CompileBlock[]): Uint8Array {
+/** Serialize compiled manuscript blocks into a .docx file's bytes; the map's
+ *  PNG goes in when there is a map block and a picture for it. */
+export function docxBytes(blocks: CompileBlock[], map?: CompileMap): Uint8Array {
   const encoder = new TextEncoder()
+  const png = map?.png && blocks.some((b) => b.kind === 'map') ? map.png : undefined
   // [Content_Types].xml first: some readers require it to be the first entry.
   const entries: ZipEntry[] = [
-    { name: '[Content_Types].xml', data: encoder.encode(CONTENT_TYPES_XML) },
+    { name: '[Content_Types].xml', data: encoder.encode(contentTypesXml(png != null)) },
     { name: '_rels/.rels', data: encoder.encode(PACKAGE_RELS_XML) },
-    { name: 'word/document.xml', data: encoder.encode(documentXml(blocks)) },
-    { name: 'word/_rels/document.xml.rels', data: encoder.encode(DOCUMENT_RELS_XML) }
+    { name: 'word/document.xml', data: encoder.encode(documentXml(blocks, map)) },
+    { name: 'word/_rels/document.xml.rels', data: encoder.encode(documentRelsXml(png != null)) }
   ]
+  if (png) entries.push({ name: `word/${MAP_PART}`, data: png })
   return buildZip(entries)
 }

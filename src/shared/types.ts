@@ -521,6 +521,10 @@ export type CompileBlock =
   | { kind: 'separator'; text: string }
   | { kind: 'pageBreak' }
   | { kind: 'paragraph'; runs: CompileInline[] }
+  /** The world map, on a page of its own at the front (a frontispiece).
+   *  Drawn by the paged formats from the picture handed to them; skipped,
+   *  never failed, by a renderer that has none. */
+  | { kind: 'map'; alt: string }
 
 export interface CompileOptions {
   format: CompileFormat
@@ -533,6 +537,22 @@ export interface CompileOptions {
   folderTitles: boolean
   /** Only honoured by formats with pages (`docx`). */
   pageBreakBetweenFolders: boolean
+  /** The world map on a page of its own before everything else. Only
+   *  honoured by formats with pages (`docx`, `pdf`). */
+  frontispiece?: boolean
+}
+
+/**
+ * The map as the paged formats draw it at the front: the picture as SVG
+ * (for PDF) and as PNG (for .docx, which Word draws reliably), with the PNG's
+ * size in pixels. Made by the renderer, which alone can draw a PNG.
+ */
+export interface CompileMap {
+  svg: string
+  png?: Uint8Array
+  /** The PNG's size in pixels. */
+  width: number
+  height: number
 }
 
 export interface CompileResult {
@@ -916,8 +936,13 @@ export interface WyrmApi {
   writeBoardString(path: string, s: BoardString): Promise<void>
   deleteBoardString(path: string, id: string): Promise<void>
 
-  /** Show a save dialog and write compiled output. Returns the path, or null if cancelled. */
-  exportFile(defaultName: string, data: string | Uint8Array): Promise<string | null>
+  /** Show a save dialog and write compiled output. Returns the path, or null if cancelled.
+   *  `dialog` names the save dialog for what is being written (Compile by default). */
+  exportFile(
+    defaultName: string,
+    data: string | Uint8Array,
+    dialog?: { title: string; buttonLabel: string }
+  ): Promise<string | null>
   /**
    * F-38: render print-ready HTML to PDF bytes using Electron's own print
    * engine, so pagination is the real thing rather than a second guess.
