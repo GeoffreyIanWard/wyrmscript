@@ -1,6 +1,6 @@
 {
   "name": "wyrmstar",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "license": "GPL-3.0-or-later",
   "description": "A retro word processor for novel writing",
   "main": "./out/main/index.js",
