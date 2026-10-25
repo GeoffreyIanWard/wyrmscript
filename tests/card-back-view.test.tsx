@@ -216,6 +216,62 @@ describe('the back of the card', () => {
     expect((await metaOf(path, first)).conflict).toBe('Written, then Esc.')
   })
 
+  it('turns back to the front from the back’s own bent corner, keeping what was written', async () => {
+    const [first] = scenes
+    await turnOver(first)
+    type(field('Synopsis'), 'Turned back by the corner.')
+    // The back's corner, the front's twin: a bent-up flap, no writing on it.
+    const corner = screen.getByRole('button', { name: 'Turn back to the front' })
+    expect(corner.classList.contains('card-corner')).toBe(true)
+    expect(corner.getAttribute('data-help')).toBe('card-turn-back')
+    await act(async () => {
+      fireEvent.click(corner)
+    })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect((await metaOf(path, first)).synopsis).toBe('Turned back by the corner.')
+    // The front's corner now shows writing through it.
+    await waitFor(() =>
+      expect(
+        cardByTitle(first).querySelector('.card-corner.written .card-corner-writing')
+      ).toBeTruthy()
+    )
+    // And it turns the card over again, as before.
+    await turnOver(first)
+    expect(field('Synopsis').value).toBe('Turned back by the corner.')
+  })
+
+  it('never starts a drag from its corner: the card stays where it is', async () => {
+    const [first] = scenes
+    const card = cardByTitle(first)
+    const before = { x: card.style.left, y: card.style.top }
+    const corner = turnButton(first)
+    const pointer = (el: Element, type: string, x: number, y: number): void => {
+      const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y })
+      Object.defineProperty(e, 'pointerId', { value: 1 })
+      el.dispatchEvent(e)
+    }
+    await act(async () => pointer(corner, 'pointerdown', 200, 190))
+    await act(async () => pointer(document.body, 'pointermove', 300, 320))
+    await act(async () => pointer(document.body, 'pointerup', 300, 320))
+    expect({ x: cardByTitle(first).style.left, y: cardByTitle(first).style.top }).toEqual(before)
+    expect((await metaOf(path, first)).boardX).toBeUndefined()
+  })
+
+  it('comes last to Tab on the back, as it sits last on the card', async () => {
+    const back = await turnOver(scenes[0])
+    const order = [...back.querySelectorAll<HTMLElement>('button, input, textarea, select')]
+    expect(order.at(-1)?.getAttribute('aria-label')).toBe('Turn back to the front')
+  })
+
+  it('draws the front’s corner bent up, with no writing showing on an empty back', async () => {
+    const [first] = scenes
+    const corner = turnButton(first)
+    expect(corner.classList.contains('card-corner')).toBe(true)
+    expect(corner.getAttribute('data-help')).toBe('card-turn')
+    expect(corner.querySelector('.card-corner-under')).not.toBeNull()
+    expect(corner.querySelector('.card-corner-writing')).toBeNull()
+  })
+
   it('writes nothing for a card that was only looked at', async () => {
     const [first] = scenes
     const write = vi.spyOn(api, 'writeDoc')

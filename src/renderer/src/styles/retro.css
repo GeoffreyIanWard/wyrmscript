@@ -1421,6 +1421,42 @@ button {
   overflow-y: hidden;
 }
 
+/* F-42: a run of scenes in one act, behind the curve — ruled off from its
+   neighbours in dotted ink, named at the top. Two inks: rules, not tints. */
+.plot-graph-act {
+  position: absolute;
+  top: 0;
+  box-sizing: border-box;
+  border-right: 1px dashed var(--ink);
+  pointer-events: none;
+}
+
+/* Ruled on the left where nothing rules it already: the first band, and
+   one after a gap of scenes with no act. */
+.plot-graph-act.starts {
+  border-left: 1px dashed var(--ink);
+}
+
+.plot-graph-act-name {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plot-graph-act-name.lower {
+  top: 14px;
+}
+
+.plot-graph-acts {
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
 .plot-graph-svg {
   position: absolute;
   left: 0;
@@ -2645,6 +2681,100 @@ button.map-place-name {
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
   border-top: 10px solid var(--ink);
+}
+
+/* F-42: how many scenes happen at a place — a small ink tag by its pin,
+   which lists them. Unscaled, like the pins, so it reads at every zoom. */
+.map-scenes {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -100%);
+}
+
+/* The open one over every other marker, pin and name: each marker is its
+   own stacking context, so its list's z-index counts only inside it. */
+.map-scenes.open {
+  z-index: 30;
+}
+
+.map-scene-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  color: var(--paper);
+  background: var(--ink);
+  border: 1px solid var(--paper);
+  outline: 1px solid var(--ink);
+  font: inherit;
+  font-size: 10px;
+  line-height: 14px;
+  cursor: pointer;
+}
+
+.map-scene-count.on,
+.map-scene-count:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.map-scene-list {
+  /* Above the marker: below it are the place's own pin and name. A place
+     too near the top of the map for that has it below instead. */
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  min-width: 180px;
+  max-width: 260px;
+  max-height: 220px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px 8px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  font-size: 11px;
+}
+
+.map-scene-list.below {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+/* At the map's west or east edge, the list lines up with its marker rather
+   than centring on it and hanging off the map. */
+.map-scene-list.start {
+  left: 0;
+  transform: none;
+}
+
+.map-scene-list.end {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.map-scene-row {
+  padding: 3px 4px;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-scene-row:hover,
+.map-scene-row:focus-visible {
+  color: var(--paper);
+  background: var(--ink);
+  outline: none;
 }
 
 .world-map-pin-label {
@@ -4515,34 +4645,95 @@ button.map-place-name {
    side" without a word or an icon. Faint until the card is hovered, like the
    take-off box; solid on a card with something written on its back, so an
    outlined board shows at a glance which cards have been thought about. */
-.scene-card-turn {
+/* The bent corner (F-42), on both faces of a scene's card: the corner
+   folded up along its diagonal, the flap lying on the face with its
+   underside up, and the cork showing where the corner was. The box sits
+   over the card's own corner, border and outline included (`--edge`), so
+   the cut goes clean through them. */
+.card-corner {
+  --corner: 24px;
+  --edge: 3px;
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 16px;
-  height: 16px;
+  right: calc(-1 * var(--edge));
+  bottom: calc(-1 * var(--edge));
+  width: calc(var(--corner) + var(--edge));
+  height: calc(var(--corner) + var(--edge));
   padding: 0;
   border: 0;
-  background: linear-gradient(
-    315deg,
-    transparent 50%,
-    var(--ink) 50%,
-    var(--ink) calc(50% + 1px),
-    var(--paper) calc(50% + 1px)
-  );
-  opacity: 0.35;
+  background: none;
   cursor: pointer;
-  z-index: 1;
+  z-index: 2;
 }
 
-.scene-card:hover .scene-card-turn,
-.scene-card-turn:focus-visible,
-.scene-card-turn.written {
-  opacity: 1;
+/* Where the corner was: the cork, as if the card had been folded off it. */
+.card-corner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: var(--page-bg, var(--paper));
+  background-image: var(--cork);
+  background-size: 96px 96px;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
 }
 
-.scene-card-turn:focus-visible {
+.card-corner-flap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--corner);
+  height: var(--corner);
+  overflow: visible;
+}
+
+.card-corner-under {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+}
+
+.card-corner-crease {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1px;
+  stroke-dasharray: 1 2;
+}
+
+.card-corner-writing {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1px;
+}
+
+.card-corner:hover .card-corner-under,
+.card-corner:focus-visible .card-corner-under {
+  stroke-width: 2px;
+}
+
+.card-corner:focus-visible {
   outline: 1px dotted var(--ink);
+  outline-offset: -4px;
+}
+
+/* The back is a dialog over the board: its corner cuts through the shadow
+   too, and the cork behind is the board's. */
+.card-back-corner {
+  --corner: 28px;
+  --edge: 6px;
+}
+
+.dialog.card-back {
+  position: relative;
+}
+
+/* Its buttons stop short of the corner, so the corner never covers Done. */
+.dialog.card-back .dialog-buttons {
+  padding-right: 40px;
+}
+
+/* The foot's last words stop short of the corner. */
+.scene-card-foot {
+  padding-right: 22px;
 }
 
 /* The act and scene type, from the back. One line, like the folder. */

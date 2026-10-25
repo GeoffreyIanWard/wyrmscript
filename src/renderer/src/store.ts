@@ -1529,8 +1529,14 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // Choosing a scene also resets Esc's history (F-14): binder navigation
       // is deliberately not part of the back-stack. The one exception is a
       // caller that names where the writer came from — the corkboard, whose
-      // board→scene→board loop is how an outline is worked through.
-      set({ mainView: { kind: 'doc' }, viewHistory: returnTo ? [returnTo] : [] })
+      // board→scene→board loop is how an outline is worked through, or the
+      // map, itself a detour: that place is added to the trail, as an entry
+      // opened from the map adds it, so Esc walks back map, then board.
+      const { viewHistory } = get()
+      set({
+        mainView: { kind: 'doc' },
+        viewHistory: returnTo ? [...viewHistory, returnTo].slice(-VIEW_HISTORY_LIMIT) : []
+      })
       if (id === activeId) return
       await get().flushSave()
       const doc = await api.readDoc(project.path, id)

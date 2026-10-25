@@ -88,7 +88,11 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'card-turn': {
     title: 'Turn the card over',
-    body: 'The folded corner turns a scene card over to its back: synopsis, act, scene type, where it happens, the conflict and who is in it — the scene outlined before a word of it is written. The corner stays dark on a card whose back has something on it.'
+    body: 'The bent corner turns a scene card over to its back: synopsis, act, scene type, where it happens, the conflict and who is in it — the scene outlined before a word of it is written. A card whose back has something on it shows a line or two of writing on its turned-up corner. The back has the same corner, to turn it back.'
+  },
+  'card-turn-back': {
+    title: 'Turn back to the front',
+    body: 'The corner of the back, bent up like the front’s: click it to turn the card back over. What you wrote is kept — every way off the back saves it.'
   },
   'card-back': {
     title: 'The back of the card',
@@ -125,6 +129,14 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   'map-scale': {
     title: 'Scale and travel',
     body: 'What a distance on the map is in your story — miles, leagues, days’ sail — and how far a day’s travel goes on foot, on horseback and by ship. Set it from a route you have just measured between two places whose distance you know, or from one square of the grid. Then Measure tells you how far a route is, and how long it takes.'
+  },
+  'plot-graph-acts': {
+    title: 'Scenes in each act',
+    body: 'How many scenes each act has, from the Act on the back of every scene card — so a crowded act and a thin one show at a glance. On the graph, each run of scenes in one act is ruled off and named.'
+  },
+  'map-scenes': {
+    title: 'Scenes here',
+    body: 'How many scenes happen at this place, from where each scene card says it happens (the back of the card). A scene set somewhere inside a place with no pin of its own on this map counts at the place it is inside. Click to list them; click one to start writing it.'
   },
   'map-tabs': {
     title: 'Maps',

@@ -15,3 +15,56 @@ export const DEFAULT_TENSION = 5
 export function clampTension(value: number): number {
   return Math.min(TENSION_MAX, Math.max(TENSION_MIN, Math.round(value)))
 }
+
+/**
+ * F-42: acts on the plot graph. Act is an attribute, not a container — a
+ * scene says which act it falls in, the binder still orders the book — so
+ * grouping is a reading of the scenes in timeline order: each run of
+ * neighbouring scenes in one act is a band, and an act whose scenes are not
+ * all together has a band for each run. A scene with no act is in none.
+ */
+export interface ActBand {
+  act: string
+  /** Index of the first and last scene of the run, in the order given. */
+  from: number
+  to: number
+}
+
+/** An act as written, trimmed; nothing for an empty one. */
+const actOf = (act: string | undefined): string | undefined => act?.trim() || undefined
+
+export function actBands(scenes: { act?: string }[]): ActBand[] {
+  const bands: ActBand[] = []
+  scenes.forEach((scene, i) => {
+    const act = actOf(scene.act)
+    if (!act) return
+    const last = bands[bands.length - 1]
+    if (last && last.act === act && last.to === i - 1) last.to = i
+    else bands.push({ act, from: i, to: i })
+  })
+  return bands
+}
+
+/**
+ * How many scenes are in each act, in the order the acts first come, and how
+ * many have none — the heavy acts and the thin ones at a glance.
+ */
+export function actCounts(scenes: { act?: string }[]): {
+  acts: { act: string; count: number }[]
+  none: number
+} {
+  const counts = new Map<string, number>()
+  let none = 0
+  for (const scene of scenes) {
+    const act = actOf(scene.act)
+    if (act) counts.set(act, (counts.get(act) ?? 0) + 1)
+    else none += 1
+  }
+  return { acts: [...counts].map(([act, count]) => ({ act, count })), none }
+}
+
+/** An act's name as a heading: "Act II" for a bare numeral or number, the
+ *  writer's own words otherwise ("Prologue", "Act One"). */
+export function actHeading(act: string): string {
+  return /^([IVXLC]+|\d+)$/i.test(act) ? `Act ${act}` : act
+}
