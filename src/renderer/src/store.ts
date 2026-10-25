@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
 import type {
+  MapScale,
   MapBounds,
   DocMeta,
   AppearanceSettings,
@@ -510,6 +511,8 @@ interface WyrmState {
   settleMapReturn(): void
   /** F-12: the map's extent, saved with the project. */
   setMapBounds(bounds: MapBounds): Promise<void>
+  /** F-12: the map's scale, or null to take it off. */
+  setMapScale(scale: MapScale | null): Promise<void>
   /**
    * Add Card is open for this project — kept in the store, not the board,
    * so the menu, the command palette and ⌥⌘N can open it from anywhere. The
@@ -2239,6 +2242,16 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { project } = get()
       if (!project) return
       project.data.mapBounds = bounds
+      setProject({ ...project })
+      await persistProject()
+    },
+
+    async setMapScale(scale) {
+      const { project } = get()
+      if (!project) return
+      // Cleared means absent, as every optional field is written.
+      if (scale) project.data.mapScale = scale
+      else delete project.data.mapScale
       setProject({ ...project })
       await persistProject()
     },

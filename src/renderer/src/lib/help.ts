@@ -118,6 +118,10 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'Show as',
     body: 'How this place is drawn on the map: a pin, or any stamp — a castle for a castle, a city for a city — at the size you choose here. It still opens its World Book entry when clicked, and still moves when dragged. To size a stamped place on the map itself, Tab to it (or Find it in this list) and press [ or ].'
   },
+  'map-scale': {
+    title: 'Scale and travel',
+    body: 'What a distance on the map is in your story — miles, leagues, days’ sail — and how far a day’s travel goes on foot, on horseback and by ship. Set it from a route you have just measured between two places whose distance you know, or from one square of the grid. Then Measure tells you how far a route is, and how long it takes.'
+  },
   'map-size': {
     title: 'Size',
     body: 'How large a stamp or a label is drawn: small, medium, large or extra large. With a stamp or Label in hand it sets the size of the next one; with a stamp or label chosen, it changes that one.'
