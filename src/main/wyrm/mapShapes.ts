@@ -1,7 +1,7 @@
 import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
-import { MAP_SHAPE_KINDS, minShapePoints } from '../../shared/types'
+import { MAP_SHAPE_KINDS, minShapePoints, storedMapId } from '../../shared/types'
 import type { MapShape, MapShapeKind } from '../../shared/types'
 import { assertPlainId, isPlainId } from './plainId'
 
@@ -25,6 +25,7 @@ interface MapShapeFrontmatter {
   kind: MapShapeKind
   points: { x: number; y: number }[]
   name?: string
+  map?: string
   created: string
   modified: string
 }
@@ -63,6 +64,8 @@ function parseMapShapeFile(raw: string): MapShape | null {
     modified: typeof data.modified === 'string' ? data.modified : ''
   }
   if (typeof data.name === 'string' && data.name !== '') shape.name = data.name
+  const map = storedMapId(data.map)
+  if (map) shape.map = map
   return shape
 }
 
@@ -78,6 +81,8 @@ export async function writeMapShape(projectPath: string, shape: MapShape): Promi
   }
   // Written only when set: gray-matter throws on an undefined value.
   if (typeof shape.name === 'string' && shape.name !== '') meta.name = shape.name
+  const map = storedMapId(shape.map)
+  if (map) meta.map = map
   const file = matter.stringify('', meta)
   await fsp.writeFile(path, file, 'utf8')
 }

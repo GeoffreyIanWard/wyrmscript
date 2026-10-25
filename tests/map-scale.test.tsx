@@ -291,7 +291,7 @@ describe('measuring', () => {
     await clickMap(0, 0)
     await clickMap(300, 400)
     await act(async () => pointer(sizer(), 'pointermove', 600, 800))
-    const live = document.querySelector('[role="status"]')!.textContent
+    const live = document.querySelector('.map-hint-row [role="status"]')!.textContent
     expect(live).toContain('100 miles')
     // The line the eye follows runs to the pointer.
     expect(hint()).toContain('200 miles')

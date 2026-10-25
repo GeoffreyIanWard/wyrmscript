@@ -2,7 +2,7 @@ import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
 import { assertPlainId, isPlainId } from './plainId'
-import { MAP_MARK_KINDS, MARK_SIZES } from '../../shared/types'
+import { MAP_MARK_KINDS, MARK_SIZES, storedMapId } from '../../shared/types'
 import type { MapMark, MapMarkKind } from '../../shared/types'
 
 /** Their own folder: `map/` is the pins', `map-shapes/` the drawn shapes'. */
@@ -23,6 +23,7 @@ interface MapMarkFrontmatter {
   y: number
   size?: number
   name?: string
+  map?: string
   created: string
   modified: string
 }
@@ -58,6 +59,8 @@ function parseMapMarkFile(raw: string): MapMark | null {
   }
   if (isStoredSize(data.size)) mark.size = data.size
   if (name !== undefined) mark.name = name
+  const map = storedMapId(data.map)
+  if (map) mark.map = map
   return mark
 }
 
@@ -75,6 +78,8 @@ export async function writeMapMark(projectPath: string, mark: MapMark): Promise<
   // Written only when set: gray-matter throws on an undefined value.
   if (isStoredSize(mark.size)) meta.size = mark.size
   if (typeof mark.name === 'string' && mark.name !== '') meta.name = mark.name
+  const map = storedMapId(mark.map)
+  if (map) meta.map = map
   const file = matter.stringify('', meta)
   await fsp.writeFile(markPath(projectPath, mark.id), file, 'utf8')
 }

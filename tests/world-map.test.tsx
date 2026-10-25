@@ -212,6 +212,7 @@ describe('the world map', () => {
     await act(async () => pointer(el, 'pointerup', 11, 11))
     expect(showEntity).toHaveBeenCalledWith('a', {
       kind: 'map',
+      mapId: 'world',
       zoom: 1,
       scrollLeft: 300,
       scrollTop: 200,

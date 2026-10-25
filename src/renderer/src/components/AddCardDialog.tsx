@@ -5,11 +5,13 @@ import { useWyrm } from '../store'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { errorMessage } from '../lib/errors'
 import type { CardKind } from '../lib/corkboard'
+import { mapNameProblem, sheetsOf } from '../lib/mapSheets'
 
 const KIND_LABEL: Record<CardKind, string> = {
   scene: 'Scene',
   character: 'Character',
-  location: 'Location'
+  location: 'Location',
+  map: 'Map'
 }
 
 /**
@@ -41,6 +43,11 @@ export function AddCardDialog({
   const addSceneDoc = useWyrm((s) => s.addSceneDoc)
   const createEntity = useWyrm((s) => s.createEntity)
   const addEntityToBoard = useWyrm((s) => s.addEntityToBoard)
+  const project = useWyrm((s) => s.project)
+  const addMap = useWyrm((s) => s.addMap)
+  const setMapOnBoard = useWyrm((s) => s.setMapOnBoard)
+  // Maps not on the board yet; a map is put up the way an entry is.
+  const offBoardMaps = project ? sheetsOf(project.data).filter((m) => !m.onBoard) : []
 
   const [kind, setKind] = useState<CardKind>('scene')
   const [title, setTitle] = useState('')
@@ -82,8 +89,22 @@ export function AddCardDialog({
   const createNew = (): void => {
     const name = title.trim()
     if (name === '') return
+    if (kind === 'map' && project) {
+      // Said here, before anything is made: a second "Port Cray" is never
+      // what anyone meant.
+      const wrong = mapNameProblem(project.data, name)
+      if (wrong) {
+        setError(wrong)
+        return
+      }
+    }
     void finish(async () => {
       if (kind === 'scene') return (await addSceneDoc(name)) ?? undefined
+      if (kind === 'map') {
+        const id = await addMap(name)
+        if (id) await setMapOnBoard(id, true)
+        return id ?? undefined
+      }
       return (await createEntity(entityType as 'character' | 'world', name, { onBoard: true }))?.id
     })
   }
@@ -99,7 +120,7 @@ export function AddCardDialog({
           <fieldset>
             <legend>What kind of card?</legend>
             <div role="radiogroup" aria-label="Kind of card">
-              {(['scene', 'character', 'location'] as const).map((k) => (
+              {(['scene', 'character', 'location', 'map'] as const).map((k) => (
                 <button
                   key={k}
                   type="button"
@@ -121,11 +142,24 @@ export function AddCardDialog({
             <div className="add-card-new">
               <input
                 className="text-field"
-                placeholder={kind === 'scene' ? 'Title of the scene' : 'Name'}
+                placeholder={
+                  kind === 'scene'
+                    ? 'Title of the scene'
+                    : kind === 'map'
+                      ? 'Name of the map'
+                      : 'Name'
+                }
                 value={title}
-                disabled={busy}
+                // Read-only, not disabled, while adding: a disabled field
+                // drops focus to the page, and a failure would leave it there.
+                readOnly={busy}
+                aria-invalid={error != null ? true : undefined}
+                aria-describedby={error != null ? 'add-card-error' : undefined}
                 autoFocus
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value)
+                  setError(null)
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') createNew()
                 }}
@@ -142,7 +176,9 @@ export function AddCardDialog({
             <div className="dialog-hint">
               {kind === 'scene'
                 ? 'A real document in the manuscript, tagged as a scene, ready to write.'
-                : `A real ${KIND_LABEL[kind].toLowerCase()} in the story bible, with its card here.`}
+                : kind === 'map'
+                  ? 'A new map, as a tab in the map view, with its card here — the whole map, shrunk.'
+                  : `A real ${KIND_LABEL[kind].toLowerCase()} in the story bible, with its card here.`}
             </div>
           </fieldset>
           {entityType != null && (
@@ -169,7 +205,33 @@ export function AddCardDialog({
               )}
             </fieldset>
           )}
-          {error != null && <div className="dialog-hint add-card-error">{error}</div>}
+          {kind === 'map' && (
+            <fieldset>
+              <legend>Or a map already drawn</legend>
+              {offBoardMaps.length === 0 ? (
+                <div className="dialog-hint">Every map is already on the board.</div>
+              ) : (
+                <div className="version-list add-card-existing">
+                  {offBoardMaps.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className="version-row"
+                      disabled={busy}
+                      onClick={() => void finish(() => setMapOnBoard(m.id, true).then(() => m.id))}
+                    >
+                      <span className="row-title">{m.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </fieldset>
+          )}
+          {error != null && (
+            <div id="add-card-error" className="dialog-hint add-card-error" role="alert">
+              {error}
+            </div>
+          )}
         </div>
         <div className="dialog-buttons">
           <button className="btn" onClick={cancel} disabled={busy}>

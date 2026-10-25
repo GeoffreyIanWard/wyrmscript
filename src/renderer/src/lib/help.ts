@@ -74,6 +74,10 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'A scene card',
     body: 'The scene, its folder, its opening and its length. Click it to start writing, and Esc brings you back to the board, to this card. Drag it to move it on the board, or from the keyboard: arrows go to the nearest card, ⌥+arrows nudge it, ⇧Return turns it over. Moving a card does not reorder the manuscript; Apply Order does that, when you ask.'
   },
+  'map-card': {
+    title: 'A map card',
+    body: 'One of your maps, shrunk to a card: put it on the board with Add Card, drag it anywhere, and run strings from it to the scenes and people it matters to. Click it to open that map.'
+  },
   'bible-card': {
     title: 'A character or location card',
     body: 'An entry from the story bible, on the board because you put it there. Click it to open the entry; drag it like any other card. A square pin is a character, a diamond is a location.'
@@ -121,6 +125,14 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   'map-scale': {
     title: 'Scale and travel',
     body: 'What a distance on the map is in your story — miles, leagues, days’ sail — and how far a day’s travel goes on foot, on horseback and by ship. Set it from a route you have just measured between two places whose distance you know, or from one square of the grid. Then Measure tells you how far a route is, and how long it takes.'
+  },
+  'map-tabs': {
+    title: 'Maps',
+    body: 'Every map in this story, as folder tabs: the world, a city, a coast drawn closer. Click one to see it, or use the arrow keys along them; double-click to rename it. + makes a new map. Each map has its own size, scale, drawing and places — and a place can be on as many maps as it stands on.'
+  },
+  'map-sheet-actions': {
+    title: 'This map',
+    body: 'Rename the map in view, clear everything off it, or delete it (not World, which is cleared instead). Clearing and deleting ask first, keep the places in the World Book, and make a checkpoint before they do anything, so the map can be got back from History.'
   },
   'map-export': {
     title: 'Export map image',

@@ -4,6 +4,7 @@ import type {
   DocFile,
   DocStatus,
   Entity,
+  MapSheet,
   Relationship,
   StringEnd
 } from '../../../shared/types'
@@ -29,7 +30,7 @@ import { hasBack, outlineLine } from './cardBack'
  * sees it here, and one who untags it does not. Deciding that twice is how
  * views drift apart.
  */
-export type CardKind = 'scene' | 'character' | 'location'
+export type CardKind = 'scene' | 'character' | 'location' | 'map'
 
 export interface BoardCard {
   kind: CardKind
@@ -276,9 +277,37 @@ export function entityCards(entities: Entity[]): BoardCard[] {
   return cards
 }
 
-/** Every card on the board: scenes in binder order, then characters, then locations. */
-export function boardCards(docs: DocFile[], binder: BinderNode[], entities: Entity[]): BoardCard[] {
-  return [...sceneCards(docs, binder), ...entityCards(entities)]
+/**
+ * F-12: the maps put on the board, as minimap cards — a map is one of the
+ * story's pieces too, and a string from a scene to the city it happens in
+ * is a thing a plotter pins up. Put on deliberately, like an entry
+ * (`MapSheet.onBoard`), in tab order; the card is the map, shrunk.
+ */
+export function mapCards(sheets: MapSheet[]): BoardCard[] {
+  return sheets
+    .filter((m) => m.onBoard)
+    .map((m) => ({
+      kind: 'map' as const,
+      id: m.id,
+      title: m.name,
+      folder: 'Maps',
+      wordCount: 0,
+      excerpt: '',
+      empty: false,
+      boardX: m.boardX,
+      boardY: m.boardY
+    }))
+}
+
+/** Every card on the board: scenes in binder order, then characters, then
+ *  locations, then maps. */
+export function boardCards(
+  docs: DocFile[],
+  binder: BinderNode[],
+  entities: Entity[],
+  sheets: MapSheet[] = []
+): BoardCard[] {
+  return [...sceneCards(docs, binder), ...entityCards(entities), ...mapCards(sheets)]
 }
 
 /**
@@ -296,7 +325,7 @@ export const STACK_STEP = 24
 export function stackLayout(cards: BoardCard[]): Map<string, { x: number; y: number }> {
   const out = new Map<string, { x: number; y: number }>()
   let pile = 0
-  for (const kind of ['scene', 'character', 'location'] as const) {
+  for (const kind of ['scene', 'character', 'location', 'map'] as const) {
     const inPile = cards.filter((c) => c.kind === kind)
     if (inPile.length === 0) continue
     inPile.forEach((c, i) => out.set(c.id, { x: pile * (CARD_W + CARD_GAP), y: i * STACK_STEP }))
