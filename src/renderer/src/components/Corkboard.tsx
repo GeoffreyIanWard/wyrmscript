@@ -31,6 +31,8 @@ import {
 } from '../lib/corkboard'
 import type { Direction, PlacedCard, Point } from '../lib/corkboard'
 import { AddCardDialog } from './AddCardDialog'
+import { MapCardFace } from './MapCardFace'
+import { sheetsOf } from '../lib/mapSheets'
 import { CardBack } from './CardBack'
 import { afterKeysUp } from '../lib/keys'
 
@@ -98,6 +100,20 @@ export function Corkboard({
   const setCardPosition = useWyrm((s) => s.setCardPosition)
   const setEntityPosition = useWyrm((s) => s.setEntityPosition)
   const removeEntityFromBoard = useWyrm((s) => s.removeEntityFromBoard)
+  const showMapSheet = useWyrm((s) => s.showMapSheet)
+  const setMapOnBoard = useWyrm((s) => s.setMapOnBoard)
+  const placeMapCard = useWyrm((s) => s.placeMapCard)
+  // A minimap card draws its map, so the maps' layers are read as the board
+  // opens — as the map view reads them; settled, so a layer that will not
+  // read leaves that card plain rather than the board down.
+  const loadMapPins = useWyrm((s) => s.loadMapPins)
+  const loadMapShapes = useWyrm((s) => s.loadMapShapes)
+  const loadMapMarks = useWyrm((s) => s.loadMapMarks)
+  const boardPath = project?.path
+  useEffect(() => {
+    if (!boardPath) return
+    void Promise.allSettled([loadMapPins(), loadMapShapes(), loadMapMarks()])
+  }, [boardPath, loadMapPins, loadMapShapes, loadMapMarks])
   const tidyBoard = useWyrm((s) => s.tidyBoard)
   const applyBoardOrder = useWyrm((s) => s.applyBoardOrder)
   const boardUndo = useWyrm((s) => s.boardUndo)
@@ -280,7 +296,7 @@ export function Corkboard({
       activeDoc == null
         ? docs
         : docs.map((d) => (d.meta.id === activeDoc.meta.id ? { ...d, body: activeDoc.body } : d))
-    return boardCards(fresh, project.data.binder, entities)
+    return boardCards(fresh, project.data.binder, entities, sheetsOf(project.data))
   }, [docs, project, entities, activeDoc])
 
   // The board's own width decides how many columns an untouched card falls
@@ -620,8 +636,8 @@ export function Corkboard({
         <div className="corkboard-empty">
           <div>No cards yet.</div>
           <div className="dialog-hint">
-            Add a scene, a character or a location with <strong>Add Card</strong>. Any document
-            tagged <strong>scene</strong> appears here on its own.
+            Add a scene, a character, a location or a map with <strong>Add Card</strong>. Any
+            document tagged <strong>scene</strong> appears here on its own.
           </div>
         </div>
         {adding && <AddCardDialog onClose={closeAdding} />}
@@ -719,6 +735,7 @@ export function Corkboard({
     const write = (): void => {
       pendingWrites.current.delete(card.id)
       if (card.kind === 'scene') void setCardPosition(card.id, x, y)
+      else if (card.kind === 'map') void placeMapCard(card.id, { x, y })
       else void setEntityPosition(card.id, x, y)
     }
     clearTimeout(pendingWrites.current.get(card.id)?.timer)
@@ -845,6 +862,7 @@ export function Corkboard({
       ...(stacked ? { stacked, pulled: [...pulled] } : {})
     }
     if (card.kind === 'scene') void selectDoc(card.id, here)
+    else if (card.kind === 'map') showMapSheet(card.id, here)
     else showEntity(card.id, here)
   }
 
@@ -1046,7 +1064,11 @@ export function Corkboard({
                 aria-label={`Take ${card.title} off the board`}
                 title="Take off the board"
                 onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => void removeEntityFromBoard(card.id)}
+                onClick={() =>
+                  void (card.kind === 'map'
+                    ? setMapOnBoard(card.id, false)
+                    : removeEntityFromBoard(card.id))
+                }
               >
                 ×
               </button>
@@ -1075,6 +1097,16 @@ export function Corkboard({
                 }
               >
                 <CardFace card={card} />
+              </button>
+            ) : card.kind === 'map' ? (
+              <button
+                type="button"
+                className="scene-card-face map-card-face"
+                data-help="map-card"
+                onClick={(e) => open(card, e)}
+                aria-label={`Open the map ${card.title}`}
+              >
+                <MapCardFace id={card.id} title={card.title} />
               </button>
             ) : (
               <button

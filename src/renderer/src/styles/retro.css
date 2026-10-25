@@ -1701,6 +1701,105 @@ button {
   overflow: hidden;
 }
 
+/* The map in view: laid out as the map root's own children, so the tabs
+   above it are just one more row of the column. */
+.map-sheet {
+  display: contents;
+}
+
+/* The maps, as file-folder tabs: each a box open at the bottom, the one in
+   view joined to the map below (its bottom edge is paper over the rule). */
+.map-tabs {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 8px 16px 0;
+  flex: none;
+  border-bottom: 2px solid var(--ink);
+}
+
+.map-tab-strip {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  margin-bottom: -2px;
+}
+
+.map-tabs > .map-tab.add {
+  margin-left: -10px;
+  margin-bottom: -2px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.map-tab {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 12px 3px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-bottom-width: 0;
+  border-radius: 6px 6px 0 0;
+  font-family: var(--font-chrome);
+  font-size: 11px;
+  cursor: default;
+}
+
+.map-tab:not(.on) {
+  /* A folder behind the one in front: lower, and closed along the bottom. */
+  margin-top: 4px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.map-tab.on {
+  font-weight: bold;
+  padding-bottom: 5px;
+}
+
+.map-tab:focus-visible {
+  outline: 1px dashed var(--ink);
+  outline-offset: -5px;
+}
+
+.map-tab.add {
+  padding: 4px 9px 3px;
+}
+
+.map-tab-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  padding-bottom: 6px;
+}
+
+/* Naming, clearing and deleting a map: the scale panel's look, hung from
+   the tabs. */
+.map-sheet-panel {
+  top: calc(100% + 4px);
+  right: 16px;
+  width: 340px;
+}
+
+.compile-map-choice {
+  padding-left: 20px;
+}
+
+.map-sheet-panel .map-scale-field,
+.map-sheet-panel .text-field {
+  width: 100%;
+}
+
+.map-confirm-text {
+  margin: 6px 0 4px;
+  line-height: 1.4;
+}
+
 .map-tools {
   display: flex;
   flex-wrap: wrap;
@@ -4288,6 +4387,37 @@ button.map-place-name {
 
 /* The scene's opening, in the prose face — the one part of a card that is the
    writing rather than chrome. */
+/* A minimap card: the whole map in the room an excerpt would take. The
+   picture is drawn black on white for export; here its two colours are the
+   palette's two inks, by the colours it writes. */
+.map-card-mini {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  margin-top: 4px;
+}
+
+.map-card-mini svg {
+  width: 100%;
+  height: 100%;
+}
+
+.map-card-mini [fill='#000'] {
+  fill: var(--ink);
+}
+
+.map-card-mini [fill='#fff'] {
+  fill: var(--paper);
+}
+
+.map-card-mini [stroke='#000'] {
+  stroke: var(--ink);
+}
+
+.map-card-mini [stroke='#fff'] {
+  stroke: var(--paper);
+}
+
 .scene-card-excerpt {
   font-family: var(--font-prose);
   font-size: 14px;

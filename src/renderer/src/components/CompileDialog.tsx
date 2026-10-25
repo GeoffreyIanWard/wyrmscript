@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import type { BinderNode, CompileFormat, CompileOptions, DocFile } from '../../../shared/types'
 import { DEFAULT_COMPILE_OPTIONS, PAGED_FORMATS, allDocIds, compile } from '../lib/compile'
 import { DEFAULT_PICTURE_OPTIONS } from '../lib/mapPicture'
+import { sheetsOf } from '../lib/mapSheets'
 import { errorMessage } from '../lib/errors'
 import { useWyrm } from '../store'
 import { useFocusTrap } from '../lib/useFocusTrap'
@@ -139,6 +140,10 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
   // and 'unread' if reading it failed (which is not the same as empty).
   const [hasMap, setHasMap] = useState<boolean | 'unread' | null>(null)
   const mapPicture = useWyrm((s) => s.mapPicture)
+  // Which map goes at the front, when there is more than one: the one last
+  // looked at, to start with.
+  const [frontMap, setFrontMap] = useState(() => useWyrm.getState().mapId)
+  const maps = project ? sheetsOf(project.data) : []
   const [busy, setBusy] = useState(false)
   const [written, setWritten] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -162,13 +167,13 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
 
   useEffect(() => {
     let live = true
-    void mapPicture(DEFAULT_PICTURE_OPTIONS)
+    void mapPicture(DEFAULT_PICTURE_OPTIONS, frontMap)
       .then((picture) => live && setHasMap(picture != null))
       .catch(() => live && setHasMap('unread'))
     return () => {
       live = false
     }
-  }, [mapPicture])
+  }, [mapPicture, frontMap])
 
   const paged = PAGED_FORMATS.includes(format)
   const options: CompileOptions = useMemo(
@@ -181,7 +186,8 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
       docTitles,
       folderTitles,
       pageBreakBetweenFolders: pageBreaks && paged,
-      frontispiece: mapFirst && paged && hasMap === true
+      frontispiece: mapFirst && paged && hasMap === true,
+      frontispieceMap: frontMap
     }),
     [
       format,
@@ -194,7 +200,8 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
       pageBreaks,
       paged,
       mapFirst,
-      hasMap
+      hasMap,
+      frontMap
     ]
   )
 
@@ -322,12 +329,31 @@ export function CompileDialog({ onClose }: { onClose: () => void }): JSX.Element
                         ? 'Map at the front (the map could not be read)'
                         : hasMap
                           ? 'Map at the front'
-                          : 'Map at the front (nothing is drawn on the map)'
+                          : `Map at the front (nothing is drawn on ${maps.length > 1 ? (maps.find((m) => m.id === frontMap)?.name ?? 'the map') : 'the map'})`
                 }
                 on={mapFirst && paged && hasMap === true}
                 disabled={!paged || hasMap !== true}
                 onToggle={setMapFirst}
               />
+              {/* Which map, when there is a choice: offered whenever the box
+                  could be, so a map with nothing on it can be swapped for
+                  one with something. */}
+              {paged && maps.length > 1 && (
+                <div role="radiogroup" aria-label="Map at the front" className="compile-map-choice">
+                  {maps.map((m) => (
+                    <Radio
+                      key={m.id}
+                      label={m.name}
+                      on={frontMap === m.id}
+                      onPick={() => {
+                        // Unknown again until that map is read.
+                        if (m.id !== frontMap) setHasMap(null)
+                        setFrontMap(m.id)
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
             </fieldset>
           </div>
 

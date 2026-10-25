@@ -140,6 +140,45 @@ export interface ProjectData {
   /** F-12: what a distance on the map is in the story's own units, and how
    *  far a day's travel goes. Absent until the writer sets a scale. */
   mapScale?: MapScale
+  /**
+   * F-12: the maps beyond the first, in tab order — a city plan, a region
+   * drawn closer. The first map, World, keeps its extent and scale in
+   * `mapBounds` and `mapScale` above, so a project from before there were
+   * several maps reads unchanged; an entry here with World's id carries
+   * only what those fields do not (a new name, its place on the board).
+   * Read through `lib/mapSheets.ts`, never by hand.
+   */
+  maps?: MapSheet[]
+}
+
+/** The first map's id: every pin, shape and mark with no `map` is on it. */
+export const WORLD_MAP = 'world'
+
+/** A record's `map` as it is stored: a map other than World, or nothing —
+ *  World is never written, so the records from before there were several
+ *  maps and the ones made on World since read and write the same. */
+export const storedMapId = (map: unknown): string | undefined =>
+  typeof map === 'string' && map !== '' && map !== WORLD_MAP ? map : undefined
+
+/** The map a record is on. */
+export const mapOf = (record: { map?: string }): string => storedMapId(record.map) ?? WORLD_MAP
+
+/**
+ * F-12: one map — a tab along the top of the map view. Each has its own
+ * extent and scale (and its own pins, shapes and marks, which name it by
+ * `map`). It can be put on the corkboard as a minimap card, placed like any
+ * card.
+ */
+export interface MapSheet {
+  id: string
+  name: string
+  bounds?: MapBounds
+  scale?: MapScale
+  /** On the corkboard as a minimap card. */
+  onBoard?: boolean
+  /** Where its card was put, unset until it is moved. */
+  boardX?: number
+  boardY?: number
 }
 
 /**
@@ -337,6 +376,9 @@ export interface MapPin {
   /** The stamp's size (one of `MARK_SIZES`); omitted at the usual size, and
    *  meaningless for a pin. */
   size?: number
+  /** The map it is on (a `MapSheet` id); omitted on the first map, World. A
+   *  place has a pin on each map it is on. */
+  map?: string
   created: string
   modified: string
 }
@@ -370,6 +412,8 @@ export interface MapShape {
   /** What the feature is called — "The Saltmarsh", "River Wend" — drawn as a
    *  label on the map. Omitted, not empty, when it has none. */
   name?: string
+  /** The map it is on; omitted on World. */
+  map?: string
   created: string
   modified: string
 }
@@ -432,6 +476,8 @@ export interface MapMark {
    *  `MARK_SIZES`). Omitted at the usual size. */
   size?: number
   name?: string
+  /** The map it is on; omitted on World. */
+  map?: string
   created: string
   modified: string
 }
@@ -540,6 +586,8 @@ export interface CompileOptions {
   /** The world map on a page of its own before everything else. Only
    *  honoured by formats with pages (`docx`, `pdf`). */
   frontispiece?: boolean
+  /** Which map goes at the front (a `MapSheet` id); World when unset. */
+  frontispieceMap?: string
 }
 
 /**

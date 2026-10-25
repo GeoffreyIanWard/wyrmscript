@@ -30,7 +30,21 @@ import type {
   VariantInfo,
   WyrmApi
 } from '../../../shared/types'
-import { DEFAULT_APPEARANCE, DEFAULT_PRINT, DEFAULT_STATS } from '../../../shared/types'
+import {
+  DEFAULT_APPEARANCE,
+  DEFAULT_PRINT,
+  DEFAULT_STATS,
+  storedMapId
+} from '../../../shared/types'
+
+/** A map record as the disk keeps it: its map only when it is not World. */
+function withMap<T extends { map?: string }>(record: T): T {
+  const out = { ...record }
+  const map = storedMapId(out.map)
+  if (map) out.map = map
+  else delete out.map
+  return out
+}
 
 /**
  * In Electron the preload script exposes the real filesystem/git API on
@@ -600,7 +614,8 @@ export function createMockApi(): WyrmApi {
       return [...mustGet(path).mapPins.values()].map((p) => ({ ...p }))
     },
     async writeMapPin(path: string, pin: MapPin): Promise<void> {
-      mustGet(path).mapPins.set(pin.id, { ...pin, modified: new Date().toISOString() })
+      // As on disk: World is never written as a record's map.
+      mustGet(path).mapPins.set(pin.id, withMap({ ...pin, modified: new Date().toISOString() }))
     },
     async deleteMapPin(path: string, id: string): Promise<void> {
       mustGet(path).mapPins.delete(id)
@@ -612,11 +627,14 @@ export function createMockApi(): WyrmApi {
       }))
     },
     async writeMapShape(path: string, shape: MapShape): Promise<void> {
-      mustGet(path).mapShapes.set(shape.id, {
-        ...shape,
-        points: shape.points.map((p) => ({ x: p.x, y: p.y })),
-        modified: new Date().toISOString()
-      })
+      mustGet(path).mapShapes.set(
+        shape.id,
+        withMap({
+          ...shape,
+          points: shape.points.map((p) => ({ x: p.x, y: p.y })),
+          modified: new Date().toISOString()
+        })
+      )
     },
     async deleteMapShape(path: string, id: string): Promise<void> {
       mustGet(path).mapShapes.delete(id)
@@ -625,7 +643,7 @@ export function createMockApi(): WyrmApi {
       return [...mustGet(path).mapMarks.values()].map((m) => ({ ...m }))
     },
     async writeMapMark(path: string, mark: MapMark): Promise<void> {
-      const stored: MapMark = { ...mark, modified: new Date().toISOString() }
+      const stored: MapMark = withMap({ ...mark, modified: new Date().toISOString() })
       if (!stored.name) delete stored.name
       mustGet(path).mapMarks.set(mark.id, stored)
     },

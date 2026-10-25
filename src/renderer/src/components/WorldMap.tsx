@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { MAP_MARK_KINDS, MAP_SHAPE_KINDS, MARK_SIZES, markSizeOf } from '../../../shared/types'
 import type {
+  MapSheet,
+  ProjectData,
   MapMark,
   MapMarkKind,
   MapPin,
@@ -14,6 +16,8 @@ import { StampGlyph, StampPalette } from './StampPalette'
 import { MapScalePanel } from './MapScalePanel'
 import { MapExportPanel } from './MapExportPanel'
 import { drawnExtent } from '../lib/mapPicture'
+import { hasSheet, recordsOn, sheetOf } from '../lib/mapSheets'
+import { MapTabs } from './MapTabs'
 import { describeRoute, formatDistance, routeLength, scaleBar, validScale } from '../lib/mapScale'
 import { afterKeysUp } from '../lib/keys'
 import {
@@ -156,10 +160,34 @@ function focusedByKeyboard(el: Element): boolean {
   }
 }
 
-export function WorldMap(): JSX.Element {
+/**
+ * The map in view: the tools, the drawing, the places. Mounted afresh for
+ * each map (keyed by its id), so nothing half-done on one — a coast being
+ * drawn, a route, a choice, a name being typed — carries over to another.
+ */
+/** Where the writer was looking on a map: kept while they look at another. */
+interface MapView {
+  zoom: number
+  scrollLeft: number
+  scrollTop: number
+}
+
+function MapSheetView({
+  sheet,
+  views
+}: {
+  sheet: MapSheet
+  /** Where each map was being looked at, the last time it was in view —
+   *  read as this one is shown, and written as it goes. */
+  views: Map<string, MapView>
+}): JSX.Element {
+  const [lastView] = useState(() => views.get(sheet.id))
   const project = useWyrm((s) => s.project)
   const entities = useWyrm((s) => s.entities)
-  const mapPins = useWyrm((s) => s.mapPins)
+  const data = useWyrm((s) => s.project?.data) as ProjectData
+  // Everything on every map is loaded; this map draws its own.
+  const allPins = useWyrm((s) => s.mapPins)
+  const mapPins = useMemo(() => recordsOn(allPins, sheet.id, data), [allPins, sheet.id, data])
   const loadMapPins = useWyrm((s) => s.loadMapPins)
   const setMapPin = useWyrm((s) => s.setMapPin)
   const moveMapPinAt = useWyrm((s) => s.moveMapPinAt)
@@ -169,13 +197,15 @@ export function WorldMap(): JSX.Element {
   const setMapScale = useWyrm((s) => s.setMapScale)
   const exportMapImage = useWyrm((s) => s.exportMapImage)
   const showEntity = useWyrm((s) => s.showEntity)
-  const mapShapes = useWyrm((s) => s.mapShapes)
+  const allShapes = useWyrm((s) => s.mapShapes)
+  const mapShapes = useMemo(() => recordsOn(allShapes, sheet.id, data), [allShapes, sheet.id, data])
   const loadMapShapes = useWyrm((s) => s.loadMapShapes)
   const createMapShape = useWyrm((s) => s.createMapShape)
   const updateMapShapeAt = useWyrm((s) => s.updateMapShapeAt)
   const deleteMapShape = useWyrm((s) => s.deleteMapShape)
   const renameMapShapeAt = useWyrm((s) => s.renameMapShapeAt)
-  const mapMarks = useWyrm((s) => s.mapMarks)
+  const allMarks = useWyrm((s) => s.mapMarks)
+  const mapMarks = useMemo(() => recordsOn(allMarks, sheet.id, data), [allMarks, sheet.id, data])
   const loadMapMarks = useWyrm((s) => s.loadMapMarks)
   const createMapMarkAt = useWyrm((s) => s.createMapMarkAt)
   const updateMapMarkAt = useWyrm((s) => s.updateMapMarkAt)
@@ -205,7 +235,7 @@ export function WorldMap(): JSX.Element {
   // Pins held here while being moved, so they follow the pointer or the
   // keys without waiting on a write.
   const [localPos, setLocalPos] = useState<Record<string, Point>>({})
-  const [zoom, setZoom] = useState<number>(() => returnedTo?.zoom ?? 1)
+  const [zoom, setZoom] = useState<number>(() => returnedTo?.zoom ?? lastView?.zoom ?? 1)
   const scrollEl = useRef<HTMLDivElement | null>(null)
 
   // Everything on the map widens it, shapes as well as pins: a pin taken
@@ -214,7 +244,7 @@ export function WorldMap(): JSX.Element {
     () => drawnExtent(mapPins, mapShapes, mapMarks),
     [mapPins, mapShapes, mapMarks]
   )
-  const bounds = boundsOf(project?.data.mapBounds, extent)
+  const bounds = boundsOf(sheet.bounds, extent)
   const locations = entities
     .filter((e) => e.type === 'world')
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -297,10 +327,45 @@ export function WorldMap(): JSX.Element {
     if (pin) el.querySelector<HTMLElement>(`[data-pin="${pin}"]`)?.focus({ preventScroll: true })
   }, [loaded, returnedTo, settleMapReturn])
 
+  // Back to another map, where it was left: scrolled as it was (the zoom is
+  // taken as the view is made). Not when coming back from a place, which
+  // carries its own.
+  useLayoutEffect(() => {
+    if (returnedTo?.scrollLeft != null || !lastView) return
+    const el = scrollEl.current
+    if (!el) return
+    el.scrollLeft = lastView.scrollLeft
+    el.scrollTop = lastView.scrollTop
+    // Once, as the map is shown.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // And kept as it goes, so a change of tab can leave it where it was.
+  const zoomNow = useRef(zoom)
+  useEffect(() => {
+    zoomNow.current = zoom
+  }, [zoom])
+  useEffect(() => {
+    const el = scrollEl.current
+    const id = sheet.id
+    return () => {
+      if (el)
+        views.set(id, { zoom: zoomNow.current, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop })
+    }
+  }, [views, sheet.id])
+
   const here = (
     pin?: MapPin
-  ): { kind: 'map'; zoom: number; scrollLeft: number; scrollTop: number; focusPin?: string } => ({
+  ): {
+    kind: 'map'
+    mapId: string
+    zoom: number
+    scrollLeft: number
+    scrollTop: number
+    focusPin?: string
+  } => ({
     kind: 'map',
+    // The map it was, so coming back is to this map, not whichever is chosen.
+    mapId: sheet.id,
     zoom,
     scrollLeft: scrollEl.current?.scrollLeft ?? 0,
     scrollTop: scrollEl.current?.scrollTop ?? 0,
@@ -1346,7 +1411,7 @@ export function WorldMap(): JSX.Element {
       return `${DRAFT_HELP[tool]} Backspace: undo a point. Esc: drop it.`
     const told = placedOnly ? placed : measured
     if (tool === 'measure' && told != null) {
-      const scale = project?.data.mapScale
+      const scale = sheet.scale
       return validScale(scale)
         ? describeRoute(told, scale)
         : `${Math.round(told).toLocaleString('en')} map pixels. Set the scale to see miles and days.`
@@ -1383,11 +1448,19 @@ export function WorldMap(): JSX.Element {
   const drafted = hover ? [...draft, hover] : draft
   // The route, out to the pointer until it is finished.
   const routed = !routeDone && hover && route.length > 0 ? [...route, hover] : route
-  const scale = validScale(project.data.mapScale) ? project.data.mapScale : undefined
+  const scale = validScale(sheet.scale) ? sheet.scale : undefined
   const bar = scale ? scaleBar(scale, zoom) : null
 
   return (
-    <div className="terminal world-map" data-help="world-map" onKeyDown={onMapKey}>
+    // Laid out as if its children were the map root's own (display:
+    // contents): the root holds the tabs above them.
+    <div
+      className="map-sheet"
+      id="map-tab-panel"
+      role="tabpanel"
+      aria-labelledby={`map-tab-${sheet.id}`}
+      onKeyDown={onMapKey}
+    >
       <div className="map-tools">
         <span className="map-tools-group" data-help="map-zoom">
           <button
@@ -2213,6 +2286,33 @@ export function WorldMap(): JSX.Element {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * F-12: the maps, as a place rather than a dialog — tabs along the top, like
+ * a drawer of folders, and the map chosen below them.
+ */
+export function WorldMap(): JSX.Element {
+  const data = useWyrm((s) => s.project?.data)
+  const mapId = useWyrm((s) => s.mapId)
+  const chooseMap = useWyrm((s) => s.chooseMap)
+  // Coming back from a place: to the map it was opened on, whichever map has
+  // been chosen since (a minimap card, say). Shown at once, chosen after.
+  const backTo = useWyrm((s) => (s.mainView.kind === 'map' ? s.mainView.mapId : undefined))
+  const shown = data && backTo && hasSheet(data, backTo) ? backTo : mapId
+  useEffect(() => {
+    if (shown !== mapId) chooseMap(shown)
+  }, [shown, mapId, chooseMap])
+  // Where each map was being looked at, so flipping between two keeps both.
+  const [views] = useState(() => new Map<string, MapView>())
+  const sheet = data ? sheetOf(data, shown) : null
+  if (!data || !sheet) return <div className="terminal" />
+  return (
+    <div className="terminal world-map" data-help="world-map">
+      <MapTabs />
+      <MapSheetView key={sheet.id} sheet={sheet} views={views} />
     </div>
   )
 }

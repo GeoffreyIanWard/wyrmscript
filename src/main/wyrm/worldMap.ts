@@ -2,7 +2,7 @@ import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
 import type { MapPin } from '../../shared/types'
-import { MAP_STAMP_KINDS, MARK_SIZES } from '../../shared/types'
+import { MAP_STAMP_KINDS, MARK_SIZES, storedMapId } from '../../shared/types'
 import { assertPlainId, isPlainId } from './plainId'
 
 const MAP_DIR = 'map'
@@ -25,6 +25,7 @@ interface MapPinFrontmatter {
   y: number
   stamp?: string
   size?: number
+  map?: string
   created: string
   modified: string
 }
@@ -60,6 +61,8 @@ function parseMapPinFile(raw: string): MapPin {
       pin.size = data.size
     }
   }
+  const map = storedMapId(data.map)
+  if (map) pin.map = map
   return pin
 }
 
@@ -80,6 +83,8 @@ export async function writeMapPin(projectPath: string, pin: MapPin): Promise<voi
       meta.size = pin.size
     }
   }
+  const map = storedMapId(pin.map)
+  if (map) meta.map = map
   const file = matter.stringify('', meta)
   await fsp.writeFile(path, file, 'utf8')
 }

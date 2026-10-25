@@ -228,7 +228,7 @@ const n1 = (v: number): number => Math.round(v * 10) / 10
 /** How each kind of shape is drawn: the screen's `.map-shape.<kind>` rules. */
 const SHAPE_STYLE: Record<MapShapeKind, string> = {
   land: `fill="${PAPER}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"`,
-  area: `fill="url(#hatch)" stroke="${INK}" stroke-width="1.5" stroke-dasharray="6 3"`,
+  area: `fill="url(#HATCH)" stroke="${INK}" stroke-width="1.5" stroke-dasharray="6 3"`,
   border: `fill="none" stroke="${INK}" stroke-width="2" stroke-dasharray="12 4 2 4"`,
   river: `fill="none" stroke="${INK}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"`,
   road: `fill="none" stroke="${PAPER}" stroke-width="3" stroke-linejoin="round"`,
@@ -274,7 +274,15 @@ function stamp(kind: keyof typeof STAMP_ART, at: Point, size: number): string {
  * in drawing order (all road casings before any road, or junctions close),
  * stamps, places, names, the scale bar, and a double-ruled border.
  */
-export function mapPictureSvg(input: MapPictureInput, options: MapPictureOptions): MapPicture {
+export function mapPictureSvg(
+  input: MapPictureInput,
+  options: MapPictureOptions,
+  /** Put before the patterns' ids: several pictures drawn into one page (the
+   *  board's minimap cards) must not share ids, or one card's sea would be
+   *  painted with another's pattern, and with none once that card goes. */
+  idPrefix = ''
+): MapPicture {
+  const id = (name: string): string => `${idPrefix}${name}`
   const frame = pictureFrame(input, options.trim)
   // Drawn at the frame's size with a border round it.
   const width = frame.width + FRAME * 2
@@ -287,20 +295,21 @@ export function mapPictureSvg(input: MapPictureInput, options: MapPictureOptions
   const gy = (((-origin.y % 100) + 100) % 100).toString()
   parts.push(
     `<defs>` +
-      `<pattern id="sea" width="6" height="6" patternUnits="userSpaceOnUse">` +
+      `<pattern id="${id('sea')}" width="6" height="6" patternUnits="userSpaceOnUse">` +
       `<rect x="0" y="0" width="1" height="1" fill="${INK}"/><rect x="3" y="3" width="1" height="1" fill="${INK}"/>` +
       `</pattern>` +
-      `<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
+      `<pattern id="${id('hatch')}" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
       `<path d="M 0 0 V 8" stroke="${INK}" stroke-width="1"/>` +
       `</pattern>` +
-      `<pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse" x="${gx}" y="${gy}">` +
+      `<pattern id="${id('grid')}" width="100" height="100" patternUnits="userSpaceOnUse" x="${gx}" y="${gy}">` +
       `<path d="M 0 0 H 100 M 0 0 V 100" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="1 5"/>` +
       `</pattern>` +
       `</defs>`
   )
   parts.push(`<rect width="${width}" height="${height}" fill="${PAPER}"/>`)
-  parts.push(`<rect width="${width}" height="${height}" fill="url(#sea)"/>`)
-  if (options.grid) parts.push(`<rect width="${width}" height="${height}" fill="url(#grid)"/>`)
+  parts.push(`<rect width="${width}" height="${height}" fill="url(#${id('sea')})"/>`)
+  if (options.grid)
+    parts.push(`<rect width="${width}" height="${height}" fill="url(#${id('grid')})"/>`)
 
   for (const kind of DRAW_ORDER) {
     const ofKind = input.shapes.filter((s) => s.kind === kind)
@@ -318,7 +327,7 @@ export function mapPictureSvg(input: MapPictureInput, options: MapPictureOptions
         parts.push(
           `<path d="${d}" fill="none" stroke="${INK}" stroke-width="12" stroke-dasharray="1 3" stroke-linecap="butt" stroke-linejoin="miter"/>`
         )
-      parts.push(`<path d="${d}" ${SHAPE_STYLE[kind]}/>`)
+      parts.push(`<path d="${d}" ${SHAPE_STYLE[kind].replace('#HATCH', `#${id('hatch')}`)}/>`)
       if (kind === 'rail')
         parts.push(
           `<path d="${d}" fill="none" stroke="${INK}" stroke-width="7" stroke-dasharray="1.5 5" stroke-linecap="butt"/>`

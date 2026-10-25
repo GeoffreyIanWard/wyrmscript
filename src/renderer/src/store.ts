@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
 import type {
+  ProjectData,
   MapScale,
   MapBounds,
   DocMeta,
@@ -43,12 +44,24 @@ import {
   markSizeOf,
   minShapePoints,
   PLOTLINE_COLOURS,
-  SCENE_TAG
+  SCENE_TAG,
+  storedMapId,
+  WORLD_MAP
 } from '../../shared/types'
 import { api } from './lib/api'
 import { isConnected } from './lib/syncState'
 import { compile, compileFileName, PAGED_FORMATS, renderHtml } from './lib/compile'
 import { validScale } from './lib/mapScale'
+import {
+  hasSheet,
+  mapNameProblem,
+  recordsOn,
+  sheetOf,
+  sheetsOf,
+  withNewSheet,
+  withoutSheet,
+  withSheet
+} from './lib/mapSheets'
 import {
   mapHasDrawing,
   mapPicturePng,
@@ -79,6 +92,8 @@ export type MainView =
        *  on the copy remembered in `viewHistory`, so coming back from a place
        *  opened on the map lands where the map was. */
       kind: 'map'
+      /** The map it was looking at, so coming back is to that map. */
+      mapId?: string
       zoom?: number
       scrollLeft?: number
       scrollTop?: number
@@ -154,6 +169,7 @@ export const SLICE_KEYS = [
   'mapPins',
   'mapShapes',
   'mapMarks',
+  'mapId',
   'boardStrings',
   'boardUndo',
   'backupSettings',
@@ -422,13 +438,17 @@ interface WyrmState {
    * World Book are left out: the book has no "(deleted)". Null when nothing
    * is drawn, or no project is open.
    */
-  mapPicture(options: MapPictureOptions): Promise<MapPicture | null>
+  mapPicture(options: MapPictureOptions, mapId?: string): Promise<MapPicture | null>
   /**
    * Write the map's picture wherever the writer picks, as PNG (drawn at
    * print size) or SVG. Resolves to the path written, or null if they
    * cancelled — or if there was nothing to draw.
    */
-  exportMapImage(format: 'png' | 'svg', options: MapPictureOptions): Promise<string | null>
+  exportMapImage(
+    format: 'png' | 'svg',
+    options: MapPictureOptions,
+    mapId?: string
+  ): Promise<string | null>
   /** Checkpoint, then compile the manuscript and write it wherever the writer picks. */
   compileManuscript(
     options: CompileOptions
@@ -533,10 +553,42 @@ interface WyrmState {
   showMap(): void
   /** The map has used the place it was told to come back to; drop it. */
   settleMapReturn(): void
-  /** F-12: the map's extent, saved with the project. */
+  /** F-12: the extent of the map in view (`mapId`), saved with the project. */
   setMapBounds(bounds: MapBounds): Promise<void>
-  /** F-12: the map's scale, or null to take it off. */
+  /** F-12: the scale of the map in view, or null to take it off. */
   setMapScale(scale: MapScale | null): Promise<void>
+  /**
+   * F-12: the map in view — the tab chosen along the top of the map view.
+   * Per project (in `SLICE_KEYS`), so each novel keeps its own tab. What is
+   * drawn, placed or measured goes on this map. World until another is
+   * chosen, and World again for an id no map has.
+   */
+  mapId: string
+  chooseMap(id: string): void
+  /** Show a map: choose its tab and open the map view — from a minimap card,
+   *  a detour like any card's: Esc comes back to `from`. */
+  showMapSheet(id: string, from?: MainView): void
+  /** A new map at the end of the tabs, chosen. Resolves to its id, or null
+   *  (nothing made) with no project open or a name that will not do. */
+  addMap(name: string): Promise<string | null>
+  /** Rename a map. Resolves to what is wrong with the name (and changes
+   *  nothing), or null once renamed. */
+  renameMap(id: string, name: string): Promise<string | null>
+  /**
+   * Take everything off one map — its pins, shapes and marks — after a
+   * checkpoint, so it can be got back. The map itself stays, with its
+   * extent and scale, and the places stay in the World Book. Addressed by
+   * path, like every map write: the removals land in the project the map
+   * was in, whichever is in front by the time they do.
+   */
+  clearMap(path: string, id: string): Promise<void>
+  /** Delete a map and everything on it, after a checkpoint. World cannot be
+   *  deleted (it is cleared instead); the view goes back to World. */
+  deleteMap(path: string, id: string): Promise<void>
+  /** Put a map on the corkboard as a minimap card, or take it off. */
+  setMapOnBoard(id: string, on: boolean): Promise<void>
+  /** Where a minimap card was put on the board; null clears it (Tidy). */
+  placeMapCard(id: string, at: { x: number; y: number } | null): Promise<void>
   /**
    * Add Card is open for this project — kept in the store, not the board,
    * so the menu, the command palette and ⌥⌘N can open it from anywhere. The
@@ -833,6 +885,7 @@ function emptySlice(): ProjectSlice {
     mapPins: [],
     mapShapes: [],
     mapMarks: [],
+    mapId: WORLD_MAP,
     boardStrings: [],
     boardUndo: null,
     backupSettings: null,
@@ -869,11 +922,93 @@ export const useWyrm = create<WyrmState>((set, get) => {
     if (path) runtimeFor(path).commitDirty = false
   }
 
+  /**
+   * Change a project's data, in the project at `path` whether or not it is
+   * still in front: computed from that project's data as it is now, put
+   * back in whichever slice holds it, and saved there. A map's writes all
+   * come through here, so none can land in another novel.
+   */
+  async function updateProjectDataAt(
+    path: string,
+    change: (data: ProjectData) => ProjectData
+  ): Promise<void> {
+    const now = get()
+    const info = now.project?.path === path ? now.project : now.parked[path]?.project
+    if (!info) return
+    const data = change(info.data)
+    if (data === info.data) return
+    const next = { ...info, data }
+    if (now.project?.path === path) set({ project: next })
+    else set({ parked: { ...now.parked, [path]: { ...now.parked[path], project: next } } })
+    await api.saveProject(path, data)
+    runtimeFor(path).commitDirty = true
+  }
+
+  /** A checkpoint of the project at `path`, before something is taken away. */
+  async function checkpointAt(path: string, message: string): Promise<void> {
+    if (get().project?.path === path) await get().flushSave()
+    const committed = await api.commit(path, message)
+    runtimeFor(path).commitDirty = false
+    if (committed && get().project?.path === path) set({ lastCommitAt: Date.now() })
+  }
+
+  /**
+   * Put a change into whichever slice holds `path` now — the flat fields if
+   * it is in front, its parked slice if not — or nowhere, if it has closed.
+   */
+  function patchSliceAt(path: string, patch: (slice: ProjectSlice) => Partial<ProjectSlice>): void {
+    const now = get()
+    if (now.project?.path === path) set(patch(now as ProjectSlice))
+    else if (now.parked[path])
+      set({
+        parked: { ...now.parked, [path]: { ...now.parked[path], ...patch(now.parked[path]) } }
+      })
+  }
+
+  /**
+   * Delete every pin, shape and mark on one map, read from disk (the map may
+   * never have been opened) — on World, those whose map is gone too, which
+   * World shows. Dropped from the slice first, so a move or a rename queued
+   * for one finds nothing to write; each delete then waits its turn behind
+   * whatever is already queued for that record, so none is written back.
+   */
+  async function removeRecordsOn(path: string, id: string): Promise<void> {
+    const info = get().project?.path === path ? get().project : get().parked[path]?.project
+    if (!info) return
+    const [pins, shapes, marks] = await Promise.all([
+      api.listMapPins(path),
+      api.listMapShapes(path),
+      api.listMapMarks(path)
+    ])
+    const gone = {
+      pins: new Set(recordsOn(pins, id, info.data).map((r) => r.id)),
+      shapes: new Set(recordsOn(shapes, id, info.data).map((r) => r.id)),
+      marks: new Set(recordsOn(marks, id, info.data).map((r) => r.id))
+    }
+    patchSliceAt(path, (slice) => ({
+      mapPins: slice.mapPins.filter((r) => !gone.pins.has(r.id)),
+      mapShapes: slice.mapShapes.filter((r) => !gone.shapes.has(r.id)),
+      mapMarks: slice.mapMarks.filter((r) => !gone.marks.has(r.id))
+    }))
+    const deletes: Promise<void>[] = []
+    for (const pin of gone.pins)
+      deletes.push(serializeRecord(path, `pin\0${pin}`, () => api.deleteMapPin(path, pin)))
+    for (const shape of gone.shapes)
+      deletes.push(serializeRecord(path, `shape\0${shape}`, () => api.deleteMapShape(path, shape)))
+    for (const mark of gone.marks)
+      deletes.push(serializeRecord(path, `mark\0${mark}`, () => api.deleteMapMark(path, mark)))
+    await Promise.all(deletes)
+    runtimeFor(path).commitDirty = true
+  }
+
   /** The map for the front of a paged compile, if it was asked for and there
    *  is anything drawn: SVG for PDF, a PNG as well for .docx. */
   async function frontispiece(options: CompileOptions): Promise<CompileMap | undefined> {
     if (!options.frontispiece || !PAGED_FORMATS.includes(options.format)) return undefined
-    const picture = await get().mapPicture({ grid: false, trim: true, scaleBar: true })
+    const picture = await get().mapPicture(
+      { grid: false, trim: true, scaleBar: true },
+      options.frontispieceMap ?? WORLD_MAP
+    )
     if (!picture) return undefined
     const png = options.format === 'docx' ? await mapPicturePng(picture) : undefined
     return { svg: picture.svg, png, ...pngSize(picture) }
@@ -964,7 +1099,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
     const { project, activeId, editor } = get()
     if (!project) return
     const info = await api.openProjectPath(project.path)
-    if (info) setProject(info)
+    if (info) {
+      setProject(info)
+      // The map in view may have been deleted on the other device.
+      if (!hasSheet(info.data, get().mapId)) set({ mapId: WORLD_MAP })
+    }
     await get().loadEntities()
     // The map layers are files too, so a sync can change them under the UI.
     // Each is read for `project.path` and applied only if that project is still
@@ -1107,7 +1246,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // backup or a clone, which share the original's ids, pressing it would
       // have rewritten that copy's binder to an order it never had.
       boardUndo: null,
-      addCardFor: null
+      addCardFor: null,
+      // A different project's maps: the last project's map id names nothing
+      // here, and drawing stamped with it would vanish onto a map that is not.
+      mapId: WORLD_MAP
     })
     const runtime = runtimeFor(info.path)
     if (runtime.commitTimer) clearInterval(runtime.commitTimer)
@@ -1168,6 +1310,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     mapPins: [],
     mapShapes: [],
     mapMarks: [],
+    mapId: WORLD_MAP,
     boardStrings: [],
     boardUndo: null,
     backupSettings: null,
@@ -1537,6 +1680,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
         delete tidied.boardY
         await get().saveEntity(tidied)
       }
+      // And the minimap cards': back to their slots, still on the board.
+      await updateProjectDataAt(project.path, (data) =>
+        sheetsOf(data)
+          .filter((m) => m.boardX != null || m.boardY != null)
+          .reduce((d, m) => withSheet(d, m.id, { boardX: undefined, boardY: undefined }), data)
+      )
       markDirty()
     },
 
@@ -1877,9 +2026,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
       return api.printHtml(renderHtml(result.blocks, await frontispiece(options)))
     },
 
-    async mapPicture(options) {
+    async mapPicture(options, mapId = get().mapId) {
       const { project } = get()
       if (!project) return null
+      const sheet = sheetOf(project.data, mapId)
       // Everything from the one project, as it is on disk: the names too,
       // since Compile can run before the World Book has been read.
       const [pins, shapes, marks, entries] = await Promise.all([
@@ -1890,23 +2040,30 @@ export const useWyrm = create<WyrmState>((set, get) => {
       ])
       const places = new Map(entries.filter((e) => e.type === 'world').map((e) => [e.id, e.name]))
       const input = {
-        mapBounds: project.data.mapBounds,
-        shapes,
-        marks,
-        pins: pins.filter((p) => places.has(p.entityId)),
+        mapBounds: sheet.bounds,
+        shapes: recordsOn(shapes, sheet.id, project.data),
+        marks: recordsOn(marks, sheet.id, project.data),
+        pins: recordsOn(pins, sheet.id, project.data).filter((p) => places.has(p.entityId)),
         nameOf: (id: string) => places.get(id) ?? '',
-        scale: validScale(project.data.mapScale) ? project.data.mapScale : undefined
+        scale: validScale(sheet.scale) ? sheet.scale : undefined
       }
       return mapHasDrawing(input) ? mapPictureSvg(input, options) : null
     },
 
-    async exportMapImage(format, options) {
+    async exportMapImage(format, options, mapId = get().mapId) {
       const { project } = get()
       if (!project) return null
-      const picture = await get().mapPicture(options)
+      const picture = await get().mapPicture(options, mapId)
       if (!picture) return null
       const data = format === 'svg' ? picture.svg : await mapPicturePng(picture)
-      const name = compileFileName(`${project.data.title} map`, format)
+      // "The Saltmarsh map", or for any map but World, "The Saltmarsh — Port Cray".
+      const sheet = sheetOf(project.data, mapId)
+      const name = compileFileName(
+        sheet.id === WORLD_MAP
+          ? `${project.data.title} map`
+          : `${project.data.title} — ${sheet.name}`,
+        format
+      )
       return api.exportFile(name, data, { title: 'Export Map Image', buttonLabel: 'Export' })
     },
 
@@ -2194,8 +2351,19 @@ export const useWyrm = create<WyrmState>((set, get) => {
       markDirty()
       // A place's pin goes with it, as its portrait does: a pin for an entry
       // that no longer exists is a dot on the map nothing can explain.
-      const pin = get().mapPins.find((p) => p.entityId === entity.id)
-      if (pin) await get().removeMapPin(pin)
+      // Every pin it has, on every map, read from disk: the map may never
+      // have been opened, and a place can be on several maps.
+      const path = project.path
+      // The entry is gone already: a map that will not read must not fail
+      // that, so the pins loaded are taken instead.
+      const listed = await api.listMapPins(path).catch(() => get().mapPins)
+      const pins = listed.filter((p) => p.entityId === entity.id)
+      for (const pin of pins) await api.deleteMapPin(path, pin.id)
+      if (pins.length > 0) {
+        const gone = new Set(pins.map((p) => p.id))
+        patchSliceAt(path, (slice) => ({ mapPins: slice.mapPins.filter((p) => !gone.has(p.id)) }))
+        runtimeFor(path).commitDirty = true
+      }
       if (panelEntityId === entity.id) set({ panelEntityId: null })
       if (mainView.kind === 'entity' && mainView.id === entity.id)
         set({ mainView: { kind: 'doc' } })
@@ -2307,21 +2475,98 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async setMapBounds(bounds) {
-      const { project } = get()
+      const { project, mapId } = get()
       if (!project) return
-      project.data.mapBounds = bounds
-      setProject({ ...project })
-      await persistProject()
+      const id = sheetOf(project.data, mapId).id
+      await updateProjectDataAt(project.path, (data) => withSheet(data, id, { bounds }))
     },
 
     async setMapScale(scale) {
+      const { project, mapId } = get()
+      if (!project) return
+      const id = sheetOf(project.data, mapId).id
+      // Cleared means absent, as every optional field is written.
+      await updateProjectDataAt(project.path, (data) =>
+        withSheet(data, id, { scale: scale ?? undefined })
+      )
+    },
+
+    chooseMap(id) {
       const { project } = get()
       if (!project) return
-      // Cleared means absent, as every optional field is written.
-      if (scale) project.data.mapScale = scale
-      else delete project.data.mapScale
-      setProject({ ...project })
-      await persistProject()
+      set({ mapId: hasSheet(project.data, id) ? id : WORLD_MAP })
+    },
+
+    showMapSheet(id, from) {
+      get().chooseMap(id)
+      const { mainView, viewHistory } = get()
+      if (mainView.kind === 'map') return
+      set({
+        mainView: { kind: 'map' },
+        viewHistory: [...viewHistory, from ?? mainView].slice(-VIEW_HISTORY_LIMIT)
+      })
+    },
+
+    async addMap(name) {
+      const { project } = get()
+      if (!project || mapNameProblem(project.data, name)) return null
+      const id = newId()
+      await updateProjectDataAt(project.path, (data) =>
+        withNewSheet(data, { id, name: name.trim() })
+      )
+      if (get().project?.path === project.path) set({ mapId: id })
+      return id
+    },
+
+    async renameMap(id, name) {
+      const { project } = get()
+      if (!project) return null
+      const problem = mapNameProblem(project.data, name, id)
+      if (problem) return problem
+      await updateProjectDataAt(project.path, (data) => withSheet(data, id, { name: name.trim() }))
+      return null
+    },
+
+    async clearMap(path, id) {
+      await checkpointAt(path, 'Auto: before clearing a map')
+      await removeRecordsOn(path, id)
+    },
+
+    async deleteMap(path, id) {
+      if (id === WORLD_MAP) return
+      await checkpointAt(path, 'Auto: before deleting a map')
+      await removeRecordsOn(path, id)
+      await updateProjectDataAt(path, (data) => withoutSheet(data, id))
+      const after = get()
+      if (after.project?.path === path) {
+        if (after.mapId === id) set({ mapId: WORLD_MAP })
+      } else if (after.parked[path]?.mapId === id) {
+        set({ parked: { ...after.parked, [path]: { ...after.parked[path], mapId: WORLD_MAP } } })
+      }
+    },
+
+    async setMapOnBoard(id, on) {
+      const { project } = get()
+      if (!project) return
+      // Taken off, its place goes with it: put back, it is dealt afresh.
+      await updateProjectDataAt(project.path, (data) =>
+        withSheet(
+          data,
+          id,
+          on ? { onBoard: true } : { onBoard: undefined, boardX: undefined, boardY: undefined }
+        )
+      )
+    },
+
+    async placeMapCard(id, at) {
+      const { project } = get()
+      if (!project) return
+      await updateProjectDataAt(project.path, (data) =>
+        withSheet(data, id, {
+          boardX: at ? Math.round(at.x) : undefined,
+          boardY: at ? Math.round(at.y) : undefined
+        })
+      )
     },
 
     showCorkboard() {
@@ -2490,17 +2735,27 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async loadMapPins() {
       const { project } = get()
       if (!project) return
-      set({ mapPins: await api.listMapPins(project.path) })
+      // Into the project read, whichever is in front by the time it lands.
+      const mapPins = await api.listMapPins(project.path)
+      patchSliceAt(project.path, () => ({ mapPins }))
     },
 
     async setMapPin(entityId, x, y) {
       const { project } = get()
       if (!project) return
-      const existing = get().mapPins.find((p) => p.entityId === entityId)
+      // A place has a pin on each map it is on: this one moves its pin on
+      // the map in view, or puts one there.
+      // The map as the view shows it: an id no map has is World.
+      const mapId = sheetOf(project.data, get().mapId).id
+      const existing = recordsOn(get().mapPins, mapId, project.data).find(
+        (p) => p.entityId === entityId
+      )
       const now = new Date().toISOString()
       const pin: MapPin = existing
         ? { ...existing, x, y }
         : { id: newId(), entityId, x, y, created: now, modified: now }
+      const map = storedMapId(mapId)
+      if (map && !existing) pin.map = map
       await api.writeMapPin(project.path, pin)
       set({
         mapPins: existing
@@ -2559,7 +2814,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async loadMapShapes() {
       const { project } = get()
       if (!project) return
-      set({ mapShapes: await api.listMapShapes(project.path) })
+      const mapShapes = await api.listMapShapes(project.path)
+      patchSliceAt(project.path, () => ({ mapShapes }))
     },
 
     async createMapShape(kind, points) {
@@ -2569,6 +2825,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (rounded.length < minShapePoints(kind)) return null
       const now = new Date().toISOString()
       const shape: MapShape = { id: newId(), kind, points: rounded, created: now, modified: now }
+      const map = storedMapId(sheetOf(project.data, get().mapId).id)
+      if (map) shape.map = map
       await api.writeMapShape(project.path, shape)
       set({ mapShapes: [...get().mapShapes, shape] })
       markDirty()
@@ -2650,7 +2908,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async loadMapMarks() {
       const { project } = get()
       if (!project) return
-      set({ mapMarks: await api.listMapMarks(project.path) })
+      const mapMarks = await api.listMapMarks(project.path)
+      patchSliceAt(project.path, () => ({ mapMarks }))
     },
 
     async createMapMark(kind, x, y, name, size) {
@@ -2674,6 +2933,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
       }
       if (size !== undefined && markSizeOf(size) !== 1) mark.size = size
       if (trimmed) mark.name = trimmed
+      // On the map in view in that project, as it was when the mark was made.
+      const slice = before.project?.path === path ? before : before.parked[path]
+      const map = storedMapId(
+        slice.project ? sheetOf(slice.project.data, slice.mapId).id : WORLD_MAP
+      )
+      if (map) mark.map = map
       await api.writeMapMark(path, mark)
       const after = get()
       if (after.project?.path === path) {
