@@ -137,6 +137,21 @@ export interface ProjectData {
    * shifting the content would rewrite a file per pin.
    */
   mapBounds?: MapBounds
+  /** F-12: what a distance on the map is in the story's own units, and how
+   *  far a day's travel goes. Absent until the writer sets a scale. */
+  mapScale?: MapScale
+}
+
+/**
+ * F-12: the map's scale — `pixels` map pixels are `distance` of the
+ * writer's own `unit` (miles, leagues, days' sail) — and a day's travel on
+ * foot, on horseback and by ship, in that unit.
+ */
+export interface MapScale {
+  pixels: number
+  distance: number
+  unit: string
+  perDay: { foot: number; horse: number; ship: number }
 }
 
 /** F-12: the world map's extent. `x`/`y` may be negative once grown north or west. */

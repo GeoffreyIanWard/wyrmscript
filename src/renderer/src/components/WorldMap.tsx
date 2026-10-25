@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
-import { MAP_SHAPE_KINDS, MARK_SIZES, markSizeOf } from '../../../shared/types'
+import { MAP_MARK_KINDS, MAP_SHAPE_KINDS, MARK_SIZES, markSizeOf } from '../../../shared/types'
 import type {
   MapMark,
   MapMarkKind,
@@ -11,6 +11,8 @@ import type {
 } from '../../../shared/types'
 import { useWyrm } from '../store'
 import { StampGlyph, StampPalette } from './StampPalette'
+import { MapScalePanel } from './MapScalePanel'
+import { describeRoute, formatDistance, routeLength, scaleBar, validScale } from '../lib/mapScale'
 import { afterKeysUp } from '../lib/keys'
 import {
   closesOn,
@@ -82,19 +84,21 @@ const PAN = 60
 const PAN_BIG = 300
 
 /** The map's tools: the hand moves the view and selects; the shape tools
- *  draw point by point; the mark tools put one thing down per click. */
-type Tool = 'hand' | MapShapeKind | MapMarkKind
+ *  draw point by point; the mark tools put one thing down per click; the
+ *  measure tool clicks out a route and says how far, and how long. */
+type Tool = 'hand' | 'measure' | MapShapeKind | MapMarkKind
 
 const isShapeKind = (t: Tool): t is MapShapeKind =>
   (MAP_SHAPE_KINDS as readonly string[]).includes(t)
-const isMarkKind = (t: Tool): t is MapMarkKind => t !== 'hand' && !isShapeKind(t)
+const isMarkKind = (t: Tool): t is MapMarkKind => (MAP_MARK_KINDS as readonly string[]).includes(t)
 
 /** A tool's name on its button. */
 const toolName = (t: Tool): string =>
-  t === 'hand' ? 'Hand' : isShapeKind(t) ? KIND_NAME[t] : MARK_NAME[t]
+  t === 'hand' ? 'Hand' : t === 'measure' ? 'Measure' : isShapeKind(t) ? KIND_NAME[t] : MARK_NAME[t]
 
 const TOOL_HELP: Record<Tool, string> = {
   hand: 'Drag to move the map. Click anything drawn on it to change it.',
+  measure: 'Click along a route to measure it. Return finishes it; Esc clears it.',
   land: 'Click round a coast, point by point. Click the first point, or press Return, to close it.',
   area: 'Click round the area, point by point. Click the first point, or press Return, to close it.',
   border: 'Click along the border, point by point. Return finishes it.',
@@ -125,7 +129,7 @@ const DRAFT_HELP: Record<MapShapeKind, string> = {
 }
 
 /** The drawing tools, in the bar's order: outlines, then lines. */
-const TOOLS: Tool[] = ['hand', 'land', 'area', 'border', 'river', 'road', 'rail']
+const TOOLS: Tool[] = ['hand', 'land', 'area', 'border', 'river', 'road', 'rail', 'measure']
 
 /** A name being written: for a shape or a mark already on the map, or for
  *  a free label not yet made (made only once it has words). */
@@ -160,6 +164,7 @@ export function WorldMap(): JSX.Element {
   const projectPath = useWyrm((s) => s.project?.path)
   const removeMapPin = useWyrm((s) => s.removeMapPin)
   const setMapBounds = useWyrm((s) => s.setMapBounds)
+  const setMapScale = useWyrm((s) => s.setMapScale)
   const showEntity = useWyrm((s) => s.showEntity)
   const mapShapes = useWyrm((s) => s.mapShapes)
   const loadMapShapes = useWyrm((s) => s.loadMapShapes)
@@ -474,6 +479,26 @@ export function WorldMap(): JSX.Element {
   // The size new stamps and labels are made at, until it is changed.
   const [stampSize, setStampSize] = useState(1)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  // The route being measured, and whether it is finished (the next click
+  // then starts another). Never stored: a measurement is a question asked
+  // of the map, not something drawn on it.
+  const [route, setRoute] = useState<Point[]>([])
+  const [routeDone, setRouteDone] = useState(false)
+  const [scaleOpen, setScaleOpen] = useState(false)
+  // The route's length in map pixels, out to the pointer — null until there
+  // are two points to measure between.
+  const routeNow = !routeDone && hover && route.length > 0 ? [...route, hover] : route
+  const measured = routeNow.length > 1 ? routeLength(routeNow) : null
+  // The route at its placed points only.
+  const placed = route.length > 1 ? routeLength(route) : null
+  const scaleButton = useRef<HTMLButtonElement | null>(null)
+  /** Close the scale panel and give the keyboard back to its button (or the
+   *  map), once the key that closed it is up — dropped to <body>, the next
+   *  Esc left the map instead of clearing the route. */
+  const closeScale = (): void => {
+    setScaleOpen(false)
+    afterKeysUp(() => (scaleButton.current ?? scrollEl.current)?.focus({ preventScroll: true }))
+  }
   // The place whose look is being chosen, and where its palette opens: by
   // its row in the side panel, measured against the map view (the panel
   // scrolls and would clip a palette opened inside it).
@@ -507,6 +532,9 @@ export function WorldMap(): JSX.Element {
 
   const chooseTool = (next: Tool): void => {
     setTool(next)
+    setScaleOpen(false)
+    setRoute([])
+    setRouteDone(false)
     setPaletteOpen(false)
     setNaming(null)
     setNotice(null)
@@ -562,6 +590,22 @@ export function WorldMap(): JSX.Element {
     setDraft((d) => [...d, p])
     // The line to the next point starts from this one, not from wherever
     // the pointer last was.
+    setHover(p)
+  }
+
+  /** A point on the route being measured; a click after it is finished
+   *  starts another. A second click on the same spot is the same click. */
+  const addRoutePoint = (p: Point): void => {
+    setProblem(null)
+    if (routeDone) {
+      setRoute([p])
+      setRouteDone(false)
+      setHover(p)
+      return
+    }
+    const last = route[route.length - 1]
+    if (last && last.x === p.x && last.y === p.y) return
+    setRoute((r) => [...r, p])
     setHover(p)
   }
 
@@ -1063,6 +1107,7 @@ export function WorldMap(): JSX.Element {
         setSelected(hit)
         setProblem(null)
       } else if (isMarkKind(tool)) putMark(at, ev.timeStamp)
+      else if (tool === 'measure') addRoutePoint(at)
       else addPoint(at)
     }
     const cancel = (): void => {
@@ -1089,7 +1134,7 @@ export function WorldMap(): JSX.Element {
   // Followed whenever a drawing tool is up, so the line to the next point
   // is never left over from before.
   const onMapMove = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    if (!isShapeKind(tool)) return
+    if (!isShapeKind(tool) && tool !== 'measure') return
     setHover(mapPoint(e))
   }
 
@@ -1147,6 +1192,33 @@ export function WorldMap(): JSX.Element {
    * the map's own, so they stop here: Esc is also "back".
    */
   const onMapKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    // A route being measured: Esc clears it (and stops there — Esc is also
+    // "back"), Backspace takes the last point back, Return finishes it.
+    if (tool === 'measure' && route.length > 0) {
+      const inField = (e.target as Element).closest?.('input, textarea')
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        setRoute([])
+        setRouteDone(false)
+        setHover(null)
+        return
+      }
+      if (!inField && e.key === 'Backspace' && !routeDone) {
+        e.preventDefault()
+        setRoute((r) => r.slice(0, -1))
+        // The line drops back with the point: the pointer, or the keyboard's
+        // cursor, gives the next leg again when it moves.
+        setHover(null)
+        return
+      }
+      if (!inField && e.key === 'Enter' && !(e.target as Element).closest?.('button')) {
+        e.preventDefault()
+        setRouteDone(true)
+        setHover(null)
+        return
+      }
+    }
     if (draft.length === 0 && !selected) return
     // Delete takes off whatever is chosen, wherever focus is on the map. A
     // click chooses a shape or a stamp without always giving it focus — a
@@ -1223,16 +1295,20 @@ export function WorldMap(): JSX.Element {
         )
         setCursor(next)
         setPointerDrawing(false)
-        if (draft.length > 0) setHover(next)
+        // The line to the next point follows the keyboard's cursor, as it
+        // follows the pointer — drafting a shape or measuring a route.
+        if (draft.length > 0 || (tool === 'measure' && route.length > 0 && !routeDone))
+          setHover(next)
         keepInView(next)
         return
       }
       // Return closes once there is something to close; before that it puts
       // the first point down, rather than doing nothing.
-      if (e.key === ' ' || (e.key === 'Enter' && draft.length === 0)) {
+      if (e.key === ' ' || (e.key === 'Enter' && draft.length === 0 && route.length === 0)) {
         e.preventDefault()
         setPointerDrawing(false)
         if (isMarkKind(tool)) putMark(cursor, e.timeStamp)
+        else if (tool === 'measure') addRoutePoint(cursor)
         else addPoint(cursor)
         return
       }
@@ -1246,6 +1322,11 @@ export function WorldMap(): JSX.Element {
 
   /** A double-click with the hand names what it lands on. */
   const onMapDoubleClick = (e: { target: EventTarget }): void => {
+    if (tool === 'measure' && route.length > 1) {
+      setRouteDone(true)
+      setHover(null)
+      return
+    }
     if (tool !== 'hand') return
     const t = e.target as Element
     const shapeId = t.closest?.('[data-shape]')?.getAttribute('data-shape')
@@ -1270,13 +1351,20 @@ export function WorldMap(): JSX.Element {
 
   /** The hint line, when nothing has gone wrong: what the tool does, or
    *  what can be done with what is drawn, chosen or being named. */
-  const hintLine = (): string => {
+  const hintLine = (placedOnly = false): string => {
     if (naming)
       return naming.what === 'new-label'
         ? 'Type the label. Return keeps it; Esc drops it.'
         : 'Type the name. Return keeps it; Esc leaves it as it was.'
     if (draft.length > 0 && isShapeKind(tool))
       return `${DRAFT_HELP[tool]} Backspace: undo a point. Esc: drop it.`
+    const told = placedOnly ? placed : measured
+    if (tool === 'measure' && told != null) {
+      const scale = project?.data.mapScale
+      return validScale(scale)
+        ? describeRoute(told, scale)
+        : `${Math.round(told).toLocaleString('en')} map pixels. Set the scale to see miles and days.`
+    }
     if (tool === 'hand' && selectedShape)
       return 'Drag a corner to move it; click a dot to add one. Return names it; Delete removes it.'
     if (tool === 'hand' && selectedMark)
@@ -1290,6 +1378,8 @@ export function WorldMap(): JSX.Element {
   const regionLabel = (): string => {
     if (tool === 'hand') return 'World map. Arrow keys move the view; Shift moves it further.'
     const how = 'Option and the arrows move the cursor;'
+    if (tool === 'measure')
+      return `World map. Measuring: ${how} Space puts a point of the route down; Return finishes it; Esc clears it.`
     if (isShapeKind(tool))
       return `World map. Drawing ${KIND_NAME[tool].toLowerCase()}: ${how} Space puts a point down; ${isClosed(tool) ? 'Return closes the shape.' : `Return finishes the ${KIND_NAME[tool].toLowerCase()}.`}`
     return tool === 'label'
@@ -1305,6 +1395,10 @@ export function WorldMap(): JSX.Element {
   const gridY = ((-bounds.y % 100) + 100) % 100
   // The shape being drawn, out to the pointer, open until it is finished.
   const drafted = hover ? [...draft, hover] : draft
+  // The route, out to the pointer until it is finished.
+  const routed = !routeDone && hover && route.length > 0 ? [...route, hover] : route
+  const scale = validScale(project.data.mapScale) ? project.data.mapScale : undefined
+  const bar = scale ? scaleBar(scale, zoom) : null
 
   return (
     <div className="terminal world-map" data-help="world-map" onKeyDown={onMapKey}>
@@ -1482,9 +1576,40 @@ export function WorldMap(): JSX.Element {
         )
       })()}
       <div className="map-hint-row">
-        <div className="map-hint" role="status">
-          {(!naming && problem) || notice || hintLine()}
-        </div>
+        <div className="map-hint">{(!naming && problem) || notice || hintLine()}</div>
+        {/* What a screen reader hears: the same line, except that a route is
+            told as it stands at its placed points — the figure that runs to
+            the pointer would otherwise be read out on every move. */}
+        <span className="sr-only" role="status">
+          {(!naming && problem) || notice || hintLine(true)}
+        </span>
+        {tool === 'measure' && (
+          <button
+            type="button"
+            ref={scaleButton}
+            className="btn small map-scale-button"
+            data-help="map-scale"
+            aria-haspopup="dialog"
+            aria-expanded={scaleOpen}
+            onClick={() => setScaleOpen((o) => !o)}
+          >
+            {scale ? 'Scale…' : 'Set Scale…'}
+          </button>
+        )}
+        {scaleOpen && (
+          <MapScalePanel
+            scale={scale}
+            routePixels={route.length > 1 ? routeLength(route) : null}
+            onSave={(next) => {
+              closeScale()
+              void setMapScale(next)
+              // With a route on the map, it is told at once in the new
+              // scale; without one, the hint says what happened.
+              if (!next || route.length < 2) setNotice(next ? 'Scale set.' : 'Scale taken off.')
+            }}
+            onClose={closeScale}
+          />
+        )}
         {(isMarkKind(tool) || sizeTarget != null) && (
           <span className="map-size" role="group" aria-label="Size" data-help="map-size">
             {MARK_SIZES.map((size, i) => (
@@ -1509,6 +1634,27 @@ export function WorldMap(): JSX.Element {
         )}
       </div>
       <div className="map-body">
+        {/* The scale bar, in the map's corner, unscaled: a round length in
+            the story's own units at the zoom of the moment. */}
+        {bar && scale && (
+          <button
+            type="button"
+            className="map-scale-bar"
+            data-help="map-scale"
+            aria-label={`Scale: this bar is ${formatDistance(bar.units, scale.unit)}. Change the scale`}
+            onClick={() => {
+              // Measure first: choosing a tool closes the scale panel.
+              if (tool !== 'measure') chooseTool('measure')
+              setScaleOpen(true)
+            }}
+          >
+            <span className="map-scale-ruler" style={{ width: bar.screen }} aria-hidden="true">
+              <span />
+              <span />
+            </span>
+            <span className="map-scale-label">{formatDistance(bar.units, scale.unit)}</span>
+          </button>
+        )}
         <aside className="map-places" data-help="map-places" aria-label="Places" tabIndex={-1}>
           {locations.length === 0 ? (
             <div className="dialog-hint">
@@ -1608,7 +1754,13 @@ export function WorldMap(): JSX.Element {
           onPointerDown={onMapDown}
           onPointerMove={onMapMove}
           onPointerLeave={() =>
-            setHover(cursor && !pointerDrawing && draft.length > 0 ? cursor : null)
+            setHover(
+              cursor &&
+                !pointerDrawing &&
+                (draft.length > 0 || (tool === 'measure' && route.length > 0 && !routeDone))
+                ? cursor
+                : null
+            )
           }
           onFocus={(e) => {
             if (e.target !== e.currentTarget || tool === 'hand') return
@@ -1796,6 +1948,14 @@ export function WorldMap(): JSX.Element {
                     </g>
                   )
                 })}
+                {tool === 'measure' && routed.length > 0 && (
+                  <g className="map-measure" aria-hidden="true">
+                    <path d={shapePath(routed, false, bounds)} />
+                    {route.map((p, i) => (
+                      <circle key={i} cx={p.x - bounds.x} cy={p.y - bounds.y} r={3 / zoom} />
+                    ))}
+                  </g>
+                )}
                 {draft.length > 0 && isShapeKind(tool) && (
                   <path
                     className={`map-draft ${tool}`}

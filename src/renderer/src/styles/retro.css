@@ -1740,6 +1740,8 @@ button {
 }
 
 .map-body {
+  /* The scale bar sits in its corner. */
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -2252,6 +2254,8 @@ button.map-place-name {
 /* The hint line, with the size control at its right when a stamp or label
    is in play. One fixed-height row either way. */
 .map-hint-row {
+  /* The scale panel opens from it, under its right end. */
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;
@@ -2302,6 +2306,109 @@ button.map-place-name {
 .map-size-step:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 1px;
+}
+
+/* ---------- measuring, and the scale ---------- */
+
+/* A route being measured: a surveyor's dashed line with its stations
+   marked, the same weight on screen at every zoom. */
+.map-measure path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2px;
+  stroke-dasharray: 6 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.map-measure circle {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.map-scale-button {
+  flex: none;
+  margin-right: 16px;
+}
+
+/* The scale bar: an engraver's ruler, half ink and half paper, with its
+   length under it — unscaled, in the map's corner. */
+.map-scale-bar {
+  position: absolute;
+  left: 226px;
+  bottom: 18px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+}
+
+.map-scale-bar:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.map-scale-ruler {
+  display: flex;
+  height: 6px;
+  border: 1px solid var(--ink);
+}
+
+.map-scale-ruler > span {
+  flex: 1;
+}
+
+.map-scale-ruler > span:first-child {
+  background: var(--ink);
+}
+
+/* Setting the scale: a small panel under the hint line's right end. */
+.map-scale-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 16px;
+  z-index: 30;
+  width: 380px;
+  padding: 8px 12px 10px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  font-size: 11px;
+}
+
+.map-scale-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 4px 0 8px;
+}
+
+.map-scale-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.map-scale-field .text-field {
+  width: 8ch;
+}
+
+/* The scale panel's refusal sits in its flow, not floating like a name's. */
+.map-scale-problem {
+  position: static;
+  transform: none;
+  margin: 0 0 8px;
+  max-width: none;
 }
 
 /* ---------- the stamp palette ---------- */
