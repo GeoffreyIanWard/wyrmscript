@@ -32,14 +32,14 @@ export function StampGlyph({
 const COLUMNS = 4
 
 /**
- * The stamps, grouped, in a drop-down from the map's toolbar: nineteen
+ * The stamps, grouped, in a drop-down from the map's toolbar: forty-four
  * stamps were too many to keep as buttons along it, and the bar is meant to
  * leave room for the map. Each choice shows its own art, so a writer looks
  * for a castle by looking for a castle.
  *
  * A non-modal dialog, from the keyboard: it opens on the chosen stamp (or
  * the first) and is one Tab stop — a roving tabindex, so Tab leaves it
- * rather than walking all nineteen; Left and Right step through the list, Up
+ * rather than walking all forty-four; Left and Right step through the list, Up
  * and Down move by row within the grid, Return chooses, and Esc closes it,
  * stopped here because Esc is also "back". Focus leaving it closes it too:
  * a palette left open over the map with focus elsewhere was a trap for the
@@ -146,8 +146,14 @@ export function StampPalette({
     const g = groups.findIndex((group) => group.kinds.includes(kind))
     const i = groups[g].kinds.indexOf(kind)
     const col = i % COLUMNS
-    const within = groups[g].kinds[i + dir * COLUMNS]
-    if (within) return within
+    // The next row in its own group first, at the nearest column it has: a
+    // short last row is still a row, not something to skip over.
+    const kinds = groups[g].kinds
+    const r = Math.floor(i / COLUMNS) + dir
+    if (r >= 0 && r < Math.ceil(kinds.length / COLUMNS)) {
+      const row = kinds.slice(r * COLUMNS, r * COLUMNS + COLUMNS)
+      return row[Math.min(col, row.length - 1)]
+    }
     const next = groups[g + dir]
     if (!next) return null
     // Into the neighbouring group's nearest row, at the same column or as
