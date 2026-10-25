@@ -17,7 +17,7 @@ import {
   STAMP_W,
   stampNameAt
 } from './mapMarks'
-import { DRAW_ORDER, pathFor } from './mapShapes'
+import { corners, DRAW_ORDER, pathFor } from './mapShapes'
 import { boundsOf } from './worldMap'
 import type { Point } from './worldMap'
 
@@ -232,7 +232,8 @@ const SHAPE_STYLE: Record<MapShapeKind, string> = {
   border: `fill="none" stroke="${INK}" stroke-width="2" stroke-dasharray="12 4 2 4"`,
   river: `fill="none" stroke="${INK}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"`,
   road: `fill="none" stroke="${PAPER}" stroke-width="3" stroke-linejoin="round"`,
-  rail: `fill="none" stroke="${INK}" stroke-width="1.5" stroke-linejoin="round"`
+  rail: `fill="none" stroke="${INK}" stroke-width="1.5" stroke-linejoin="round"`,
+  wall: `fill="none" stroke="${INK}" stroke-width="4" stroke-linejoin="miter"`
 }
 
 /**
@@ -328,6 +329,16 @@ export function mapPictureSvg(
           `<path d="${d}" fill="none" stroke="${INK}" stroke-width="12" stroke-dasharray="1 3" stroke-linecap="butt" stroke-linejoin="miter"/>`
         )
       parts.push(`<path d="${d}" ${SHAPE_STYLE[kind].replace('#HATCH', `#${id('hatch')}`)}/>`)
+      // A wall's battlements and corner towers, as the screen draws them.
+      if (kind === 'wall') {
+        parts.push(
+          `<path d="${d}" fill="none" stroke="${INK}" stroke-width="7" stroke-dasharray="2 5" stroke-linecap="butt" stroke-linejoin="miter"/>`
+        )
+        for (const p of corners(s.points))
+          parts.push(
+            `<rect x="${n1(p.x - origin.x - 4.5)}" y="${n1(p.y - origin.y - 4.5)}" width="9" height="9" fill="${PAPER}" stroke="${INK}" stroke-width="2"/>`
+          )
+      }
       if (kind === 'rail')
         parts.push(
           `<path d="${d}" fill="none" stroke="${INK}" stroke-width="7" stroke-dasharray="1.5 5" stroke-linecap="butt"/>`

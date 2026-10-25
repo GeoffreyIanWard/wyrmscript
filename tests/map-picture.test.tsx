@@ -194,6 +194,36 @@ describe('the picture', () => {
     expect(strokes).toEqual(['6', '6', '3', '3'])
   })
 
+  it('draws a wall with its battlements, as the screen does', () => {
+    const { svg } = mapPictureSvg(
+      input({
+        shapes: [
+          island,
+          shape('w', 'wall', [
+            { x: 410, y: 450 },
+            { x: 690, y: 450 }
+          ])
+        ]
+      }),
+      DEFAULT_PICTURE_OPTIONS
+    )
+    const line = svg.indexOf('stroke-width="4" stroke-linejoin="miter"')
+    const merlons = svg.indexOf('stroke-width="7" stroke-dasharray="2 5"')
+    expect(line).toBeGreaterThan(-1)
+    expect(merlons).toBeGreaterThan(line)
+    // A tower at each end, over the battlements, centred on its point and
+    // paper with an ink edge, as the screen draws it.
+    expect(svg.match(/width="9" height="9"/g)).toHaveLength(2)
+    expect(svg.indexOf('width="9" height="9"')).toBeGreaterThan(merlons)
+    const [, mx, my] =
+      /<path d="M ([\d.]+) ([\d.]+) L [\d.]+ [\d.]+" fill="none" stroke="#000" stroke-width="4"/.exec(
+        svg
+      )!
+    expect(svg).toContain(
+      `<rect x="${Number(mx) - 4.5}" y="${Number(my) - 4.5}" width="9" height="9" fill="#fff" stroke="#000" stroke-width="2"/>`
+    )
+  })
+
   it('draws the grid and the scale bar only when asked, and the bar only with a scale', () => {
     const plain = mapPictureSvg(input({ scale }), { grid: false, trim: true, scaleBar: false }).svg
     expect(plain).not.toContain('url(#grid)')

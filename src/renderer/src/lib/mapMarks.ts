@@ -39,6 +39,7 @@ export const MARK_NAME: Record<MapMarkKind, string> = {
   castle: 'Castle',
   tower: 'Tower',
   ruins: 'Ruins',
+  gate: 'City gate',
   oak: 'Oak',
   deadtree: 'Dead tree',
   rainforest: 'Rainforest',
@@ -349,6 +350,18 @@ export const STAMP_ART: Record<MapStampKind, StampArt> = {
     solid:
       'M 0.5 0 H 23.5 V 2 H 21 L 20 3 L 19 2 H 5 L 4 3 L 3 2 H 0.5 Z M 4.5 19.2 L 7.5 18.4 L 4.5 17.6 Z M 10.5 2 V 6 Q 12 8 13.5 6 V 2 Z M 4 11.5 H 5 V 9.5 H 4 Z M 19 11.5 H 20 V 9.5 H 19 Z'
   },
+  // A city gate: a gatehouse of two crenellated towers, its arch shut by a
+  // portcullis, the wall running off either side — for a gate in a Wall.
+  gate: {
+    body:
+      'M 3 18 V 6 H 4 V 4.5 H 5.5 V 6 H 6.5 V 4.5 H 8 V 6 H 9 V 18 Z ' +
+      'M 15 18 V 6 H 16 V 4.5 H 17.5 V 6 H 18.5 V 4.5 H 20 V 6 H 21 V 18 Z ' +
+      'M 9 18 V 9 H 10 V 7.8 H 11.4 V 9 H 12.6 V 7.8 H 14 V 9 H 15 V 18 Z',
+    lines:
+      'M 10.2 18 V 13.2 Q 12 10.6 13.8 13.2 V 18 M 11.4 18 V 12 M 12.6 18 V 12 ' +
+      'M 10.2 14.6 H 13.8 M 10.2 16.4 H 13.8 M 0.5 13 H 3 M 21 13 H 23.5 M 0.5 15.5 H 3 M 21 15.5 H 23.5',
+    solid: 'M 5.4 9 H 6.6 V 11 H 5.4 Z M 17.4 9 H 18.6 V 11 H 17.4 Z'
+  },
   // A ruined arch: half of it still springing from its pier, broken at the crown; the far pier a stump, a block fallen.
   ruinedarch: {
     body: 'M 2.5 18 V 9 Q 2.5 2 11 2 L 13.4 3 L 12.6 4.4 L 13.2 5.6 Q 12 5.4 11 5.4 Q 6 5.4 6 9 V 18 Z M 17 18 V 11.5 L 18.2 10.4 L 19.2 11.8 L 20.5 11 V 18 Z M 11 18 V 15.6 H 14.4 V 18 Z',
@@ -428,6 +441,7 @@ export const STAMP_GROUPS: { name: string; kinds: MapStampKind[] }[] = [
       'city',
       'metropolis',
       'castle',
+      'gate',
       'tower',
       'cathedral',
       'ziggurat',

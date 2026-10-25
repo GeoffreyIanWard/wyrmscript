@@ -393,7 +393,7 @@ export interface MapPin {
  * `map-shapes/<id>.md` (not `map/`, which holds the pins), so two devices drawing different coasts merge cleanly, and
  * an edit to one shape is a conflict about that shape alone.
  */
-export const MAP_SHAPE_KINDS = ['land', 'area', 'border', 'river', 'road', 'rail'] as const
+export const MAP_SHAPE_KINDS = ['land', 'area', 'border', 'river', 'road', 'rail', 'wall'] as const
 export type MapShapeKind = (typeof MAP_SHAPE_KINDS)[number]
 
 /** Whether the last point joins the first: land and areas are outlines,
@@ -446,6 +446,7 @@ export const MAP_STAMP_KINDS = [
   'castle',
   'tower',
   'ruins',
+  'gate',
   'oak',
   'deadtree',
   'rainforest',

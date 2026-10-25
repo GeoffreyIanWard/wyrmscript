@@ -6,10 +6,12 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { MapBounds, MapPin, MapShape, ProjectInfo } from '../src/shared/types'
 import { useWyrm } from '../src/renderer/src/store'
 import { WorldMap } from '../src/renderer/src/components/WorldMap'
+import { MARK_NAME, STAMP_GROUPS } from '../src/renderer/src/lib/mapMarks'
 import {
   CLOSE_RADIUS,
   closesOn,
   describeShape,
+  DRAW_ORDER,
   edgeLongEnough,
   insertPoint,
   midpoints,
@@ -125,12 +127,20 @@ describe('shape geometry', () => {
   it('draws each kind as an outline, a straight line or a curve', () => {
     expect(pathFor('land', tri)).toMatch(/ Z$/)
     // Surveyed lines stay straight; only a river meanders.
-    for (const kind of ['road', 'rail', 'border'] as const) {
+    for (const kind of ['road', 'rail', 'wall', 'border'] as const) {
       expect(pathFor(kind, tri)).toBe('M 0 0 L 100 0 L 100 100')
       expect(isSmooth(kind)).toBe(false)
     }
     expect(pathFor('river', tri)).toContain(' C ')
-    expect(MIN_POINTS).toEqual({ land: 3, area: 3, border: 2, river: 2, road: 2, rail: 2 })
+    expect(MIN_POINTS).toEqual({
+      land: 3,
+      area: 3,
+      border: 2,
+      river: 2,
+      road: 2,
+      rail: 2,
+      wall: 2
+    })
   })
 
   it('says what a shape is', () => {
@@ -266,6 +276,117 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   useWyrm.setState({ ...REAL, project: null, mapShapes: [], mainView: { kind: 'doc' } })
+})
+
+describe('city walls and gates', () => {
+  it('draws a wall point by point, finished on Return, battlemented', async () => {
+    const createMapShape = vi.fn(async () => null)
+    await renderMap([], { createMapShape })
+    await tool('Wall')
+    await clickMap(100, 100)
+    await clickMap(300, 100)
+    await clickMap(300, 300)
+    // Its first point offers to ring it; Return leaves it an open line.
+    expect(document.querySelector('.map-handle.first.closes')).toBeTruthy()
+    await act(async () => {
+      fireEvent.keyDown(document.querySelector('.map-scroll')!, { key: 'Enter' })
+    })
+    expect(createMapShape).toHaveBeenCalledWith('wall', [
+      { x: 100, y: 100 },
+      { x: 300, y: 100 },
+      { x: 300, y: 300 }
+    ])
+  })
+
+  it('draws a wall as a heavy line with merlons, under its battlements, after roads', async () => {
+    const wall: MapShape = {
+      id: 'w1',
+      kind: 'wall',
+      points: [
+        { x: 50, y: 50 },
+        { x: 250, y: 50 }
+      ],
+      created: now,
+      modified: now
+    }
+    const road: MapShape = { ...wall, id: 'r1', kind: 'road' }
+    await renderMap([wall, road])
+    const group = document.querySelector('[data-shape="w1"]')!
+    expect(group.classList.contains('wall')).toBe(true)
+    expect(group.querySelector('.map-wall-merlons')?.getAttribute('d')).toBe('M 50 50 L 250 50')
+    // A tower at each corner.
+    expect(group.querySelectorAll('.map-wall-tower')).toHaveLength(2)
+    // Over the road it crosses, as a wall stands over the way through it.
+    const order = [...document.querySelectorAll('[data-shape]')].map((g) =>
+      g.getAttribute('data-shape')
+    )
+    expect(order.indexOf('w1')).toBeGreaterThan(order.indexOf('r1'))
+  })
+
+  it('rings a city: a click on the first point closes the wall there, one tower at the meeting', async () => {
+    const createMapShape = vi.fn(async () => null)
+    await renderMap([], { createMapShape })
+    await tool('Wall')
+    await clickMap(100, 100)
+    await clickMap(300, 100)
+    await clickMap(300, 300)
+    // With three points down, the first says it will close the ring.
+    expect(document.querySelector('.map-handle.first.closes')).toBeTruthy()
+    await clickMap(104, 103)
+    expect(createMapShape).toHaveBeenCalledWith('wall', [
+      { x: 100, y: 100 },
+      { x: 300, y: 100 },
+      { x: 300, y: 300 },
+      { x: 100, y: 100 }
+    ])
+  })
+
+  it('draws a ring with a tower at each corner once, and towers where the map has grown', async () => {
+    const ring: MapShape = {
+      id: 'w1',
+      kind: 'wall',
+      points: [
+        { x: 50, y: 50 },
+        { x: 250, y: 50 },
+        { x: 250, y: 200 },
+        { x: 50, y: 50 }
+      ],
+      created: now,
+      modified: now
+    }
+    // A map grown north and west: its origin is not 0,0.
+    await renderMap([ring], { mapBounds: { x: -100, y: -50, width: 2400, height: 1600 } })
+    const towers = [...document.querySelectorAll('.map-wall-tower')]
+    expect(towers).toHaveLength(3)
+    expect([towers[0].getAttribute('x'), towers[0].getAttribute('y')]).toEqual(['145.5', '95.5'])
+    expect(towers[0].getAttribute('width')).toBe('9')
+    expect(towers[1].getAttribute('x')).toBe('345.5')
+    expect(document.querySelector('.map-wall-merlons')?.getAttribute('d')).toMatch(/^M 150 100 /)
+  })
+
+  it('keeps a ring shut when its meeting corner is moved', () => {
+    const ring = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 0 }
+    ]
+    expect(movePoint(ring, 0, { x: 2, y: 3 })).toEqual([
+      { x: 2, y: 3 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 2, y: 3 }
+    ])
+    expect(movePoint(ring, 3, { x: 5, y: 5 })[0]).toEqual({ x: 5, y: 5 })
+    // A line whose ends do not meet moves one end only.
+    expect(movePoint(ring.slice(0, 3), 0, { x: 2, y: 3 })[2]).toEqual({ x: 10, y: 10 })
+    expect(DRAW_ORDER).toEqual(['land', 'area', 'river', 'road', 'rail', 'wall', 'border'])
+  })
+
+  it('offers a city gate among the settlements', () => {
+    expect(STAMP_GROUPS.find((g) => g.name === 'Settlements')?.kinds).toContain('gate')
+    expect(MARK_NAME.gate).toBe('City gate')
+  })
 })
 
 describe('drawing on the map', () => {
