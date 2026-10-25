@@ -316,6 +316,12 @@ export interface MapPin {
   /** Pixel coordinates within the map canvas. */
   x: number
   y: number
+  /** How the place is drawn: as this stamp (a castle for a castle) rather
+   *  than a pin. Omitted for a pin. */
+  stamp?: MapStampKind
+  /** The stamp's size (one of `MARK_SIZES`); omitted at the usual size, and
+   *  meaningless for a pin. */
+  size?: number
   created: string
   modified: string
 }

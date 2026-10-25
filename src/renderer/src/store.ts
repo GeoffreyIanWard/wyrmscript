@@ -24,6 +24,7 @@ import type {
   MapPin,
   MapMark,
   MapMarkKind,
+  MapStampKind,
   MapShape,
   MapShapeKind,
   Plotline,
@@ -35,6 +36,7 @@ import type {
   CompileBlock
 } from '../../shared/types'
 import {
+  MAP_STAMP_KINDS,
   MARK_SIZES,
   markSizeOf,
   minShapePoints,
@@ -573,6 +575,19 @@ interface WyrmState {
    * brought back — a move never creates one.
    */
   moveMapPinAt(path: string, pinId: string, x: number, y: number): Promise<void>
+  /**
+   * Restyle a pin already on the map, addressed by path like `moveMapPinAt`
+   * and serialized with it per pin. `stamp: null` turns it back into a pin
+   * (stamp and size both cleared); a valid stamp draws the place as that
+   * stamp; a size in `MARK_SIZES` sets it (1 clears it), and is ignored on a
+   * pin with no stamp. Anything invalid is ignored; nothing changed, nothing
+   * written.
+   */
+  styleMapPinAt(
+    path: string,
+    pinId: string,
+    style: { stamp?: MapStampKind | null; size?: number }
+  ): Promise<void>
   removeMapPin(pin: MapPin): Promise<void>
 
   loadMapShapes(): Promise<void>
@@ -715,6 +730,25 @@ function serializeRecord(path: string, key: string, run: () => Promise<void>): P
   }
   next.then(clear, clear)
   return next
+}
+
+/** Writes a pin to the project at `path`, then puts it in whichever slice
+ *  holds that path now (flat fields or parked), and dirties that path. */
+async function writePinAt(path: string, pinId: string, pin: MapPin): Promise<void> {
+  await api.writeMapPin(path, pin)
+  const after = useWyrm.getState()
+  if (after.project?.path === path) {
+    useWyrm.setState({ mapPins: after.mapPins.map((p) => (p.id === pinId ? pin : p)) })
+  } else if (after.parked[path]) {
+    const slice = after.parked[path]
+    useWyrm.setState({
+      parked: {
+        ...after.parked,
+        [path]: { ...slice, mapPins: slice.mapPins.map((p) => (p.id === pinId ? pin : p)) }
+      }
+    })
+  }
+  runtimeFor(path).commitDirty = true
 }
 
 /**
@@ -2396,26 +2430,41 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async moveMapPinAt(path, pinId, x, y) {
-      const now = get()
-      const focused = now.project?.path === path
-      const pins = focused ? now.mapPins : now.parked[path]?.mapPins
-      const found = pins?.find((p) => p.id === pinId)
-      if (!found) return
-      const moved: MapPin = { ...found, x, y }
-      await api.writeMapPin(path, moved)
-      const after = get()
-      if (after.project?.path === path) {
-        set({ mapPins: after.mapPins.map((p) => (p.id === pinId ? moved : p)) })
-      } else if (after.parked[path]) {
-        const slice = after.parked[path]
-        set({
-          parked: {
-            ...after.parked,
-            [path]: { ...slice, mapPins: slice.mapPins.map((p) => (p.id === pinId ? moved : p)) }
-          }
-        })
-      }
-      runtimeFor(path).commitDirty = true
+      return serializeRecord(path, `pin\0${pinId}`, async () => {
+        const now = get()
+        const focused = now.project?.path === path
+        const pins = focused ? now.mapPins : now.parked[path]?.mapPins
+        const found = pins?.find((p) => p.id === pinId)
+        if (!found) return
+        await writePinAt(path, pinId, { ...found, x, y })
+      })
+    },
+
+    async styleMapPinAt(path, pinId, style) {
+      return serializeRecord(path, `pin\0${pinId}`, async () => {
+        const now = get()
+        const focused = now.project?.path === path
+        const pins = focused ? now.mapPins : now.parked[path]?.mapPins
+        const found = pins?.find((p) => p.id === pinId)
+        if (!found) return
+        const next: MapPin = { ...found }
+        if (style.stamp === null) {
+          delete next.stamp
+          delete next.size
+        } else if (style.stamp !== undefined && MAP_STAMP_KINDS.includes(style.stamp)) {
+          next.stamp = style.stamp
+        }
+        if (
+          next.stamp &&
+          style.size !== undefined &&
+          (MARK_SIZES as readonly number[]).includes(style.size)
+        ) {
+          if (style.size === 1) delete next.size
+          else next.size = style.size
+        }
+        if (next.stamp === found.stamp && next.size === found.size) return
+        await writePinAt(path, pinId, next)
+      })
     },
 
     async removeMapPin(pin) {

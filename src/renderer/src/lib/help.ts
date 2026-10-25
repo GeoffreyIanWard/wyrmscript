@@ -100,7 +100,7 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'map-pin': {
     title: 'A place on the map',
-    body: 'Drag it to move it, or Option and the arrow keys (Shift for a bigger step). Click it, or Return, to open the place — Esc brings you back to the map, just as you left it.'
+    body: 'A place, drawn as a pin or as a stamp (Show as… in the list changes which). Drag it to move it, or Option and the arrow keys (Shift for a bigger step). Click it, or Return, to open the place — Esc brings you back to the map, just as you left it. When it is a stamp, [ and ] size it while it has focus.'
   },
   'map-zoom': {
     title: 'Zoom',
@@ -113,6 +113,10 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   'map-marks': {
     title: 'Stamps and labels',
     body: 'Stamps opens a palette of mountains, mesas, woods, waterfalls, ships, castles, ruins and more, grouped by kind: choose one, and each click on the map puts one down (or Space at the keyboard cursor). Label puts words anywhere — a sea, a region — typed in place: Return keeps them, Esc drops them. With the Hand, drag a stamp or a label to move it (or Option and the arrows), [ and ] to size it, and Delete to take it off. To name anything — a coast, a river, a forest — choose it with the Hand and press Return again, or double-click it.'
+  },
+  'map-place-style': {
+    title: 'Show as',
+    body: 'How this place is drawn on the map: a pin, or any stamp — a castle for a castle, a city for a city — at the size you choose here. It still opens its World Book entry when clicked, and still moves when dragged. To size a stamped place on the map itself, Tab to it (or Find it in this list) and press [ or ].'
   },
   'map-size': {
     title: 'Size',

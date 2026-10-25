@@ -30,9 +30,15 @@ const tri = [
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  // One clock for the store and the mock: the mock stamps \`modified\` when it
+  // saves, and a millisecond ticking between the two made comparisons of the
+  // stored shape fail now and then.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
 })
 
 afterEach(async () => {
+  vi.useRealTimers()
   // Leave the mock's demo project as we found it.
   if (demoPath) {
     for (const s of await api.listMapShapes(demoPath)) await api.deleteMapShape(demoPath, s.id)

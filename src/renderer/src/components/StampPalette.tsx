@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent } from 'react'
 import type { MapStampKind } from '../../../shared/types'
 import { afterKeysUp } from '../lib/keys'
@@ -47,38 +47,86 @@ const COLUMNS = 4
  */
 export function StampPalette({
   id,
+  label = 'Stamps',
   current,
+  allowPin = false,
+  sizes,
+  toggle = '.stamp-palette-toggle',
+  closeOnPick = true,
   onPick,
   onClose
 }: {
   id: string
-  current: MapStampKind | null
-  onPick: (kind: MapStampKind) => void
+  /** The dialog's name: "Stamps", or what a place is shown as. */
+  label?: string
+  /** The choice now: a stamp, or 'pin' for a place drawn as a pin. */
+  current: MapStampKind | 'pin' | null
+  /** Offer "Pin" first, for a place: a place can always go back to one. */
+  allowPin?: boolean
+  /** A size row under the stamps, for a place already on the map. */
+  sizes?: {
+    current: number
+    names: string[]
+    labels: string[]
+    values: readonly number[]
+    onSize: (size: number) => void
+  }
+  /** What opened it, which a press on closes it rather than the
+   *  click-away: a selector. */
+  toggle?: string
+  /** Close once a choice is made — the map's palette does; a place's stays
+   *  open so its size can be chosen next. */
+  closeOnPick?: boolean
+  onPick: (kind: MapStampKind | 'pin') => void
   /** Where the keyboard goes as it closes: back to its toggle (Esc), onto
    *  the map to stamp (a choice), or nowhere (a press or focus elsewhere). */
   onClose: (focus: 'toggle' | 'map' | 'none') => void
 }): JSX.Element {
   const root = useRef<HTMLDivElement | null>(null)
-  const flat = STAMP_GROUPS.flatMap((g) => g.kinds)
-  const [active, setActive] = useState<MapStampKind>(current ?? flat[0])
+  const groups: { name: string; kinds: (MapStampKind | 'pin')[] }[] = allowPin
+    ? [{ name: 'Place', kinds: ['pin'] }, ...STAMP_GROUPS]
+    : STAMP_GROUPS
+  const flat = groups.flatMap((g) => g.kinds)
+  const [active, setActive] = useState<MapStampKind | 'pin'>(current ?? flat[0])
+
+  // Kept inside the map's window, across and down — measured afresh
+  // whenever it changes height (a place's size row appears once it is a
+  // stamp), from a clean slate, or the first fit outlives the content it was
+  // for. A toggle far to the right (it names the stamp in hand, so it grows)
+  // pushed it past the window's edge; a place's row low in the window, past
+  // its foot.
+  const hasSizes = sizes != null
+  useLayoutEffect(() => {
+    const el = root.current
+    if (!el) return
+    el.style.left = ''
+    el.style.marginTop = ''
+    el.style.maxHeight = ''
+    el.style.overflowY = ''
+    const frame = el.closest('.world-map')?.getBoundingClientRect()
+    const box = el.getBoundingClientRect()
+    if (!frame) return
+    const over = box.right - (frame.right - 8)
+    if (over > 0) el.style.left = `${-Math.min(over, box.left - frame.left - 8)}px`
+    const under = box.bottom - (frame.bottom - 8)
+    if (under <= 0) return
+    // Up as far as the window's top, then it scrolls.
+    const up = Math.max(0, Math.min(under, box.top - frame.top - 8))
+    if (up > 0) el.style.marginTop = `${-up}px`
+    const room = frame.bottom - 8 - (box.top - up)
+    if (box.height > room) {
+      el.style.maxHeight = `${room}px`
+      el.style.overflowY = 'auto'
+    }
+  }, [hasSizes])
 
   useEffect(() => {
-    // Kept inside the map's window: it opens under its toggle, and a toggle
-    // far to the right (it names the stamp in hand, so it grows) pushed it
-    // past the window's edge, where the window clipped it.
-    const el = root.current
-    const frame = el?.closest('.world-map')?.getBoundingClientRect()
-    const box = el?.getBoundingClientRect()
-    if (el && frame && box) {
-      const over = box.right - (frame.right - 8)
-      if (over > 0) el.style.left = `${-Math.min(over, box.left - frame.left - 8)}px`
-    }
     root.current?.querySelector<HTMLElement>(`[data-stamp="${active}"]`)?.focus()
     // A press anywhere else closes it — but not the press on its own toggle,
     // which closes it itself.
     const away = (e: PointerEvent): void => {
       const t = e.target as Element
-      if (root.current?.contains(t) || t.closest?.('.stamp-palette-toggle')) return
+      if (root.current?.contains(t) || t.closest?.(toggle)) return
       onClose('none')
     }
     document.addEventListener('pointerdown', away)
@@ -87,20 +135,20 @@ export function StampPalette({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const focusStamp = (kind: MapStampKind): void => {
+  const focusStamp = (kind: MapStampKind | 'pin'): void => {
     setActive(kind)
     root.current?.querySelector<HTMLElement>(`[data-stamp="${kind}"]`)?.focus()
   }
 
   /** The stamp a row up or down from `kind`, keeping its column, across
    *  groups; none past the first or last row. */
-  const rowStep = (kind: MapStampKind, dir: 1 | -1): MapStampKind | null => {
-    const g = STAMP_GROUPS.findIndex((group) => group.kinds.includes(kind))
-    const i = STAMP_GROUPS[g].kinds.indexOf(kind)
+  const rowStep = (kind: MapStampKind | 'pin', dir: 1 | -1): MapStampKind | 'pin' | null => {
+    const g = groups.findIndex((group) => group.kinds.includes(kind))
+    const i = groups[g].kinds.indexOf(kind)
     const col = i % COLUMNS
-    const within = STAMP_GROUPS[g].kinds[i + dir * COLUMNS]
+    const within = groups[g].kinds[i + dir * COLUMNS]
     if (within) return within
-    const next = STAMP_GROUPS[g + dir]
+    const next = groups[g + dir]
     if (!next) return null
     // Into the neighbouring group's nearest row, at the same column or as
     // near it as that row goes.
@@ -110,6 +158,20 @@ export function StampPalette({
   }
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    // Tab past either end goes back to what opened it, not to whatever comes
+    // next in the window (for a place, the next one's controls, or the top of
+    // the list): the writer was working on that row.
+    if (e.key === 'Tab') {
+      const stops = [
+        ...(root.current?.querySelectorAll<HTMLElement>('button:not([tabindex="-1"])') ?? [])
+      ]
+      const edge = e.shiftKey ? stops[0] : stops[stops.length - 1]
+      if (document.activeElement === edge) {
+        e.preventDefault()
+        onClose('toggle')
+      }
+      return
+    }
     if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
@@ -117,7 +179,7 @@ export function StampPalette({
       return
     }
     const at = flat.indexOf(active)
-    let next: MapStampKind | null = null
+    let next: MapStampKind | 'pin' | null = null
     if (e.key === 'ArrowRight') next = flat[(at + 1) % flat.length]
     else if (e.key === 'ArrowLeft') next = flat[(at - 1 + flat.length) % flat.length]
     else if (e.key === 'ArrowDown') next = rowStep(active, 1)
@@ -135,11 +197,11 @@ export function StampPalette({
       className="stamp-palette"
       ref={root}
       role="dialog"
-      aria-label="Stamps"
+      aria-label={label}
       onKeyDown={onKey}
       onBlur={(e) => {
         const to = e.relatedTarget as Element | null
-        if (to && (root.current?.contains(to) || to.closest?.('.stamp-palette-toggle'))) return
+        if (to && (root.current?.contains(to) || to.closest?.(toggle))) return
         // No relatedTarget is the window losing focus (⌘Tab): not a choice
         // to leave, so the palette stays.
         if (to == null) return
@@ -148,7 +210,7 @@ export function StampPalette({
       // Its own presses: none of them is a click on the map underneath.
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {STAMP_GROUPS.map((group, g) => (
+      {groups.map((group, g) => (
         <div key={group.name} className="stamp-palette-group">
           <div className="field-name" id={`${id}-group-${g}`}>
             {group.name.toUpperCase()}
@@ -165,19 +227,47 @@ export function StampPalette({
                 onFocus={() => setActive(kind)}
                 onClick={(e) => {
                   onPick(kind)
+                  if (!closeOnPick) return
                   // From the keyboard, the Return that chose it must not
                   // reach whatever takes focus next.
                   if (e.detail === 0) afterKeysUp(() => onClose('map'))
                   else onClose('map')
                 }}
               >
-                <StampGlyph kind={kind} />
-                <span>{MARK_NAME[kind]}</span>
+                {kind === 'pin' ? (
+                  <span className="stamp-glyph pin-glyph" aria-hidden="true">
+                    <span className="world-map-pin-glyph" />
+                  </span>
+                ) : (
+                  <StampGlyph kind={kind} />
+                )}
+                <span>{kind === 'pin' ? 'Pin' : MARK_NAME[kind]}</span>
               </button>
             ))}
           </div>
         </div>
       ))}
+      {sizes && (
+        <div className="stamp-palette-group">
+          <div className="field-name" id={`${id}-size`}>
+            SIZE
+          </div>
+          <div className="map-size" role="group" aria-labelledby={`${id}-size`}>
+            {sizes.values.map((size, i) => (
+              <button
+                key={size}
+                type="button"
+                className={`map-size-step${size === sizes.current ? ' on' : ''}`}
+                aria-pressed={size === sizes.current}
+                aria-label={`${sizes.names[i]} (${sizes.labels[i]})`}
+                onClick={() => sizes.onSize(size)}
+              >
+                {sizes.labels[i]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
