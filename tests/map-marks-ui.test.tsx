@@ -91,6 +91,51 @@ describe('where names go', () => {
     for (const kind of MAP_STAMP_KINDS) expect(MARK_NAME[kind]).toBeTruthy()
   })
 
+  it('groups the stamps as a writer looks for them, in this order', () => {
+    expect(STAMP_GROUPS.map((g) => [g.name, g.kinds])).toEqual([
+      ['Land', ['mountain', 'hills', 'mesa', 'cliffs', 'volcano', 'dunes', 'cave']],
+      [
+        'Trees and plants',
+        ['forest', 'pine', 'oak', 'deadtree', 'rainforest', 'highgrass', 'cactus', 'marsh']
+      ],
+      [
+        'Water',
+        ['waterfall', 'rocks', 'seastacks', 'boilingsea', 'oasis', 'ship', 'wreck', 'lighthouse']
+      ],
+      [
+        'Settlements',
+        [
+          'encampment',
+          'cabin',
+          'town',
+          'westerntown',
+          'city',
+          'metropolis',
+          'castle',
+          'tower',
+          'cathedral',
+          'ziggurat',
+          'cyberspire',
+          'hangingcitadel'
+        ]
+      ],
+      [
+        'Ruins and relics',
+        [
+          'ruins',
+          'ruinedarch',
+          'ruinedtower',
+          'ruinedcity',
+          'buriedstatue',
+          'effigy',
+          'battlefield',
+          'cemetery',
+          'graveyard'
+        ]
+      ]
+    ])
+  })
+
   it('puts a stamp’s name just under it, at every size', () => {
     expect(stampNameAt({ x: 0, y: 0 }, 2.2)).toEqual({ x: 0, y: STAMP_H * 1.1 + 2 })
     expect(stampNameAt({ x: 0, y: 0 }, 0.6)).toEqual({ x: 0, y: STAMP_H * 0.3 + 2 })
@@ -783,7 +828,7 @@ describe('the stamp palette', () => {
     const grids = [...document.querySelectorAll('.stamp-palette-grid')]
     expect(
       grids.map((g) => document.getElementById(g.getAttribute('aria-labelledby')!)?.textContent)
-    ).toEqual(['LAND', 'WOODS AND WETLAND', 'WATER', 'SETTLEMENTS'])
+    ).toEqual(['LAND', 'TREES AND PLANTS', 'WATER', 'SETTLEMENTS', 'RUINS AND RELICS'])
     const label = screen.getByRole('button', { name: 'Label' })
     await act(async () => {
       fireEvent.blur(document.activeElement!, { relatedTarget: label })
@@ -806,11 +851,37 @@ describe('the stamp palette', () => {
     await key('ArrowRight', document.activeElement!)
     expect(at()).toBe('cave')
     await key('ArrowDown', document.activeElement!)
-    // Woods and wetland has three: column three is as near as it goes.
-    expect(at()).toBe('marsh')
+    // Into the next group, the same column: the third of its first row.
+    expect(at()).toBe('oak')
     await key('ArrowUp', document.activeElement!)
     expect(at()).toBe('cave')
     expect(document.activeElement!.getAttribute('tabindex')).toBe('0')
+    // A shorter row below in its own group: the nearest column it has, never
+    // skipped. Land's second row has three, so the fourth column goes to its
+    // third.
+    await key('ArrowUp', document.activeElement!)
+    await key('ArrowRight', document.activeElement!)
+    expect(at()).toBe('cliffs')
+    await key('ArrowDown', document.activeElement!)
+    expect(at()).toBe('cave')
+    // And the last row of all: Ruins and relics ends with Graveyard alone.
+    await key('End', document.activeElement!)
+    expect(at()).toBe('graveyard')
+    await key('ArrowUp', document.activeElement!)
+    for (let i = 0; i < 3; i++) await key('ArrowRight', document.activeElement!)
+    expect(at()).toBe('cemetery')
+    await key('ArrowDown', document.activeElement!)
+    expect(at()).toBe('graveyard')
+    // The bottom edge holds, as the top does.
+    await key('ArrowDown', document.activeElement!)
+    expect(at()).toBe('graveyard')
+    // Up into another group's shorter row: its nearest column. Trees and
+    // plants' fourth column goes up to Land's last row, which has three.
+    await key('Home', document.activeElement!)
+    for (let i = 0; i < 10; i++) await key('ArrowRight', document.activeElement!)
+    expect(at()).toBe('deadtree')
+    await key('ArrowUp', document.activeElement!)
+    expect(at()).toBe('cave')
   })
 
   it('closes on Esc from its toggle without leaving the map', async () => {

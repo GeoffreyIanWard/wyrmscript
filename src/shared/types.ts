@@ -445,7 +445,32 @@ export const MAP_STAMP_KINDS = [
   'city',
   'castle',
   'tower',
-  'ruins'
+  'ruins',
+  'oak',
+  'deadtree',
+  'rainforest',
+  'highgrass',
+  'cactus',
+  'seastacks',
+  'boilingsea',
+  'oasis',
+  'wreck',
+  'encampment',
+  'cabin',
+  'westerntown',
+  'metropolis',
+  'cathedral',
+  'ziggurat',
+  'cyberspire',
+  'hangingcitadel',
+  'ruinedarch',
+  'ruinedtower',
+  'ruinedcity',
+  'buriedstatue',
+  'effigy',
+  'battlefield',
+  'cemetery',
+  'graveyard'
 ] as const
 export type MapStampKind = (typeof MAP_STAMP_KINDS)[number]
 export type MapMarkKind = MapStampKind | 'label'
