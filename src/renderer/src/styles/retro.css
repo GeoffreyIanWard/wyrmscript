@@ -5262,6 +5262,12 @@ button.string-label:focus-visible {
   z-index: 6;
 }
 
+/* A card is its own stacking context, so a sticker dragged off one would
+   pass under every card after it; its card comes up while it is carried. */
+.scene-card:has(.board-sticker.dragging) {
+  z-index: 3;
+}
+
 .board-sticker:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;

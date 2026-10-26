@@ -111,7 +111,28 @@ export function StickerOnBoard({
     const up = (ev: PointerEvent): void => {
       stop.current?.()
       setOffset(null)
-      if (moved) onMoved(ev.clientX - start.x, ev.clientY - start.y, ev)
+      if (!moved) return
+      // A drag that ends over something else (another card) has its click
+      // fired on what the two share — the board, which would take it for a
+      // click on the cork and, with a sticker in hand, stick another one
+      // there. The click that ends a drag is the drag's: swallowed, once.
+      // Not every drag ends in a click, so the next press or key retires
+      // it, never a timer: a page in the background holds timers back,
+      // and the writer's next real click was swallowed instead.
+      const retire = (): void => {
+        document.removeEventListener('click', swallow, true)
+        document.removeEventListener('pointerdown', retire, true)
+        document.removeEventListener('keydown', retire, true)
+      }
+      const swallow = (c: MouseEvent): void => {
+        c.stopPropagation()
+        c.preventDefault()
+        retire()
+      }
+      document.addEventListener('click', swallow, true)
+      document.addEventListener('pointerdown', retire, true)
+      document.addEventListener('keydown', retire, true)
+      onMoved(ev.clientX - start.x, ev.clientY - start.y, ev)
     }
     document.addEventListener('pointermove', move)
     document.addEventListener('pointerup', up)

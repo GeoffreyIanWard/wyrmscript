@@ -53,7 +53,7 @@ async function openDemo(): Promise<string> {
 let scenes: string[] = []
 let sceneIds: string[] = []
 
-async function renderBoard(): Promise<void> {
+async function renderBoard(cards = 2): Promise<void> {
   const noop = (): void => {}
   await act(async () => {
     render(
@@ -66,7 +66,7 @@ async function renderBoard(): Promise<void> {
       />
     )
   })
-  await waitFor(() => expect(document.querySelectorAll('.scene-card').length).toBe(2))
+  await waitFor(() => expect(document.querySelectorAll('.scene-card').length).toBe(cards))
 }
 
 const face = (title: string): HTMLElement => screen.getByRole('button', { name: `Open ${title}` })
@@ -109,6 +109,9 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  // A sticker drag that ended without a click leaves its click-swallower
+  // waiting for the next press; a test's drag must not eat the next test's.
+  pointer(document, 'pointerdown', 0, 0)
   cleanup()
   useWyrm.setState({
     project: null,
@@ -452,5 +455,237 @@ describe('string colours', () => {
     const [s] = await api.listBoardStrings(path)
     expect(s).toMatchObject({ label: 'echo', colour: 'orange' })
     expect(document.querySelector('.board-string')!.classList.contains('colour-orange')).toBe(true)
+  })
+})
+
+describe('a sticker in hand, and everything else on the board', () => {
+  const dragCard = async (title: string, dx: number, dy: number): Promise<void> => {
+    const from = at(card(title))
+    await act(async () => {
+      pointer(face(title), 'pointerdown', from.x + 100, from.y + 100)
+      pointer(document, 'pointermove', from.x + 100 + dx, from.y + 100 + dy)
+      pointer(document, 'pointerup', from.x + 100 + dx, from.y + 100 + dy)
+      // The click a real drag ends with, on the card it was dropped on.
+      fireEvent.click(face(title), { clientX: from.x + 100 + dx, detail: 1 })
+    })
+  }
+
+  it('drags a card without sticking anything', async () => {
+    await pick('Star')
+    await dragCard(scenes[0], 300, 200)
+    expect(await api.listBoardStickers(path)).toEqual([])
+  })
+
+  it('sticks nothing for a click in Add Card or on the back of a card', async () => {
+    await pick('Star')
+    await act(async () => {
+      fireEvent.click(tool('Add Card'), { detail: 1 })
+    })
+    const overlay = await waitFor(() => {
+      const o = document.querySelector('.dialog-overlay')
+      expect(o).not.toBeNull()
+      return o as HTMLElement
+    })
+    await act(async () => {
+      fireEvent.click(overlay, { clientX: 400, clientY: 300, detail: 1 })
+      fireEvent.click(overlay.querySelector('input, button')!, { detail: 1 })
+    })
+    expect(await api.listBoardStickers(path)).toEqual([])
+  })
+
+  it('sticks nothing for a click on a string tag or the colours in its field', async () => {
+    await act(async () => {
+      fireEvent.click(tool('String'))
+    })
+    const a = at(card(scenes[0]))
+    const b = at(card(scenes[1]))
+    await act(async () => {
+      fireEvent.click(face(scenes[0]), { clientX: a.x + 40, clientY: a.y + 30, detail: 1 })
+    })
+    await act(async () => {
+      fireEvent.click(face(scenes[1]), { clientX: b.x + 60, clientY: b.y + 30, detail: 1 })
+    })
+    // The label field is open over the cork when a sticker is picked.
+    await pick('Dot')
+    await act(async () => {
+      fireEvent.click(swatch('Colour of this string', 'Blue'), { detail: 1 })
+      fireEvent.click(document.querySelector('.string-label-field')!, { detail: 1 })
+    })
+    await act(async () => {
+      const f = document.querySelector('.string-label-input') as HTMLInputElement
+      fireEvent.change(f, { target: { value: 'echo' } })
+      fireEvent.keyDown(f, { key: 'Enter' })
+    })
+    // And the tag it leaves on the string.
+    await act(async () => {
+      fireEvent.click(document.querySelector('.string-label')!, { detail: 1 })
+    })
+    expect(await api.listBoardStickers(path)).toEqual([])
+    expect((await api.listBoardStrings(path))[0]).toMatchObject({ label: 'echo', colour: 'blue' })
+  })
+
+  it('swallows the click a sticker drag ends with, over another card', async () => {
+    await pick('Star')
+    await act(async () => {
+      fireEvent.click(face(scenes[0]), { clientX: 30, clientY: 30, detail: 1 })
+    })
+    const [first] = await api.listBoardStickers(path)
+    const a = at(card(scenes[0]))
+    const b = at(card(scenes[1]))
+    await act(async () => {
+      pointer(stickers()[0], 'pointerdown', a.x + first.x, a.y + first.y)
+      pointer(document, 'pointermove', b.x + 50, b.y + 50)
+      pointer(document, 'pointerup', b.x + 50, b.y + 50)
+      // Pressed on one card, let go on another: the click goes to the board.
+      fireEvent.click(board(), { clientX: b.x + 50, clientY: b.y + 50, detail: 1 })
+    })
+    const all = await api.listBoardStickers(path)
+    expect(all).toHaveLength(1)
+    expect(all[0]).toMatchObject({ cardId: sceneIds[1], x: 50, y: 50 })
+    // And the next click on the cork is a click again.
+    await act(async () => {
+      pointer(board(), 'pointerdown', 900, 700)
+      fireEvent.click(board(), { clientX: 900, clientY: 700, detail: 1 })
+    })
+    expect(await api.listBoardStickers(path)).toHaveLength(2)
+  })
+
+  it('swallows nothing after a drag that ended without a click, however long timers wait', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      await pick('Star')
+      await act(async () => {
+        fireEvent.click(face(scenes[0]), { clientX: 30, clientY: 30, detail: 1 })
+      })
+      const [first] = await api.listBoardStickers(path)
+      const a = at(card(scenes[0]))
+      const b = at(card(scenes[1]))
+      await act(async () => {
+        pointer(stickers()[0], 'pointerdown', a.x + first.x, a.y + first.y)
+        pointer(document, 'pointermove', b.x + 50, b.y + 50)
+        pointer(document, 'pointerup', b.x + 50, b.y + 50)
+      })
+      // No click came; timers never ran. The writer's next click is theirs.
+      const addCard = vi.fn()
+      tool('Add Card').addEventListener('click', addCard)
+      await act(async () => {
+        pointer(tool('Add Card'), 'pointerdown', 10, 10)
+        fireEvent.click(tool('Add Card'), { detail: 1 })
+      })
+      expect(addCard).toHaveBeenCalled()
+      // And from the keyboard, with no press at all.
+      await act(async () => {
+        pointer(stickers()[0], 'pointerdown', b.x + 50, b.y + 50)
+        pointer(document, 'pointermove', b.x + 80, b.y + 80)
+        pointer(document, 'pointerup', b.x + 80, b.y + 80)
+        fireEvent.keyDown(tool('Sticker'), { key: 'Enter' })
+        fireEvent.keyUp(tool('Sticker'), { key: 'Enter' })
+        fireEvent.click(tool('Sticker'), { detail: 0 })
+      })
+      expect(tool('Sticker').classList.contains('on')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('moves within its own card by how far it was dragged', async () => {
+    await pick('Heart')
+    await act(async () => {
+      fireEvent.click(face(scenes[0]), { clientX: 30, clientY: 30, detail: 1 })
+      fireEvent.click(tool('Sticker'))
+    })
+    const [s] = await api.listBoardStickers(path)
+    const a = at(card(scenes[0]))
+    await act(async () => {
+      pointer(stickers()[0], 'pointerdown', a.x + s.x, a.y + s.y)
+      pointer(document, 'pointermove', a.x + s.x + 20, a.y + s.y + 15)
+      pointer(document, 'pointerup', a.x + s.x + 20, a.y + s.y + 15)
+    })
+    expect((await api.listBoardStickers(path))[0]).toMatchObject({
+      cardId: sceneIds[0],
+      x: s.x + 20,
+      y: s.y + 15
+    })
+  })
+
+  it('sticks a dropped sticker to the card on top where two overlap', async () => {
+    // The first card placed (an unplaced card is dealt clear of one put
+    // over its slot), then the second over it, partly.
+    await dragCard(scenes[0], 10, 10)
+    const a = at(card(scenes[0]))
+    const b = at(card(scenes[1]))
+    await dragCard(scenes[1], a.x + 60 - b.x, a.y + 40 - b.y)
+    expect(at(card(scenes[0]))).toEqual(a)
+    expect(at(card(scenes[1]))).toEqual({ x: a.x + 60, y: a.y + 40 })
+    await pick('Cross')
+    await act(async () => {
+      fireEvent.click(board(), { clientX: 1100, clientY: 900, detail: 1 })
+      fireEvent.click(tool('Sticker'))
+    })
+    const [s] = await api.listBoardStickers(path)
+    // Inside both cards.
+    const to = { x: a.x + 100, y: a.y + 100 }
+    await act(async () => {
+      pointer(stickers()[0], 'pointerdown', s.x, s.y)
+      pointer(document, 'pointermove', to.x, to.y)
+      pointer(document, 'pointerup', to.x, to.y)
+    })
+    expect((await api.listBoardStickers(path))[0].cardId).toBe(sceneIds[1])
+  })
+})
+
+describe('an empty board', () => {
+  it('offers no sticker, as it offers no string', async () => {
+    cleanup()
+    for (const d of await api.readAllDocs(path))
+      await api.writeDoc(path, { ...d, meta: { ...d.meta, tags: [] } })
+    await act(async () => {
+      await useWyrm.getState().openRecentProject(path)
+    })
+    await renderBoard(0).catch(() => undefined)
+    await waitFor(() => expect(document.querySelector('.corkboard-empty')).not.toBeNull())
+    expect(tool('Sticker').disabled).toBe(true)
+  })
+})
+
+describe('relationship colours', () => {
+  it('makes a relationship in the colour chosen, and recolours it from its tag', async () => {
+    cleanup()
+    const chars = (await api.listEntities(path)).filter((e) => e.type === 'character').slice(0, 2)
+    for (const e of chars) await api.writeEntity(path, { ...e, onBoard: true })
+    await act(async () => {
+      await useWyrm.getState().loadEntities()
+    })
+    await renderBoard(4)
+    await act(async () => {
+      fireEvent.click(swatch('Colour of strings and stickers', 'Blue'))
+      fireEvent.click(tool('String'))
+    })
+    const [one, two] = chars.map((c) => c.name)
+    await act(async () => {
+      fireEvent.click(face(one), { detail: 0 })
+    })
+    await act(async () => {
+      fireEvent.click(face(two), { detail: 0 })
+    })
+    await act(async () => {
+      const f = document.querySelector('.string-label-input') as HTMLInputElement
+      fireEvent.change(f, { target: { value: 'sister of' } })
+      fireEvent.keyDown(f, { key: 'Enter' })
+    })
+    let [rel] = await api.listRelationships(path)
+    expect(rel).toMatchObject({ label: 'sister of', colour: 'blue' })
+    expect(document.querySelector('.board-string.relationship')!.classList).toContain('colour-blue')
+    // From its tag: to red, which is written as no colour at all.
+    await act(async () => {
+      fireEvent.click(document.querySelector('button.string-label.relationship')!, { detail: 1 })
+    })
+    await act(async () => {
+      fireEvent.click(swatch('Colour of this string', 'Red'))
+    })
+    ;[rel] = await api.listRelationships(path)
+    expect('colour' in rel).toBe(false)
+    expect(rel.label).toBe('sister of')
+    expect(document.querySelector('.board-string.relationship')!.classList).toContain('colour-red')
   })
 })

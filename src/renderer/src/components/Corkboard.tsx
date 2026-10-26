@@ -623,6 +623,8 @@ export function Corkboard({
           aria-haspopup="dialog"
           aria-expanded={pickingSticker}
           aria-pressed={stickerKind != null}
+          // As String is: on an empty board there is nothing to stick to yet.
+          disabled={cards.length === 0}
           onClick={() => {
             if (stickerKind) {
               setStickerKind(null)
@@ -1165,13 +1167,11 @@ export function Corkboard({
           suppressClick.current = false
           return
         }
-        const t = e.target as Element
-        if (
-          t.closest(
-            '.corkboard-tools, .scene-card, .board-sticker, .string-label, .string-label-field'
-          )
-        )
-          return
+        // Only a click on the cork itself: the view, or the board where no
+        // card is. Anything drawn over it — a card, a tag, the Add Card
+        // dialog or the back of a card, which are children here too — is
+        // not somewhere to stick one.
+        if (e.target !== e.currentTarget && e.target !== boardEl.current) return
         void createBoardSticker(stickerKind, colour, onCork(boardPoint(e)))
       }}
     >

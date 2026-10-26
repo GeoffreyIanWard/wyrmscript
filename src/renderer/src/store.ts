@@ -2759,12 +2759,15 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async saveRelationship(relationship) {
       const { project } = get()
       if (!project) return
+      const path = project.path
       const updated: Relationship = { ...relationship, modified: new Date().toISOString() }
-      await api.writeRelationship(project.path, updated)
-      set({
-        relationships: get().relationships.map((r) => (r.id === updated.id ? updated : r))
-      })
-      markDirty()
+      await api.writeRelationship(path, updated)
+      // Into the project written, which may no longer be the one in front
+      // (a recolour from the board, a rename in the Character Graph).
+      patchSliceAt(path, (slice) => ({
+        relationships: slice.relationships.map((r) => (r.id === updated.id ? updated : r))
+      }))
+      runtimeFor(path).commitDirty = true
     },
 
     async deleteRelationship(relationship) {
@@ -3117,12 +3120,16 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { project } = get()
       const found = get().boardStrings.find((s) => s.id === id)
       if (!project || !found || colourOf(found) === colour) return
+      const path = project.path
       const updated: BoardString = { ...found }
       delete updated.colour
       if (storedColour(colour)) updated.colour = colour
-      await api.writeBoardString(project.path, updated)
-      set({ boardStrings: get().boardStrings.map((s) => (s.id === id ? updated : s)) })
-      markDirty()
+      await api.writeBoardString(path, updated)
+      // Into the project written, which may no longer be the one in front.
+      patchSliceAt(path, (slice) => ({
+        boardStrings: slice.boardStrings.map((s) => (s.id === id ? updated : s))
+      }))
+      runtimeFor(path).commitDirty = true
     },
 
     /* ---------- stickers ---------- */

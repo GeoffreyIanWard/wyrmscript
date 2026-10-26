@@ -9,6 +9,7 @@ import {
   writeBoardSticker
 } from '../src/main/wyrm/boardStickers'
 import { listBoardStrings, writeBoardString } from '../src/main/wyrm/boardStrings'
+import { listRelationships, writeRelationship } from '../src/main/wyrm/relationships'
 import { createProject } from '../src/main/wyrm/project'
 import type { BoardSticker } from '../src/shared/types'
 
@@ -138,5 +139,26 @@ describe("a string's colour on disk", () => {
     const byId = Object.fromEntries((await listBoardStrings(dir)).map((s) => [s.id, s]))
     expect(byId.blue.colour).toBe('blue')
     expect('colour' in byId.red).toBe(false)
+  })
+})
+
+describe("a relationship's colour on disk", () => {
+  it('keeps green, writes nothing for red, and reads an unknown colour as red', async () => {
+    const dir = await makeProject()
+    const now = new Date().toISOString()
+    const base = { fromId: 'e1', toId: 'e2', label: 'sister of', created: now, modified: now }
+    await writeRelationship(dir, { id: 'g', ...base, colour: 'green' })
+    await writeRelationship(dir, { id: 'r', ...base, colour: 'red' })
+    const raw = await fsp.readFile(join(dir, 'relationships', 'r.md'), 'utf8')
+    expect('colour' in matter(raw).data).toBe(false)
+    await fsp.writeFile(
+      join(dir, 'relationships', 'p.md'),
+      matter.stringify('', { id: 'p', ...base, colour: 'purple' }),
+      'utf8'
+    )
+    const byId = Object.fromEntries((await listRelationships(dir)).map((r) => [r.id, r]))
+    expect(byId.g.colour).toBe('green')
+    expect('colour' in byId.r).toBe(false)
+    expect('colour' in byId.p).toBe(false)
   })
 })
