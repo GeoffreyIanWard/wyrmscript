@@ -181,8 +181,60 @@ describe('the board, per palette', () => {
 
   it('draws the string, dash and glow from the variables, so a palette can restate them', () => {
     const path = ruleBody('.board-string path')
-    expect(path).toContain('stroke: var(--string)')
-    expect(path).toContain('stroke-dasharray: var(--string-dash)')
+    expect(path).toContain('stroke: var(--this-string, var(--string))')
+    expect(path).toContain('stroke-dasharray: var(--this-dash, var(--string-dash))')
     expect(path).toContain('filter: var(--string-glow)')
+  })
+
+  /** The other four colours (red is `--string`), and each colour's dash:
+   *  its own where the palette gives one, else the palette's string dash. */
+  const OTHERS = ['blue', 'orange', 'yellow', 'green']
+  const dashOf = (palette: string, colour: string): string => {
+    const own =
+      declared(`[data-palette='${palette}']`, `--string-dash-${colour}`) ??
+      declared(':root', `--string-dash-${colour}`)
+    return own ?? resolve(palette, '--string-dash')
+  }
+
+  it('draws all five colours at 3:1 or better against every paper', () => {
+    for (const name of palettes) {
+      const paper = resolve(name, '--paper')
+      for (const colour of OTHERS) {
+        const hex = resolve(name, `--string-${colour}`)
+        expect(hex, `${name}'s ${colour} is not a colour`).toMatch(/^#[0-9a-f]{6}$/i)
+        expect(
+          contrast(hex, paper),
+          `${name}'s ${colour} string (${hex}) against its paper`
+        ).toBeGreaterThanOrEqual(3)
+      }
+    }
+  })
+
+  it('tells the five apart on every palette: by colour, or where they are one ink, by dash', () => {
+    for (const name of palettes) {
+      const looks = [
+        `${resolve(name, '--string')} ${resolve(name, '--string-dash')}`,
+        ...OTHERS.map((c) => `${resolve(name, `--string-${c}`)} ${dashOf(name, c)}`)
+      ]
+      expect(new Set(looks).size, `${name}: ${looks.join(' | ')}`).toBe(5)
+    }
+  })
+
+  it('gives the one-colour screens one ink for all five, so they differ only by dash', () => {
+    for (const name of ['green', 'amber', 'vaporwave', 'virtualwyrm', 'blueprint']) {
+      for (const c of OTHERS) expect(resolve(name, `--string-${c}`)).toBe(resolve(name, '--ink'))
+    }
+  })
+
+  it('colours each string, its pins, its tag, the swatches and the stickers from the one class', () => {
+    for (const c of ['red', ...OTHERS]) {
+      const body = ruleBody(`.colour-${c}`)
+      expect(body).toContain('--this-string:')
+      expect(body).toContain('--this-dash:')
+    }
+    expect(ruleBody('.board-pin')).toContain('fill: var(--this-string, var(--string))')
+    expect(ruleBody('.string-label')).toContain('var(--this-string, var(--string))')
+    expect(ruleBody('.sticker-body')).toContain('fill: var(--this-string, var(--string))')
+    expect(ruleBody('.swatch-string')).toContain('stroke-dasharray: var(--this-dash')
   })
 })

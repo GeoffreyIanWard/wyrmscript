@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
 import type {
   ProjectData,
+  BoardSticker,
+  StickerKind,
+  StringColour,
   MapScale,
   MapBounds,
   DocMeta,
@@ -45,6 +48,8 @@ import {
   minShapePoints,
   PLOTLINE_COLOURS,
   SCENE_TAG,
+  colourOf,
+  storedColour,
   storedMapId,
   WORLD_MAP
 } from '../../shared/types'
@@ -171,6 +176,7 @@ export const SLICE_KEYS = [
   'mapMarks',
   'mapId',
   'boardStrings',
+  'boardStickers',
   'boardUndo',
   'backupSettings',
   'dailyStats',
@@ -294,6 +300,8 @@ interface WyrmState {
   mapMarks: MapMark[]
   /** F-46: red strings between corkboard cards. */
   boardStrings: BoardString[]
+  /** The corkboard's stickers (F-45), on the cork or on cards. */
+  boardStickers: BoardSticker[]
 
   boot(): Promise<void>
   newProject(title: string): Promise<void>
@@ -637,7 +645,12 @@ interface WyrmState {
   deletePlotline(plotline: Plotline): Promise<void>
 
   loadRelationships(): Promise<void>
-  createRelationship(fromId: string, toId: string, label: string): Promise<Relationship | null>
+  createRelationship(
+    fromId: string,
+    toId: string,
+    label: string,
+    colour?: StringColour
+  ): Promise<Relationship | null>
   saveRelationship(relationship: Relationship): Promise<void>
   deleteRelationship(relationship: Relationship): Promise<void>
 
@@ -744,7 +757,30 @@ interface WyrmState {
    * whose card is later deleted is tolerated and hidden by the view, not
    * cascaded here.
    */
-  createBoardString(from: StringEnd, to: StringEnd, label?: string): Promise<BoardString | null>
+  createBoardString(
+    from: StringEnd,
+    to: StringEnd,
+    label?: string,
+    colour?: StringColour
+  ): Promise<BoardString | null>
+  /** A string's colour changed; nothing written when it is already that colour. */
+  recolourBoardString(id: string, colour: StringColour): Promise<void>
+  loadBoardStickers(): Promise<void>
+  /**
+   * Stick a sticker down: on a card (`cardId`, with `x`/`y` its offset from
+   * the card's corner) or on the cork (board coordinates). It lands with a
+   * small tilt and a pixel or two of drift, as a sticker put down by hand
+   * does, chosen here once and kept.
+   */
+  createBoardSticker(
+    kind: StickerKind,
+    colour: StringColour,
+    place: { cardId?: string; x: number; y: number }
+  ): Promise<BoardSticker | null>
+  /** A sticker moved: to another place on the cork, or onto (or off) a card.
+   *  Its tilt stays as it was stuck. */
+  moveBoardSticker(id: string, place: { cardId?: string; x: number; y: number }): Promise<void>
+  deleteBoardSticker(id: string): Promise<void>
   /** Give a string a label, or take it away with an empty one. */
   labelBoardString(id: string, label: string): Promise<void>
   deleteBoardString(id: string): Promise<void>
@@ -887,6 +923,7 @@ function emptySlice(): ProjectSlice {
     mapMarks: [],
     mapId: WORLD_MAP,
     boardStrings: [],
+    boardStickers: [],
     boardUndo: null,
     backupSettings: null,
     dailyStats: [],
@@ -1312,6 +1349,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     mapMarks: [],
     mapId: WORLD_MAP,
     boardStrings: [],
+    boardStickers: [],
     boardUndo: null,
     backupSettings: null,
     appearance: null,
@@ -2699,7 +2737,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({ relationships: await api.listRelationships(project.path) })
     },
 
-    async createRelationship(fromId, toId, label) {
+    async createRelationship(fromId, toId, label, colour) {
       const { project } = get()
       if (!project || !label.trim()) return null
       const now = new Date().toISOString()
@@ -2708,6 +2746,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
         fromId,
         toId,
         label: label.trim(),
+        ...(storedColour(colour) ? { colour: storedColour(colour) } : {}),
         created: now,
         modified: now
       }
@@ -2720,12 +2759,15 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async saveRelationship(relationship) {
       const { project } = get()
       if (!project) return
+      const path = project.path
       const updated: Relationship = { ...relationship, modified: new Date().toISOString() }
-      await api.writeRelationship(project.path, updated)
-      set({
-        relationships: get().relationships.map((r) => (r.id === updated.id ? updated : r))
-      })
-      markDirty()
+      await api.writeRelationship(path, updated)
+      // Into the project written, which may no longer be the one in front
+      // (a recolour from the board, a rename in the Character Graph).
+      patchSliceAt(path, (slice) => ({
+        relationships: slice.relationships.map((r) => (r.id === updated.id ? updated : r))
+      }))
+      runtimeFor(path).commitDirty = true
     },
 
     async deleteRelationship(relationship) {
@@ -3032,7 +3074,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({ boardStrings: await api.listBoardStrings(project.path) })
     },
 
-    async createBoardString(from, to, label) {
+    async createBoardString(from, to, label, colour) {
       const { project } = get()
       if (!project || from.cardId === to.cardId) return null
       const now = new Date().toISOString()
@@ -3041,6 +3083,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
         from,
         to,
         ...(label?.trim() ? { label: label.trim() } : {}),
+        ...(storedColour(colour) ? { colour: storedColour(colour) } : {}),
         created: now,
         modified: now
       }
@@ -3071,6 +3114,86 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await api.deleteBoardString(project.path, id)
       set({ boardStrings: get().boardStrings.filter((s) => s.id !== id) })
       markDirty()
+    },
+
+    async recolourBoardString(id, colour) {
+      const { project } = get()
+      const found = get().boardStrings.find((s) => s.id === id)
+      if (!project || !found || colourOf(found) === colour) return
+      const path = project.path
+      const updated: BoardString = { ...found }
+      delete updated.colour
+      if (storedColour(colour)) updated.colour = colour
+      await api.writeBoardString(path, updated)
+      // Into the project written, which may no longer be the one in front.
+      patchSliceAt(path, (slice) => ({
+        boardStrings: slice.boardStrings.map((s) => (s.id === id ? updated : s))
+      }))
+      runtimeFor(path).commitDirty = true
+    },
+
+    /* ---------- stickers ---------- */
+
+    async loadBoardStickers() {
+      const { project } = get()
+      if (!project) return
+      const path = project.path
+      const boardStickers = await api.listBoardStickers(path)
+      patchSliceAt(path, () => ({ boardStickers }))
+    },
+
+    async createBoardSticker(kind, colour, place) {
+      const { project } = get()
+      if (!project) return null
+      const now = new Date().toISOString()
+      // A hand is never quite square, nor quite where it aimed: up to a
+      // dozen degrees either way, and a pixel or two off.
+      const jitter = (): number => Math.round((Math.random() * 4 - 2) * 10) / 10
+      const sticker: BoardSticker = {
+        id: newId(),
+        kind,
+        rotation: Math.round((Math.random() * 24 - 12) * 10) / 10,
+        x: Math.round(place.x + jitter()),
+        y: Math.round(place.y + jitter()),
+        created: now,
+        modified: now
+      }
+      if (storedColour(colour)) sticker.colour = colour
+      if (place.cardId) sticker.cardId = place.cardId
+      await api.writeBoardSticker(project.path, sticker)
+      patchSliceAt(project.path, (slice) => ({
+        boardStickers: [...slice.boardStickers, sticker]
+      }))
+      // The path written, which may no longer be the one in front.
+      runtimeFor(project.path).commitDirty = true
+      return sticker
+    },
+
+    async moveBoardSticker(id, place) {
+      const { project } = get()
+      const found = get().boardStickers.find((s) => s.id === id)
+      if (!project || !found) return
+      const moved: BoardSticker = { ...found, x: Math.round(place.x), y: Math.round(place.y) }
+      delete moved.cardId
+      if (place.cardId) moved.cardId = place.cardId
+      if (moved.x === found.x && moved.y === found.y && moved.cardId === found.cardId) return
+      await api.writeBoardSticker(project.path, moved)
+      patchSliceAt(project.path, (slice) => ({
+        boardStickers: slice.boardStickers.map((s) => (s.id === id ? moved : s))
+      }))
+      // The path written, which may no longer be the one in front.
+      runtimeFor(project.path).commitDirty = true
+    },
+
+    async deleteBoardSticker(id) {
+      const { project } = get()
+      if (!project) return
+      await api.deleteBoardSticker(project.path, id)
+      patchSliceAt(project.path, (slice) => ({
+        boardStickers: slice.boardStickers.filter((s) => s.id !== id)
+      }))
+      // The path written, which may no longer be the one in front.
+      runtimeFor(project.path).commitDirty = true
     }
   }
 })

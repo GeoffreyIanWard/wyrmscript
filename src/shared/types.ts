@@ -350,6 +350,8 @@ export interface Relationship {
   toId: string
   /** e.g. "sibling of", "estranged from". Free-form, writer-owned. */
   label: string
+  /** Its string's colour on the corkboard; omitted for red. */
+  colour?: StringColour
   created: string
   modified: string
 }
@@ -532,10 +534,68 @@ export interface StringEnd {
  * different string merge silently as two unrelated files, where a single
  * strings file would be a prose-style conflict on every such edit.
  */
+/**
+ * The colours a string or a sticker can be. Red is the string everyone knows
+ * a pinboard by, and is the default — never written, so every string from
+ * before there were colours reads as it always did. Each palette draws the
+ * five in colours that hold against its paper; a one-colour screen draws
+ * them in its own ink and tells them apart by their dashes.
+ */
+export const STRING_COLOURS = ['red', 'blue', 'orange', 'yellow', 'green'] as const
+export type StringColour = (typeof STRING_COLOURS)[number]
+
+/** A colour as it is stored: one of the five, and not red, which is the
+ *  default and never written. */
+export const storedColour = (colour: unknown): StringColour | undefined =>
+  colour !== 'red' && (STRING_COLOURS as readonly unknown[]).includes(colour)
+    ? (colour as StringColour)
+    : undefined
+
+/** A colour as it is drawn: red where none is stored. */
+export const colourOf = (record: { colour?: string }): StringColour =>
+  storedColour(record.colour) ?? 'red'
+
+/**
+ * A sticker on the corkboard: a simple shape or symbol stuck down to draw
+ * the eye — on the cork, or on a card. One file per sticker in `stickers/`,
+ * like a string. Stuck on a card it is anchored to it (`cardId`, and `x`/`y`
+ * as an offset from the card's corner), so it moves with the card; on the
+ * cork, `x`/`y` are board coordinates and it stays where it was put. Its tilt
+ * is chosen once, as it is stuck down, and kept.
+ */
+export const STICKER_KINDS = [
+  'star',
+  'heart',
+  'dot',
+  'question',
+  'exclamation',
+  'check',
+  'cross',
+  'arrow'
+] as const
+export type StickerKind = (typeof STICKER_KINDS)[number]
+
+export interface BoardSticker {
+  id: string
+  kind: StickerKind
+  /** Omitted for red. */
+  colour?: StringColour
+  /** Degrees, as it was stuck down: a hand is never quite square. */
+  rotation: number
+  x: number
+  y: number
+  /** The card it is stuck on; absent on the cork. */
+  cardId?: string
+  created: string
+  modified: string
+}
+
 export interface BoardString {
   id: string
   from: StringEnd
   to: StringEnd
+  /** Omitted for red. */
+  colour?: StringColour
   /** What the string means ("owes", "same night"). Optional; absent, not
    *  empty, when there is none. A string between two *characters* is not a
    *  board string at all but a `Relationship`, whose label is required. */
@@ -1009,6 +1069,9 @@ export interface WyrmApi {
   listBoardStrings(path: string): Promise<BoardString[]>
   writeBoardString(path: string, s: BoardString): Promise<void>
   deleteBoardString(path: string, id: string): Promise<void>
+  listBoardStickers(path: string): Promise<BoardSticker[]>
+  writeBoardSticker(path: string, s: BoardSticker): Promise<void>
+  deleteBoardSticker(path: string, id: string): Promise<void>
 
   /** Show a save dialog and write compiled output. Returns the path, or null if cancelled.
    *  `dialog` names the save dialog for what is being written (Compile by default). */

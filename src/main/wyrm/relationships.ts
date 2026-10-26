@@ -1,7 +1,8 @@
 import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
-import type { Relationship } from '../../shared/types'
+import type { Relationship, StringColour } from '../../shared/types'
+import { storedColour } from '../../shared/types'
 
 const RELATIONSHIPS_DIR = 'relationships'
 
@@ -18,6 +19,7 @@ interface RelationshipFrontmatter {
   fromId: string
   toId: string
   label: string
+  colour?: StringColour
   created: string
   modified: string
 }
@@ -30,6 +32,7 @@ function parseRelationshipFile(raw: string): Relationship {
     fromId: data.fromId,
     toId: data.toId,
     label: data.label,
+    ...(storedColour(data.colour) ? { colour: storedColour(data.colour) } : {}),
     created: data.created,
     modified: data.modified
   }
@@ -45,6 +48,8 @@ export async function writeRelationship(
     fromId: relationship.fromId,
     toId: relationship.toId,
     label: relationship.label,
+    // Written only when set and not red: gray-matter refuses undefined.
+    ...(storedColour(relationship.colour) ? { colour: storedColour(relationship.colour) } : {}),
     created: relationship.created,
     modified: new Date().toISOString()
   }

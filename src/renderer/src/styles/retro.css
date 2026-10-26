@@ -29,6 +29,16 @@
      to give (see "The board, per palette"). `tests/palette-fonts.test.ts`
      holds every palette's string to 3:1 against its paper. */
   --string: #b3261e;
+  /* The other four string colours (and stickers'), for a light paper. Red
+     is --string itself. Plain values here and in each palette, never var()s
+     of one another: a custom property resolves where it is declared, so
+     the colour a string takes is chosen where the string is drawn
+     (`.colour-*` below), where the palette's own values are in force.
+     `tests/palette-fonts.test.ts` holds all five to 3:1 on every paper. */
+  --string-blue: #1f4fbf;
+  --string-orange: #a84400;
+  --string-yellow: #7a5f00;
+  --string-green: #1d6e30;
   /* How the string is drawn: a dash pattern (none is a solid string) and a
      glow. Blueprint draughts it; the phosphor screens make it glow. */
   --string-dash: none;
@@ -5056,19 +5066,46 @@ button.map-place-name {
   z-index: 3;
 }
 
+/* A string's own colour, chosen where it is drawn (see :root), and on a
+   one-colour screen its own dash, so five strings in one ink still differ. */
+.colour-red {
+  --this-string: var(--string);
+  --this-dash: var(--string-dash);
+}
+
+.colour-blue {
+  --this-string: var(--string-blue);
+  --this-dash: var(--string-dash-blue, var(--string-dash));
+}
+
+.colour-orange {
+  --this-string: var(--string-orange);
+  --this-dash: var(--string-dash-orange, var(--string-dash));
+}
+
+.colour-yellow {
+  --this-string: var(--string-yellow);
+  --this-dash: var(--string-dash-yellow, var(--string-dash));
+}
+
+.colour-green {
+  --this-string: var(--string-green);
+  --this-dash: var(--string-dash-green, var(--string-dash));
+}
+
 .board-string path {
   fill: none;
-  stroke: var(--string);
+  stroke: var(--this-string, var(--string));
   stroke-width: 2px;
   stroke-linecap: round;
-  stroke-dasharray: var(--string-dash);
+  stroke-dasharray: var(--this-dash, var(--string-dash));
   filter: var(--string-glow);
 }
 
 /* A thumbtack head: red, with a paper highlight so it reads as a dome on
    a two-colour palette rather than a dot. */
 .board-pin {
-  fill: var(--string);
+  fill: var(--this-string, var(--string));
   stroke: var(--paper);
   stroke-width: 1.5px;
 }
@@ -5098,7 +5135,7 @@ button.map-place-name {
 /* A string being labelled: drawn, but not yet made. */
 .board-string-draft {
   fill: none;
-  stroke: var(--string);
+  stroke: var(--this-string, var(--string));
   stroke-width: 2px;
   stroke-dasharray: 4 3;
   pointer-events: none;
@@ -5150,7 +5187,7 @@ button.map-place-name {
   white-space: nowrap;
   color: var(--ink);
   background: var(--paper);
-  border: 1px solid var(--string);
+  border: 1px solid var(--this-string, var(--string));
 }
 
 button.string-label {
@@ -5194,13 +5231,173 @@ button.string-label:focus-visible {
 
 .board-pin.pending {
   fill: var(--paper);
-  stroke: var(--string);
+  stroke: var(--this-string, var(--string));
   stroke-width: 2px;
   stroke-dasharray: 2 2;
 }
 
 .corkboard-board.stringing .scene-card-face {
   cursor: crosshair;
+}
+
+/* Stickers (F-45): die-cut, in the string colours — the shape filled, a
+   paper rim round it (the stroke, painted under the fill), the symbol cut
+   out in paper, and a hard ink shadow, so it reads as stuck on rather than
+   printed. Its tilt is stored; the transform is set inline. */
+.board-sticker {
+  position: absolute;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.board-sticker.dragging {
+  cursor: grabbing;
+  z-index: 6;
+}
+
+/* A card is its own stacking context, so a sticker dragged off one would
+   pass under every card after it; its card comes up while it is carried. */
+.scene-card:has(.board-sticker.dragging) {
+  z-index: 3;
+}
+
+.board-sticker:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.sticker-glyph {
+  display: block;
+  overflow: visible;
+}
+
+.sticker-body {
+  fill: var(--this-string, var(--string));
+  stroke: var(--paper);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+
+.board-sticker .sticker-glyph {
+  filter: drop-shadow(1px 1px 0 var(--ink));
+}
+
+.sticker-symbol {
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 2.4px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sticker-dot {
+  fill: var(--paper);
+}
+
+/* With a sticker in hand, everything on the board is somewhere to put it. */
+.corkboard-board.sticking,
+.corkboard-board.sticking .scene-card-face {
+  cursor: copy;
+}
+
+.sticker-tool {
+  position: relative;
+  display: flex;
+}
+
+.sticker-in-hand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  /* Narrower than the slot, so the label starts where the other tools'
+     labels do. */
+  margin: 0 -3px 0 -4px;
+}
+
+.sticker-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(4, 32px);
+  gap: 4px;
+  padding: 6px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.sticker-pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: var(--paper);
+  border: 1px solid transparent;
+}
+
+.sticker-pick:hover,
+.sticker-pick:focus-visible {
+  border-color: var(--ink);
+  outline: none;
+}
+
+.sticker-pick.on {
+  border: 2px solid var(--ink);
+}
+
+/* The five colours: each a length of the string itself, so a one-colour
+   screen, where the five are one ink, still tells them apart by dash. */
+.board-colour {
+  display: flex;
+  align-items: center;
+}
+
+.colour-swatches {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+}
+
+.colour-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 20px;
+  padding: 0;
+  background: var(--paper);
+  border: 1px solid transparent;
+}
+
+.colour-swatch.on {
+  border: 2px solid var(--ink);
+}
+
+.colour-swatch:focus-visible {
+  outline: 1px dotted var(--ink);
+  outline-offset: 1px;
+}
+
+.swatch-string {
+  stroke: var(--this-string, var(--string));
+  stroke-width: 3px;
+  stroke-dasharray: var(--this-dash, var(--string-dash));
 }
 
 /* Portraits (F-47). On the card, a small square beside the title; in the
@@ -5314,14 +5511,31 @@ button.string-label:focus-visible {
 [data-palette='vaporwave'],
 [data-palette='virtualwyrm'] {
   --string: var(--ink);
+  --string-blue: var(--ink);
+  --string-orange: var(--ink);
+  --string-yellow: var(--ink);
+  --string-green: var(--ink);
   --string-glow: drop-shadow(0 0 2px var(--ink));
+  /* One ink, five strings: told apart by their dashes instead. */
+  --string-dash-blue: 8 4;
+  --string-dash-orange: 2 3;
+  --string-dash-yellow: 10 3 2 3;
+  --string-dash-green: 1 4;
 }
 
 /* A blueprint has no red either: the string is a draughtsman's construction
    line, white and dashed, which is how a connection is drawn on a plan. */
 [data-palette='blueprint'] {
   --string: var(--ink);
+  --string-blue: var(--ink);
+  --string-orange: var(--ink);
+  --string-yellow: var(--ink);
+  --string-green: var(--ink);
   --string-dash: 7 3;
+  --string-dash-blue: 14 3;
+  --string-dash-orange: 2 3;
+  --string-dash-yellow: 10 3 2 3;
+  --string-dash-green: 1 4;
 }
 
 /* Reds that hold their own on the paper — this red falls under 3:1 on a dark
@@ -5329,32 +5543,63 @@ button.string-label:focus-visible {
    blue, the NES palette's red on the Famicom. */
 [data-palette='dark'] {
   --string: #e5483d;
+  --string-blue: #6aa7ff;
+  --string-orange: #ff9a3c;
+  --string-yellow: #ffd23f;
+  --string-green: #4cd964;
 }
 
+/* The rest of CGA's bright sixteen, on the BIOS blue: cyan for blue, which
+   blue on blue would not show. */
 [data-palette='bios'] {
   --string: #ff5555;
+  --string-blue: #55ffff;
+  --string-orange: #ffaa55;
+  --string-yellow: #ffff55;
+  --string-green: #55ff55;
 }
 
 [data-palette='collegiate'] {
   --string: #ff6b5b;
+  --string-blue: #7fb2ff;
+  --string-orange: #ff9a3c;
+  --string-yellow: #f2c14e;
+  --string-green: #9be27a;
 }
 
 [data-palette='arcade'] {
   --string: #ff3b30;
+  --string-blue: #6aa7ff;
+  --string-orange: #ff9a3c;
+  --string-yellow: #ffd23f;
+  --string-green: #4cd964;
 }
 
+/* The NES palette's own. */
 [data-palette='famicom'] {
   --string: #f83800;
+  --string-blue: #3cbcfc;
+  --string-orange: #fca044;
+  --string-yellow: #f8b800;
+  --string-green: #58d854;
 }
 
-/* Win95's own dark red, from the sixteen system colours. */
+/* Win95's own, from the sixteen system colours. */
 [data-palette='win95'] {
   --string: #800000;
+  --string-blue: #000080;
+  --string-orange: #804000;
+  --string-yellow: #5c5c00;
+  --string-green: #006000;
 }
 
-/* Bookkeeper's red ink. */
+/* Bookkeeper's inks. */
 [data-palette='ledger'] {
   --string: #a3201a;
+  --string-blue: #1f3d8a;
+  --string-orange: #9a4210;
+  --string-yellow: #6e5800;
+  --string-green: #1f5f30;
 }
 
 /* Halftone screens the portrait too: a sheet of paper with a regular grid

@@ -7,6 +7,7 @@ import type {
   AppearanceSettings,
   WindowGeometry,
   BoardString,
+  BoardSticker,
   ConflictResolution,
   DocFile,
   Entity,
@@ -39,6 +40,7 @@ import { deleteMapPin, listMapPins, writeMapPin } from './worldMap'
 import { deleteMapMark, listMapMarks, writeMapMark } from './mapMarks'
 import { deleteMapShape, listMapShapes, writeMapShape } from './mapShapes'
 import { deleteBoardString, listBoardStrings, writeBoardString } from './boardStrings'
+import { deleteBoardSticker, listBoardStickers, writeBoardSticker } from './boardStickers'
 import {
   createProject,
   docRepoPath,
@@ -255,6 +257,13 @@ export function registerIpc(): void {
   )
   ipcMain.handle('boardString:delete', (_e, path: string, id: string) =>
     deleteBoardString(path, id)
+  )
+  ipcMain.handle('boardSticker:list', (_e, path: string) => listBoardStickers(path))
+  ipcMain.handle('boardSticker:write', (_e, path: string, s: BoardSticker) =>
+    writeBoardSticker(path, s)
+  )
+  ipcMain.handle('boardSticker:delete', (_e, path: string, id: string) =>
+    deleteBoardSticker(path, id)
   )
 
   /* ---------- appearance & page geometry (F-05, F-06) ---------- */
