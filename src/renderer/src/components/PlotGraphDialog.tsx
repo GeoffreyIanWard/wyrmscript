@@ -3,7 +3,15 @@ import type { JSX, PointerEvent as ReactPointerEvent } from 'react'
 import type { DocFile } from '../../../shared/types'
 import { api } from '../lib/api'
 import { timelineCards, type TimelineCard } from '../lib/timeline'
-import { clampTension, DEFAULT_TENSION, TENSION_MAX } from '../lib/plotGraph'
+import { allDocIds } from '../lib/compile'
+import {
+  actBands,
+  actCounts,
+  actHeading,
+  clampTension,
+  DEFAULT_TENSION,
+  TENSION_MAX
+} from '../lib/plotGraph'
 import { findMasterPlot, MASTER_PLOTS, sampleMasterPlot } from '../lib/masterPlots'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { useWyrm } from '../store'
@@ -58,7 +66,14 @@ export function PlotGraphDialog({ onClose }: { onClose: () => void }): JSX.Eleme
     }
   }, [project])
 
-  const cards = docs && project ? timelineCards(docs, project.data.binder) : []
+  // The scenes in the binder: a trashed scene's file is still on disk, and
+  // would otherwise count in an act and stretch the graph.
+  const cards =
+    docs && project
+      ? timelineCards(docs, project.data.binder).filter((c) =>
+          allDocIds(project.data.binder).includes(c.id)
+        )
+      : []
 
   const patchTension = (id: string, tension: number): void => {
     setDocs(
@@ -86,6 +101,10 @@ export function PlotGraphDialog({ onClose }: { onClose: () => void }): JSX.Eleme
   }
 
   const sorted = [...cards].sort((a, b) => a.order - b.order)
+  // F-42: the scenes grouped by act, as they fall in timeline order, and how
+  // many each act has. Shown only once some scene has an act.
+  const bands = actBands(sorted)
+  const counts = actCounts(sorted)
   const points = sorted.map((c) => `${xFor(c.order)},${yFor(visualTension(c))}`).join(' ')
 
   // F-35: the preset is stretched to however many scenes exist, then plotted
@@ -179,8 +198,60 @@ export function PlotGraphDialog({ onClose }: { onClose: () => void }): JSX.Eleme
             </div>
           )}
           {preset && <div className="dialog-hint">{preset.blurb}</div>}
+          {bands.length > 0 && (
+            <div className="plot-graph-acts" data-help="plot-graph-acts">
+              {[
+                ...counts.acts.map(
+                  ({ act, count }) =>
+                    `${actHeading(act)}: ${count} ${count === 1 ? 'scene' : 'scenes'}`
+                ),
+                ...(counts.none > 0 ? [`No act: ${counts.none}`] : [])
+              ].join(' · ')}
+            </div>
+          )}
           {cards.length > 0 && (
             <div className="plot-graph-track" style={{ width: trackWidth, height: trackHeight }}>
+              {/* Each run of scenes in one act, behind the curve: ruled off
+                  from its neighbours and named at the top. */}
+              {(() => {
+                // A band overlapping the one before it (scenes stacked on one
+                // place on the timeline) is named a line lower, unless that
+                // one already was — so overlapping names alternate.
+                const lowered: boolean[] = []
+                return bands.map((band, i) => {
+                  const left = xFor(sorted[band.from].order) - PX_PER_UNIT_X / 2
+                  const right = xFor(sorted[band.to].order) + PX_PER_UNIT_X / 2
+                  const n = band.to - band.from + 1
+                  const prev = bands[i - 1]
+                  const prevRight = prev
+                    ? xFor(sorted[prev.to].order) + PX_PER_UNIT_X / 2
+                    : -Infinity
+                  // Ruled on the left unless it follows straight on from the
+                  // band before (whose right rule is its left); named a line
+                  // lower when it overlaps that band, so the names never sit
+                  // on each other (scenes stacked on one timeline position).
+                  const starts = !prev || band.from !== prev.to + 1 || left > prevRight + 0.5
+                  const lower = prev != null && left < prevRight - 0.5 && !lowered[i - 1]
+                  lowered[i] = lower
+                  const heading = `${actHeading(band.act)} · ${n}`
+                  return (
+                    <div
+                      key={`${band.act}-${band.from}`}
+                      className={`plot-graph-act${starts ? ' starts' : ''}`}
+                      style={{ left, width: right - left, height: trackHeight }}
+                      aria-hidden="true"
+                    >
+                      <span
+                        className={`plot-graph-act-name${lower ? ' lower' : ''}`}
+                        style={{ maxWidth: right - left - 8 }}
+                        title={heading}
+                      >
+                        {heading}
+                      </span>
+                    </div>
+                  )
+                })
+              })()}
               <svg
                 className="plot-graph-svg"
                 width={trackWidth}

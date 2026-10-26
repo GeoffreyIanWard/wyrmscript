@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { MAP_MARK_KINDS, MAP_SHAPE_KINDS, MARK_SIZES, markSizeOf } from '../../../shared/types'
 import type {
+  DocFile,
   MapSheet,
   ProjectData,
   MapMark,
@@ -18,6 +19,7 @@ import { MapExportPanel } from './MapExportPanel'
 import { drawnExtent } from '../lib/mapPicture'
 import { hasSheet, recordsOn, sheetOf } from '../lib/mapSheets'
 import { MapTabs } from './MapTabs'
+import { sceneCount, scenesByPin, scenesOf, type SceneAtPlace } from '../lib/mapScenes'
 import { describeRoute, formatDistance, routeLength, scaleBar, validScale } from '../lib/mapScale'
 import { afterKeysUp } from '../lib/keys'
 import {
@@ -174,9 +176,12 @@ interface MapView {
 
 function MapSheetView({
   sheet,
-  views
+  views,
+  scenes
 }: {
   sheet: MapSheet
+  /** Every scene, in binder order, with where it happens (F-42). */
+  scenes: ReturnType<typeof scenesOf>
   /** Where each map was being looked at, the last time it was in view —
    *  read as this one is shown, and written as it goes. */
   views: Map<string, MapView>
@@ -197,6 +202,7 @@ function MapSheetView({
   const setMapScale = useWyrm((s) => s.setMapScale)
   const exportMapImage = useWyrm((s) => s.exportMapImage)
   const showEntity = useWyrm((s) => s.showEntity)
+  const selectDoc = useWyrm((s) => s.selectDoc)
   const allShapes = useWyrm((s) => s.mapShapes)
   const mapShapes = useMemo(() => recordsOn(allShapes, sheet.id, data), [allShapes, sheet.id, data])
   const loadMapShapes = useWyrm((s) => s.loadMapShapes)
@@ -212,6 +218,8 @@ function MapSheetView({
   const deleteMapMark = useWyrm((s) => s.deleteMapMark)
   const styleMapPinAt = useWyrm((s) => s.styleMapPinAt)
   const returnedTo = useWyrm((s) => (s.mainView.kind === 'map' ? s.mainView : null))
+  // The place whose scenes are listed, if any (F-42).
+  const [sceneList, setSceneList] = useState<string | null>(null)
   const settleMapReturn = useWyrm((s) => s.settleMapReturn)
 
   // The pins are read as the map opens, so anything that needs them — the
@@ -377,6 +385,32 @@ function MapSheetView({
     if (isOrphan(pin)) return
     showEntity(pin.entityId, here(pin))
   }
+
+  /** A scene opened from the map: a detour, as a place is — Esc comes back
+   *  to the map as it was, with that place's pin focused. */
+  const openScene = (sceneId: string, pin: MapPin): void => {
+    setSceneList(null)
+    void selectDoc(sceneId, here(pin))
+  }
+
+  // The scenes at each place on this map, and the list's own Esc and
+  // press-elsewhere (it is a panel over the map, like the scale's).
+  const scenesAt = useMemo(
+    () => scenesByPin(mapPins, scenes, entities),
+    [mapPins, scenes, entities]
+  )
+  useEffect(() => {
+    if (!sceneList) return
+    const away = (e: PointerEvent): void => {
+      const t = e.target as Element
+      if (t.closest?.('.map-scene-list') || t.closest?.(`[data-scenes-of="${sceneList}"]`)) return
+      setSceneList(null)
+    }
+    // In the capture phase: a press on a pin, a stamp or a corner handle stops
+    // its own event, and the list must close for it all the same.
+    document.addEventListener('pointerdown', away, true)
+    return () => document.removeEventListener('pointerdown', away, true)
+  }, [sceneList])
 
   /* ---------- moving pins ---------- */
 
@@ -578,6 +612,7 @@ function MapSheetView({
 
   const chooseTool = (next: Tool): void => {
     setTool(next)
+    setSceneList(null)
     setScaleOpen(false)
     setExportOpen(false)
     setRoute([])
@@ -2283,6 +2318,92 @@ function MapSheetView({
                 </button>
               )
             })}
+            {/* How many scenes happen at each place, beside its pin: one
+                marker with a count, which lists them. Only with the hand,
+                like the pins — while drawing, the map is only a drawing. */}
+            {tool === 'hand' &&
+              mapPins.map((pin) => {
+                const list = scenesAt.get(pin.id)
+                if (!list) return null
+                const at = posOf(pin)
+                const size = pin.stamp ? Math.max(markSizeOf(pin.size), MARK_SIZES[0] / zoom) : 1
+                // Beside a stamp's top right; above a pin's name tag — but
+                // never above the map's top edge, where nothing can scroll to
+                // it (the marker hangs 16px above its point).
+                const dx = pin.stamp ? (STAMP_W * size * zoom) / 2 : 0
+                const dy = pin.stamp ? -(STAMP_H * size * zoom) / 2 : -34
+                const x = (at.x - bounds.x) * zoom + dx
+                const y = Math.max((at.y - bounds.y) * zoom + dy, -6)
+                const name = nameOf(pin.entityId)
+                const open = sceneList === pin.id
+                const close = (): void => {
+                  setSceneList(null)
+                  afterKeysUp(() =>
+                    scrollEl.current
+                      ?.querySelector<HTMLElement>(`[data-scenes-of="${pin.id}"]`)
+                      ?.focus({ preventScroll: true })
+                  )
+                }
+                return (
+                  <span
+                    key={`scenes-${pin.id}`}
+                    className={`map-scenes${open ? ' open' : ''}`}
+                    style={{ left: x, top: y }}
+                    // Closed when focus goes somewhere else — not when the
+                    // window loses focus, which leaves it where it was.
+                    onBlur={(e) => {
+                      if (!open) return
+                      const to = e.relatedTarget as Node | null
+                      if (to && e.currentTarget.contains(to)) return
+                      if (!to && !document.hasFocus()) return
+                      setSceneList(null)
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className={`map-scene-count${open ? ' on' : ''}`}
+                      data-help="map-scenes"
+                      data-scenes-of={pin.id}
+                      aria-haspopup="dialog"
+                      aria-expanded={open}
+                      aria-label={`${sceneCount(list.length)} at ${name}`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => setSceneList(open ? null : pin.id)}
+                      onKeyDown={(e) => {
+                        // Its list's Esc, from the marker too; stopped, since
+                        // Esc is also "back" and would leave the map.
+                        if (e.key === 'Escape' && open) {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          close()
+                        }
+                      }}
+                    >
+                      {list.length}
+                    </button>
+                    {open && (
+                      <SceneList
+                        // At the west or east edge, lined up with the marker
+                        // rather than centred on it and hanging off the map.
+                        align={x < 110 ? 'start' : x > bounds.width * zoom - 110 ? 'end' : 'center'}
+                        // Room above for its rows, or else below — under the
+                        // place's pin and name, not over them.
+                        below={
+                          (at.y - bounds.y) * zoom + dy < 44 + 24 * Math.min(list.length, 8)
+                            ? pin.stamp
+                              ? STAMP_H * size * zoom + 22
+                              : 40
+                            : null
+                        }
+                        place={name}
+                        scenes={list}
+                        onOpen={(id) => openScene(id, pin)}
+                        onClose={close}
+                      />
+                    )}
+                  </span>
+                )
+              })}
           </div>
         </div>
       </div>
@@ -2307,12 +2428,86 @@ export function WorldMap(): JSX.Element {
   }, [shown, mapId, chooseMap])
   // Where each map was being looked at, so flipping between two keeps both.
   const [views] = useState(() => new Map<string, MapView>())
+  // The scenes and where each happens, read once as the map opens: a scene's
+  // place is set on the back of its card, never while the map is up.
+  const loadAllDocs = useWyrm((s) => s.loadAllDocs)
+  const projectPath = useWyrm((s) => s.project?.path)
+  const [docs, setDocs] = useState<DocFile[]>([])
+  useEffect(() => {
+    if (!projectPath) return
+    let live = true
+    loadAllDocs()
+      .then((all) => live && setDocs([...all.values()]))
+      // No scenes to show is not a broken map.
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [projectPath, loadAllDocs])
+  const binder = data?.binder
+  const scenes = useMemo(() => (binder ? scenesOf(docs, binder) : []), [docs, binder])
   const sheet = data ? sheetOf(data, shown) : null
   if (!data || !sheet) return <div className="terminal" />
   return (
     <div className="terminal world-map" data-help="world-map">
       <MapTabs />
-      <MapSheetView key={sheet.id} sheet={sheet} views={views} />
+      <MapSheetView key={sheet.id} sheet={sheet} views={views} scenes={scenes} />
+    </div>
+  )
+}
+
+/**
+ * The scenes at a place, listed from its marker: each opens its scene. Esc
+ * closes it (stopped: Esc is also "back"), and focus starts on the first.
+ */
+function SceneList({
+  align,
+  below,
+  place,
+  scenes,
+  onOpen,
+  onClose
+}: {
+  align: 'start' | 'center' | 'end'
+  /** How far below its marker it opens, for a place near the top of the map
+   *  (clear of the place's pin and name); null opens it above. */
+  below: number | null
+  place: string
+  scenes: SceneAtPlace[]
+  onOpen: (id: string) => void
+  onClose: () => void
+}): JSX.Element {
+  const first = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => first.current?.focus({ preventScroll: true }), [])
+  return (
+    <div
+      className={`map-scene-list${below != null ? ' below' : ''}${align !== 'center' ? ` ${align}` : ''}`}
+      style={below != null ? { top: `calc(100% + ${below}px)` } : undefined}
+      role="dialog"
+      aria-label={`Scenes at ${place}`}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopPropagation()
+          onClose()
+        }
+      }}
+    >
+      <div className="field-name">
+        {sceneCount(scenes.length).toUpperCase()} AT {place.toUpperCase()}
+      </div>
+      {scenes.map((scene, i) => (
+        <button
+          key={scene.id}
+          ref={i === 0 ? first : undefined}
+          type="button"
+          className="map-scene-row"
+          onClick={() => onOpen(scene.id)}
+        >
+          {scene.title}
+        </button>
+      ))}
     </div>
   )
 }

@@ -32,6 +32,7 @@ import {
 import type { Direction, PlacedCard, Point } from '../lib/corkboard'
 import { AddCardDialog } from './AddCardDialog'
 import { MapCardFace } from './MapCardFace'
+import { CardCorner } from './CardCorner'
 import { sheetsOf } from '../lib/mapSheets'
 import { CardBack } from './CardBack'
 import { afterKeysUp } from '../lib/keys'
@@ -1043,14 +1044,12 @@ export function Corkboard({
               // Turns the card over to its back (F-42). A sibling of the face
               // for the same reason as the take-off box, and it swallows the
               // press so turning a card over never starts a drag.
-              <button
-                type="button"
-                className={`scene-card-turn${card.back ? ' written' : ''}`}
-                data-help="card-turn"
-                aria-label={`Turn ${card.title} over${card.back ? ', outlined' : ''}`}
-                title="Turn over"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => project && setTurned({ path: project.path, id: card.id })}
+              <CardCorner
+                className="scene-card-turn"
+                side="front"
+                written={card.back}
+                label={`Turn ${card.title} over${card.back ? ', outlined' : ''}`}
+                onTurn={() => project && setTurned({ path: project.path, id: card.id })}
               />
             )}
             {card.kind !== 'scene' && (

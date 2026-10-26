@@ -4,8 +4,15 @@ import { basename, dirname, join } from 'node:path'
 import git from 'isomorphic-git'
 import diff3Merge from 'diff3'
 import matter from 'gray-matter'
-import type { ConflictResolution, ProjectData, SyncConflict, SyncOutcome } from '../../shared/types'
+import type {
+  ConflictResolution,
+  MapSheet,
+  ProjectData,
+  SyncConflict,
+  SyncOutcome
+} from '../../shared/types'
 import { author, commitAll, commitMerge } from './git'
+import { mergedMapsOf, withMaps, withMergedMaps } from './mergeMaps'
 
 /**
  * GitHub sync engine (Phase 5, brief §7). Sync is git's own push/pull over
@@ -368,6 +375,9 @@ interface MergeAnalysis {
    *  otherwise decided. Null when delete-conflicts made the oracle impossible
    *  — the per-file fallback in completeMerge covers that case. */
   oracle: string | null
+  /** project.json's maps list merged by map, when project.json is still a
+   *  conflict: put back into whichever side the writer keeps for it. */
+  projectMaps?: MapSheet[]
 }
 
 async function analyseMerge(
@@ -433,8 +443,30 @@ async function analyseMerge(
     for (const p of data.deleteByUs ?? []) conflicts.add(p)
     for (const p of data.deleteByTheirs ?? []) conflicts.add(p)
     if (conflicts.size === 0) throw e
+    let projectMaps: MapSheet[] | undefined
 
     for (const filepath of data.bothModified ?? []) {
+      // project.json: its maps list merged by map first (`mergeMaps.ts`),
+      // then the rest as text. Two devices each adding a map was a conflict
+      // over the whole file; now only a real one in the rest of it is.
+      if (filepath === 'project.json') {
+        const sides = [
+          base ? await textAt(dir, base, filepath) : null,
+          await textAt(dir, localHead, filepath),
+          await textAt(dir, remoteHead, filepath)
+        ] as const
+        const three = withMergedMaps(...sides)
+        const merged = three ? mergeText(three) : null
+        if (merged?.clean) {
+          autoResolved.set(filepath, merged.text)
+          conflicts.delete(filepath)
+        } else {
+          // A real conflict elsewhere in the file: the writer decides that,
+          // but whichever side they keep gets both devices' maps.
+          projectMaps = mergedMapsOf(...sides) ?? undefined
+        }
+        continue
+      }
       // A record that is not text cannot be parsed and written back as text
       // without corrupting it: the writer chooses, and the choice is bytes.
       if (!isFrontmattered(filepath) || (await binaryAt(filepath))) continue
@@ -457,7 +489,7 @@ async function analyseMerge(
       // delete-vs-edit ones, so no oracle exists here. Rare (only entity
       // deletion can produce it) and the fallback is honest: a few extra
       // files may be presented as conflicts instead of auto-merged.
-      return { conflicts: [...conflicts], autoResolved, oracle: null }
+      return { conflicts: [...conflicts], autoResolved, oracle: null, projectMaps }
     }
 
     const oracle = await git.merge({
@@ -478,7 +510,7 @@ async function analyseMerge(
         mergedText: mergeText(contents, isBinaryMerge(path, contents)).text
       })
     })
-    return { conflicts: [...conflicts], autoResolved, oracle: oracle.oid ?? null }
+    return { conflicts: [...conflicts], autoResolved, oracle: oracle.oid ?? null, projectMaps }
   }
 }
 
@@ -629,6 +661,16 @@ async function completeMerge(
     }
   }
 
+  // project.json kept from one side in a conflict: with both devices' maps.
+  const kept = target.get('project.json')
+  if (analysis.projectMaps && choices.has('project.json') && kept != null) {
+    const text = typeof kept === 'string' ? kept : Buffer.from(kept).toString('utf8')
+    try {
+      target.set('project.json', withMaps(text, analysis.projectMaps))
+    } catch {
+      // Not JSON: left exactly as chosen.
+    }
+  }
   await materialize(dir, localHead, target)
   await reconcileBinder(dir)
   const oid = await commitMerge(dir, 'Sync: combined work from two devices', [

@@ -3,6 +3,7 @@ import type { JSX, KeyboardEvent } from 'react'
 import type { CastEntry, DocFile, DocMeta } from '../../../shared/types'
 import { useWyrm } from '../store'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { CardCorner } from './CardCorner'
 import { errorMessage } from '../lib/errors'
 import { backOf, backPatch, suggestionsFor, type CardBack as Back } from '../lib/cardBack'
 
@@ -440,6 +441,15 @@ export function CardBack({
             </>
           )}
         </div>
+        {/* The same corner as the front's, to turn back: every way out of
+            the back keeps what was written, and this one is the card's own.
+            Last, so it comes last to Tab as it sits last on the card. */}
+        <CardCorner
+          className="card-back-corner"
+          side="back"
+          label="Turn back to the front"
+          onTurn={done}
+        />
       </div>
     </div>
   )
