@@ -29,6 +29,7 @@ import { listMapMarks, writeMapMark } from '../src/main/wyrm/mapMarks'
 import { listMapShapes, writeMapShape } from '../src/main/wyrm/mapShapes'
 import { listMapPins, writeMapPin } from '../src/main/wyrm/worldMap'
 import { listBoardStrings, writeBoardString } from '../src/main/wyrm/boardStrings'
+import { listBoardStickers, writeBoardSticker } from '../src/main/wyrm/boardStickers'
 import { listRelationships, writeRelationship } from '../src/main/wyrm/relationships'
 import { listPlotlines, writePlotline } from '../src/main/wyrm/plotlines'
 import { findNode, firstDoc } from '../src/renderer/src/lib/tree'
@@ -941,6 +942,31 @@ const RECORD_CASES: RecordCase[] = [
       expect((await listBoardStrings(d))[0]).toMatchObject({
         label: 'owes',
         to: { cardId: 'c2', dx: 30, dy: 40 }
+      })
+  },
+  {
+    name: 'board stickers',
+    path: 'stickers/sk1.md',
+    setup: (d) =>
+      writeBoardSticker(d, {
+        id: 'sk1',
+        kind: 'star',
+        rotation: 4,
+        x: 10,
+        y: 20,
+        cardId: 'c1',
+        created: T0,
+        modified: T0
+      }),
+    editB: async (d) =>
+      writeBoardSticker(d, { ...(await listBoardStickers(d))[0], colour: 'green' }),
+    editA: async (d) => writeBoardSticker(d, { ...(await listBoardStickers(d))[0], x: 60, y: 70 }),
+    check: async (d) =>
+      expect((await listBoardStickers(d))[0]).toMatchObject({
+        colour: 'green',
+        x: 60,
+        y: 70,
+        cardId: 'c1'
       })
   },
   {

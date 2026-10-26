@@ -1,7 +1,8 @@
 import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
-import type { BoardString, StringEnd } from '../../shared/types'
+import type { BoardString, StringColour, StringEnd } from '../../shared/types'
+import { storedColour } from '../../shared/types'
 import { assertPlainId, isPlainId } from './plainId'
 
 const STRINGS_DIR = 'strings'
@@ -27,6 +28,7 @@ interface BoardStringFrontmatter {
   from: StringEnd
   to: StringEnd
   label?: string
+  colour?: StringColour
   created: string
   modified: string
 }
@@ -48,6 +50,8 @@ function parseBoardStringFile(raw: string): BoardString {
     // Read only when it is a real label: a hand-edited file could carry
     // anything under the key.
     ...(typeof data.label === 'string' && data.label.trim() ? { label: data.label } : {}),
+    // A colour it knows, and not red (the default, never written).
+    ...(storedColour(data.colour) ? { colour: storedColour(data.colour) } : {}),
     created: data.created,
     modified: data.modified
   }
@@ -63,6 +67,7 @@ export async function writeBoardString(projectPath: string, s: BoardString): Pro
     // Omitted rather than written empty: gray-matter refuses undefined, and
     // an empty key is noise in every diff and sync merge.
     ...(s.label?.trim() ? { label: s.label.trim() } : {}),
+    ...(storedColour(s.colour) ? { colour: storedColour(s.colour) } : {}),
     created: s.created,
     modified: new Date().toISOString()
   }

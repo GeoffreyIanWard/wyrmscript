@@ -4,7 +4,15 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent
 } from 'react'
-import type { DocFile, StringEnd } from '../../../shared/types'
+import type {
+  BoardSticker,
+  DocFile,
+  StickerKind,
+  StringColour,
+  StringEnd
+} from '../../../shared/types'
+import { colourOf } from '../../../shared/types'
+import { STICKER_SIZE } from '../lib/stickers'
 import { api } from '../lib/api'
 import { useWyrm } from '../store'
 import {
@@ -33,6 +41,7 @@ import type { Direction, PlacedCard, Point } from '../lib/corkboard'
 import { AddCardDialog } from './AddCardDialog'
 import { MapCardFace } from './MapCardFace'
 import { CardCorner } from './CardCorner'
+import { ColourSwatches, StickerGlyph, StickerOnBoard, StickerPicker } from './BoardStickers'
 import { sheetsOf } from '../lib/mapSheets'
 import { CardBack } from './CardBack'
 import { afterKeysUp } from '../lib/keys'
@@ -56,6 +65,7 @@ interface Thread {
   pull: () => Promise<void>
   edit: { kind: 'string'; id: string } | { kind: 'relationship'; id: string }
   relationship?: boolean
+  colour: StringColour
 }
 
 type Draft =
@@ -121,6 +131,12 @@ export function Corkboard({
   const undoBoardOrder = useWyrm((s) => s.undoBoardOrder)
   const boardStrings = useWyrm((s) => s.boardStrings)
   const loadBoardStrings = useWyrm((s) => s.loadBoardStrings)
+  const recolourBoardString = useWyrm((s) => s.recolourBoardString)
+  const boardStickers = useWyrm((s) => s.boardStickers)
+  const loadBoardStickers = useWyrm((s) => s.loadBoardStickers)
+  const createBoardSticker = useWyrm((s) => s.createBoardSticker)
+  const moveBoardSticker = useWyrm((s) => s.moveBoardSticker)
+  const deleteBoardSticker = useWyrm((s) => s.deleteBoardSticker)
   const createBoardString = useWyrm((s) => s.createBoardString)
   const deleteBoardString = useWyrm((s) => s.deleteBoardString)
   const labelBoardString = useWyrm((s) => s.labelBoardString)
@@ -234,7 +250,8 @@ export function Corkboard({
   // way the map loads its pins — not on project open.
   useEffect(() => {
     void loadBoardStrings()
-  }, [project, loadBoardStrings])
+    void loadBoardStickers()
+  }, [project, loadBoardStrings, loadBoardStickers])
   // The Character Graph's relationships are drawn as string between the
   // characters on the board, so the board loads them the way the graph does.
   useEffect(() => {
@@ -249,6 +266,26 @@ export function Corkboard({
    * with no string is not a thing the board has.
    */
   const [stringMode, setStringMode] = useState(false)
+  // The colour the next string or sticker takes, and the sticker in hand —
+  // sticking is a mode the board is in, as stringing is, until it is put down.
+  const [colour, setColour] = useState<StringColour>('red')
+  const [stickerKind, setStickerKind] = useState<StickerKind | null>(null)
+  const [pickingSticker, setPickingSticker] = useState(false)
+  const stickerTool = useRef<HTMLButtonElement | null>(null)
+  // Esc puts the sticker down, as it does the string tool (stopped: Esc is
+  // also "back"); a dialog over the board, or the picker, has its own.
+  useEffect(() => {
+    if (!stickerKind) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      if (document.querySelector('.dialog-overlay, .sticker-picker')) return
+      e.preventDefault()
+      e.stopPropagation()
+      setStickerKind(null)
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [stickerKind])
   const [pending, setPending] = useState<StringEnd | null>(null)
   // Whether the waiting pin came from the keyboard, which has no "where".
   const pendingByKeyboard = useRef(false)
@@ -566,6 +603,8 @@ export function Corkboard({
         aria-pressed={stringMode}
         onClick={() => {
           setPending(null)
+          setStickerKind(null)
+          setPickingSticker(false)
           setStringMode((on) => !on)
         }}
         disabled={cards.length < 2}
@@ -573,6 +612,60 @@ export function Corkboard({
         <span className="board-tool-pin" aria-hidden="true" />
         <span>String</span>
       </button>
+      {/* Stickers: one picked from the drop-down is in hand until the button
+          is pressed again or Esc; each click then sticks one down. */}
+      <span className="sticker-tool">
+        <button
+          ref={stickerTool}
+          type="button"
+          className={`board-tool${stickerKind ? ' on' : ''}`}
+          data-help="board-sticker-tool"
+          aria-haspopup="dialog"
+          aria-expanded={pickingSticker}
+          aria-pressed={stickerKind != null}
+          onClick={() => {
+            if (stickerKind) {
+              setStickerKind(null)
+              setPickingSticker(false)
+            } else setPickingSticker((o) => !o)
+          }}
+        >
+          {/* The pin, or the sticker in hand in its place — one slot of one
+              size, so the colours beside this button never move under the
+              pointer when a sticker is picked. */}
+          <span className={`sticker-in-hand colour-${colour}`} aria-hidden="true">
+            {stickerKind ? (
+              <StickerGlyph kind={stickerKind} size={14} />
+            ) : (
+              <span className="board-tool-pin" />
+            )}
+          </span>
+          <span>Sticker ▾</span>
+        </button>
+        {pickingSticker && (
+          <StickerPicker
+            colour={colour}
+            current={stickerKind}
+            onPick={(kind) => {
+              setStickerKind(kind)
+              setPickingSticker(false)
+              setStringMode(false)
+              setPending(null)
+            }}
+            onClose={() => {
+              setPickingSticker(false)
+              afterKeysUp(() => stickerTool.current?.focus())
+            }}
+          />
+        )}
+      </span>
+      <span className="board-colour" data-help="board-colour">
+        <ColourSwatches
+          value={colour}
+          onChange={setColour}
+          label="Colour of strings and stickers"
+        />
+      </span>
       {/* Stack gathers the cards into piles by kind; the same button unstacks.
           A view toggle, so it is never disabled — an unstacked board can
           always be stacked and a stacked one always put back. */}
@@ -809,6 +902,18 @@ export function Corkboard({
       suppressClick.current = false
       return
     }
+    if (stickerKind) {
+      // Stuck where the card was clicked; from the keyboard (no "where"), on
+      // its top right corner, where a sticker on a card usually goes.
+      const cardAt = livePositions.get(card.id) ?? { x: card.x, y: card.y }
+      const at = e.detail === 0 ? { x: cardAt.x + CARD_W - 22, y: cardAt.y + 22 } : boardPoint(e)
+      void createBoardSticker(stickerKind, colour, {
+        cardId: card.id,
+        x: at.x - cardAt.x,
+        y: at.y - cardAt.y
+      })
+      return
+    }
     if (stringMode) {
       // A string still being named takes the next click back to its field:
       // pinning another card under it would start a second string while the
@@ -902,7 +1007,8 @@ export function Corkboard({
             ? `Change the label "${str.label}"`
             : `Label the string from ${titleOf(str.from.cardId)} to ${titleOf(str.to.cardId)}`,
           pull: () => deleteBoardString(str.id),
-          edit: { kind: 'string' as const, id: str.id }
+          edit: { kind: 'string' as const, id: str.id },
+          colour: colourOf(str)
         }
       ]
     }),
@@ -922,7 +1028,8 @@ export function Corkboard({
       labelName: `Change the relationship "${rel.label}" from ${titleOf(rel.fromId)} to ${titleOf(rel.toId)}`,
       pull: () => deleteRelationship(rel),
       edit: { kind: 'relationship' as const, id: rel.id },
-      relationship: true
+      relationship: true,
+      colour: colourOf(rel)
     }))
   ]
 
@@ -988,8 +1095,8 @@ export function Corkboard({
     }
     if (draft.kind === 'new') {
       if (draft.between === 'characters')
-        void createRelationship(draft.from.cardId, draft.to.cardId, text)
-      else void createBoardString(draft.from, draft.to, text)
+        void createRelationship(draft.from.cardId, draft.to.cardId, text, colour)
+      else void createBoardString(draft.from, draft.to, text, colour)
     } else if (draft.kind === 'string') {
       // An unchanged label writes nothing — the store's rule, held there so
       // every caller gets it.
@@ -1002,6 +1109,41 @@ export function Corkboard({
     return true
   }
 
+  /** A place on the cork, kept on the board: in the margin round it, or
+   *  above it, a sticker would be out of reach. */
+  const onCork = (p: Point): Point => ({
+    x: Math.max(STICKER_SIZE / 2, p.x),
+    y: Math.max(STICKER_SIZE / 2, p.y)
+  })
+
+  /**
+   * A sticker let go with its centre at `centre` (board coordinates): stuck
+   * to the card on top there, at its place on that card, or else on the
+   * cork. The last card in the board's order is the one on top.
+   */
+  const dropSticker = (st: BoardSticker, centre: Point): void => {
+    const on = [...placed].reverse().find((c) => {
+      const at = livePositions.get(c.id) ?? c
+      return (
+        centre.x >= at.x &&
+        centre.x <= at.x + CARD_W &&
+        centre.y >= at.y &&
+        centre.y <= at.y + CARD_H
+      )
+    })
+    if (on) {
+      const at = livePositions.get(on.id) ?? on
+      void moveBoardSticker(st.id, { cardId: on.id, x: centre.x - at.x, y: centre.y - at.y })
+    } else void moveBoardSticker(st.id, onCork(centre))
+  }
+
+  /** Off it comes; the keyboard goes back to the card it was on, or the board. */
+  const removeSticker = (st: BoardSticker): void => {
+    if (st.cardId) afterKeysUp(() => faceOf(st.cardId!)?.focus())
+    else afterKeysUp(() => scrollEl.current?.focus())
+    void deleteBoardSticker(st.id)
+  }
+
   const pendingAt = pending
     ? (() => {
         const card = livePositions.get(pending.cardId)
@@ -1010,13 +1152,50 @@ export function Corkboard({
     : null
 
   return (
-    <div className="terminal corkboard" data-help="corkboard" ref={scrollEl}>
+    <div
+      className="terminal corkboard"
+      data-help="corkboard"
+      ref={scrollEl}
+      onClick={(e) => {
+        // With a sticker in hand, a click on the cork sticks it there — anywhere
+        // on it, not only as far down as the cards reach. A
+        // click that ends a drag over the cork is the drag's, not a click.
+        if (!stickerKind) return
+        if (suppressClick.current) {
+          suppressClick.current = false
+          return
+        }
+        const t = e.target as Element
+        if (
+          t.closest(
+            '.corkboard-tools, .scene-card, .board-sticker, .string-label, .string-label-field'
+          )
+        )
+          return
+        void createBoardSticker(stickerKind, colour, onCork(boardPoint(e)))
+      }}
+    >
       {tools}
       <div
-        className={`corkboard-board${stacked ? ' stacked' : ''}${stringMode ? ' stringing' : ''}`}
+        className={`corkboard-board${stacked ? ' stacked' : ''}${stringMode ? ' stringing' : ''}${stickerKind ? ' sticking' : ''}`}
         ref={boardEl}
         style={{ height: boardHeight(placed) + CARD_H / 2 }}
       >
+        {/* Stickers on the cork, under the cards: a card put down over one
+            covers it, as it would. */}
+        {boardStickers
+          .filter((st) => !st.cardId)
+          .map((st) => (
+            <StickerOnBoard
+              key={st.id}
+              sticker={st}
+              where="on the cork"
+              left={st.x}
+              top={st.y}
+              onMoved={(dx, dy) => dropSticker(st, { x: st.x + dx, y: st.y + dy })}
+              onRemove={() => removeSticker(st)}
+            />
+          ))}
         {placed.map((card) => (
           <div
             key={card.id}
@@ -1118,6 +1297,24 @@ export function Corkboard({
                 <CardFace card={card} portrait={card.portrait ? portraits[card.id] : undefined} />
               </button>
             )}
+            {/* Stuck on this card, so they go where it goes: dragged,
+                nudged, stacked or tidied. */}
+            {boardStickers
+              .filter((st) => st.cardId === card.id)
+              .map((st) => (
+                <StickerOnBoard
+                  key={st.id}
+                  sticker={st}
+                  where={`on ${card.title}`}
+                  left={st.x}
+                  top={st.y}
+                  onMoved={(dx, dy) => {
+                    const at = livePositions.get(card.id) ?? { x: card.x, y: card.y }
+                    dropSticker(st, { x: at.x + st.x + dx, y: at.y + st.y + dy })
+                  }}
+                  onRemove={() => removeSticker(st)}
+                />
+              ))}
           </div>
         ))}
         {/* The strings, drawn over the cards. The layer itself takes no
@@ -1133,7 +1330,7 @@ export function Corkboard({
           {threads.map((t) => (
             <g
               key={t.key}
-              className={`board-string${t.relationship ? ' relationship' : ''}`}
+              className={`board-string colour-${t.colour}${t.relationship ? ' relationship' : ''}`}
               role="listitem"
             >
               <path d={stringPath(t.a, t.b)} />
@@ -1174,10 +1371,18 @@ export function Corkboard({
             </g>
           ))}
           {draft?.kind === 'new' && draftAt && (
-            <path className="board-string-draft" d={stringPath(draftAt.a, draftAt.b)} />
+            <path
+              className={`board-string-draft colour-${colour}`}
+              d={stringPath(draftAt.a, draftAt.b)}
+            />
           )}
           {pendingAt && (
-            <circle className="board-pin pending" cx={pendingAt.x} cy={pendingAt.y} r={5} />
+            <circle
+              className={`board-pin pending colour-${colour}`}
+              cx={pendingAt.x}
+              cy={pendingAt.y}
+              r={5}
+            />
           )}
         </svg>
         {/* Labels are HTML over the string layer, not SVG text: a tag sized
@@ -1198,7 +1403,7 @@ export function Corkboard({
               <button
                 key={t.key}
                 type="button"
-                className={`string-label at-${at.anchor}${t.shown ? '' : ' empty'}${t.relationship ? ' relationship' : ''}`}
+                className={`string-label colour-${t.colour} at-${at.anchor}${t.shown ? '' : ' empty'}${t.relationship ? ' relationship' : ''}`}
                 data-help="string-label"
                 style={style}
                 aria-label={t.labelName}
@@ -1213,7 +1418,7 @@ export function Corkboard({
             ) : (
               <span
                 key={t.key}
-                className={`string-label at-${at.anchor}${t.relationship ? ' relationship' : ''}`}
+                className={`string-label colour-${t.colour} at-${at.anchor}${t.relationship ? ' relationship' : ''}`}
                 style={style}
               >
                 <span aria-hidden="true">{t.shown}</span>
@@ -1269,11 +1474,41 @@ export function Corkboard({
                   // kept or thrown away, and the field has the caret back
                   // when the window does.
                   if (!document.hasFocus()) return
+                  // Onto the field's own colours: still in the field.
+                  if (
+                    e.relatedTarget instanceof Element &&
+                    e.relatedTarget.closest('.string-label-field')
+                  )
+                    return
                   // Clicking away keeps what was written. One that cannot be
                   // kept (a relationship with no name) stays open with the
                   // reason, rather than taking both pins with it unannounced.
                   const away = e.relatedTarget instanceof HTMLElement
                   if (draft) commitDraft(!away)
+                }}
+              />
+              {/* Its colour: for a new string, the one it will be made in; for
+                  one already up, changed at once. Pressing a swatch keeps
+                  the caret in the label. */}
+              <ColourSwatches
+                keepFocus
+                label="Colour of this string"
+                value={
+                  draft.kind === 'new'
+                    ? colour
+                    : (threads.find((x) => x.edit.kind === draft.kind && x.edit.id === draft.id)
+                        ?.colour ?? 'red')
+                }
+                onChange={(c) => {
+                  if (draft.kind === 'new') setColour(c)
+                  else if (draft.kind === 'string') void recolourBoardString(draft.id, c)
+                  else {
+                    const rel = relationships.find((r) => r.id === draft.id)
+                    if (!rel || colourOf(rel) === c) return
+                    const rest = { ...rel }
+                    delete rest.colour
+                    void saveRelationship(c === 'red' ? rest : { ...rest, colour: c })
+                  }
                 }}
               />
               {draftProblem != null && (

@@ -5,6 +5,7 @@ import type {
   BackupSettings,
   BinderNode,
   BoardString,
+  BoardSticker,
   CommitInfo,
   DeviceCodeInfo,
   SignInPoll,
@@ -34,6 +35,7 @@ import {
   DEFAULT_APPEARANCE,
   DEFAULT_PRINT,
   DEFAULT_STATS,
+  storedColour,
   storedMapId
 } from '../../../shared/types'
 
@@ -95,6 +97,7 @@ interface MockProject {
   mapShapes: Map<string, MapShape>
   mapMarks: Map<string, MapMark>
   boardStrings: Map<string, BoardString>
+  boardStickers: Map<string, BoardSticker>
   /** F-47: portrait data URLs by entry id — the image files of a project with no disk. */
   portraits: Map<string, string>
 }
@@ -160,6 +163,7 @@ function starterProject(title: string): MockProject {
     mapShapes: new Map(),
     mapMarks: new Map(),
     boardStrings: new Map(),
+    boardStickers: new Map(),
     portraits: new Map()
   }
   commitInto(project, `Create project “${title}”`)
@@ -304,6 +308,7 @@ function demoProject(): MockProject {
     // F-46: no strings seeded — the preview's board starts bare, so the
     // first string a reader draws is the first one on it.
     boardStrings: new Map(),
+    boardStickers: new Map(),
     portraits: new Map()
   }
 
@@ -665,6 +670,19 @@ export function createMockApi(): WyrmApi {
     },
     async deleteBoardString(path: string, id: string): Promise<void> {
       mustGet(path).boardStrings.delete(id)
+    },
+    async listBoardStickers(path: string): Promise<BoardSticker[]> {
+      return [...mustGet(path).boardStickers.values()].map((s) => ({ ...s }))
+    },
+    async writeBoardSticker(path: string, s: BoardSticker): Promise<void> {
+      // As on disk: red is never written.
+      const stored: BoardSticker = { ...s, modified: new Date().toISOString() }
+      if (!storedColour(stored.colour)) delete stored.colour
+      if (!stored.cardId) delete stored.cardId
+      mustGet(path).boardStickers.set(s.id, stored)
+    },
+    async deleteBoardSticker(path: string, id: string): Promise<void> {
+      mustGet(path).boardStickers.delete(id)
     },
 
     async getSyncStatus(path: string): Promise<SyncStatus> {

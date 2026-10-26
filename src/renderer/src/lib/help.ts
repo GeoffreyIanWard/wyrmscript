@@ -176,7 +176,19 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'board-string': {
     title: 'String',
-    body: 'Red string between cards, pin to pin. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string — or press Return on each, which pins at the top. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go. After the second pin, give it a label, or Return to leave it plain. Between two characters it is a relationship, and goes in the Character Graph — so it needs a name.'
+    body: 'String between cards, pin to pin, in the colour chosen beside it. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string — or press Return on each, which pins at the top. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go. After the second pin, give it a label, or Return to leave it plain. Between two characters it is a relationship, and goes in the Character Graph — so it needs a name.'
+  },
+  'board-colour': {
+    title: 'Colour',
+    body: 'Red, blue, orange, yellow or green — the colour of the next string and the next sticker. What each colour means is yours to decide. A string already up changes colour from its label field. On a one-colour screen the five are told apart by their dashes instead.'
+  },
+  'board-sticker-tool': {
+    title: 'Sticker',
+    body: 'Pick a star, a heart, a dot, a question mark, an exclamation mark, a tick, a cross or an arrow, then click anywhere to stick one down — on the cork, or on a card, where it goes wherever the card goes. Each lands a little crooked, as a sticker put down by hand does. Press the button again, or Esc, to put the sheet away.'
+  },
+  'board-sticker': {
+    title: 'A sticker',
+    body: 'Drag it to move it. Let go over a card and it sticks to that card; over the cork, it stays where you left it. Tab to it and press Delete to peel it off.'
   },
   'string-label': {
     title: "A string's label",

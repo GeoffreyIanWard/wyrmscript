@@ -218,7 +218,7 @@ async function describeConflict(
  * fields; the same field changed both ways is the writer's to decide, never
  * "this device wins" (`mergeFrontmattered`'s `strict`).
  */
-const RECORDS = /^(strings|relationships|plotlines|map|map-shapes|map-marks)\/[^/]+\.md$/
+const RECORDS = /^(strings|stickers|relationships|plotlines|map|map-shapes|map-marks)\/[^/]+\.md$/
 
 export function isRecord(filepath: string): boolean {
   return RECORDS.test(filepath)
