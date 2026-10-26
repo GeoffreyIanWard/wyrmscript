@@ -112,6 +112,7 @@ describe('where names go', () => {
           'city',
           'metropolis',
           'castle',
+          'gate',
           'tower',
           'cathedral',
           'ziggurat',

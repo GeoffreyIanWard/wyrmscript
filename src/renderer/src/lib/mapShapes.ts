@@ -36,7 +36,8 @@ export const KIND_NAME: Record<MapShapeKind, string> = {
   border: 'Border',
   river: 'River',
   road: 'Road',
-  rail: 'Railway'
+  rail: 'Railway',
+  wall: 'Wall'
 }
 
 /**
@@ -161,9 +162,31 @@ export function removePoint(points: Point[], index: number, kind: MapShapeKind):
   return points.filter((_, i) => i !== index)
 }
 
-/** The points with the one at `index` moved. */
+/** Whether a line's ends meet — a wall drawn round a city — so they are one
+ *  corner: it rings, though it is not an outline. */
+export function isRing(points: Point[]): boolean {
+  const first = points[0]
+  const last = points[points.length - 1]
+  return points.length > 2 && same(first, last)
+}
+
+/** Whether a kind of line can be drawn round into a ring by going back to
+ *  its first point: a wall round a city. */
+export const ringsClosed = (kind: MapShapeKind): boolean => kind === 'wall'
+
+/** The points with the one at `index` moved. A ring's meeting corner is both
+ *  its first and its last point, so they move together and it stays shut. */
 export function movePoint(points: Point[], index: number, p: Point): Point[] {
-  return points.map((q, i) => (i === index ? roundPoint(p) : q))
+  const ends = isRing(points) && (index === 0 || index === points.length - 1)
+  return points.map((q, i) =>
+    i === index || (ends && (i === 0 || i === points.length - 1)) ? roundPoint(p) : q
+  )
+}
+
+/** The corners of a line that are each drawn once: a ring's last point is
+ *  its first, and has the one tower. */
+export function corners(points: Point[]): Point[] {
+  return isRing(points) ? points.slice(0, -1) : points
 }
 
 /** What a shape is, for a screen reader: its kind and how many points. */
@@ -175,4 +198,12 @@ export function describeShape(shape: Pick<MapShape, 'kind' | 'points'>): string 
  * The order shapes are drawn in, bottom to top: land first, so the sea and
  * the coast sit under everything; areas over land; borders over both.
  */
-export const DRAW_ORDER: MapShapeKind[] = ['land', 'area', 'river', 'road', 'rail', 'border']
+export const DRAW_ORDER: MapShapeKind[] = [
+  'land',
+  'area',
+  'river',
+  'road',
+  'rail',
+  'wall',
+  'border'
+]

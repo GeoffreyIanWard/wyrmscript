@@ -33,6 +33,19 @@ const at = '2026-01-01T00:00:00.000Z'
 const frontmatter = async (path: string): Promise<Record<string, unknown>> =>
   matter(await fsp.readFile(path, 'utf8')).data
 
+describe('a wall, on disk', () => {
+  it('is a shape like any line, written and read back', async () => {
+    const dir = await makeProject()
+    const points = [
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 50, y: 50 }
+    ]
+    await writeMapShape(dir, { id: 'w1', kind: 'wall', points, created: at, modified: at })
+    expect((await listMapShapes(dir))[0]).toMatchObject({ kind: 'wall', points })
+  })
+})
+
 describe('a record’s map, on disk', () => {
   it('is written and read back for a map other than World', async () => {
     const dir = await makeProject()

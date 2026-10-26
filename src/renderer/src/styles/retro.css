@@ -2057,6 +2057,47 @@ button.map-place-name {
   stroke-linejoin: round;
 }
 
+/* A city wall: a heavy ink line with square merlons standing off it on both
+   sides — a wide stroke dashed into blocks — as an old plan draws a wall. */
+.map-shape.wall .map-shape-body {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 4px;
+  stroke-linejoin: miter;
+}
+
+.map-wall-merlons {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 7px;
+  stroke-dasharray: 2 5;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  pointer-events: none;
+}
+
+/* Chosen, a wall is heavier, as every chosen shape is — its own line is
+   already as heavy as the general rule makes one. */
+.map-shape.wall.selected .map-shape-body {
+  stroke-width: 6px;
+}
+
+.map-shape.wall.selected .map-wall-merlons {
+  stroke-width: 9px;
+}
+
+/* Focused from the keyboard: dotted, but never thinner than the wall is. */
+.map-shape.wall .map-shape-body:focus-visible {
+  stroke-width: 5px;
+}
+
+.map-wall-tower {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 2px;
+  pointer-events: none;
+}
+
 .map-rail-ties {
   fill: none;
   stroke: var(--ink);
@@ -2227,6 +2268,7 @@ button.map-place-name {
 
 .map-label.feature.road,
 .map-label.feature.rail,
+.map-label.feature.wall,
 .map-label.feature.border {
   font-size: 10px;
   transform: translate(-50%, -160%);

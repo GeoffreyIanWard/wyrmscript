@@ -32,14 +32,14 @@ export function StampGlyph({
 const COLUMNS = 4
 
 /**
- * The stamps, grouped, in a drop-down from the map's toolbar: forty-four
+ * The stamps, grouped, in a drop-down from the map's toolbar: forty-five
  * stamps were too many to keep as buttons along it, and the bar is meant to
  * leave room for the map. Each choice shows its own art, so a writer looks
  * for a castle by looking for a castle.
  *
  * A non-modal dialog, from the keyboard: it opens on the chosen stamp (or
  * the first) and is one Tab stop — a roving tabindex, so Tab leaves it
- * rather than walking all forty-four; Left and Right step through the list, Up
+ * rather than walking all forty-five; Left and Right step through the list, Up
  * and Down move by row within the grid, Return chooses, and Esc closes it,
  * stopped here because Esc is also "back". Focus leaving it closes it too:
  * a palette left open over the map with focus elsewhere was a trap for the

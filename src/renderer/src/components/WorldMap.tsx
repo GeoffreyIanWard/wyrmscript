@@ -35,6 +35,8 @@ import {
   MIN_POINTS,
   movePoint,
   removePoint,
+  ringsClosed,
+  corners,
   roundPoint,
   pathFor,
   shapePath,
@@ -113,6 +115,7 @@ const TOOL_HELP: Record<Tool, string> = {
   river: 'Click along the river, point by point: it bends through them. Return finishes it.',
   road: 'Click along the road, point by point. Return finishes it.',
   rail: 'Click along the railway, point by point. Return finishes it.',
+  wall: 'Click along the wall, point by point; click its first point to ring a city. Return finishes it.',
   label: 'Click where the words go, then type them.',
   ...(Object.fromEntries(
     STAMP_ORDER.map((k) => [
@@ -133,11 +136,15 @@ const DRAFT_HELP: Record<MapShapeKind, string> = {
   border: 'Return finishes the border.',
   river: 'Return finishes the river.',
   road: 'Return finishes the road.',
-  rail: 'Return finishes the railway.'
+  rail: 'Return finishes the railway.',
+  wall: 'Return finishes the wall.'
 }
 
+/** A wall's corner tower, in map pixels. */
+const WALL_TOWER = 9
+
 /** The drawing tools, in the bar's order: outlines, then lines. */
-const TOOLS: Tool[] = ['hand', 'land', 'area', 'border', 'river', 'road', 'rail', 'measure']
+const TOOLS: Tool[] = ['hand', 'land', 'area', 'border', 'river', 'road', 'rail', 'wall', 'measure']
 
 /** A name being written: for a shape or a mark already on the map, or for
  *  a free label not yet made (made only once it has words). */
@@ -663,6 +670,12 @@ function MapSheetView({
     setProblem(null)
     if (isClosed(tool) && closesOn(draft, p, zoom)) {
       finishDraft()
+      return
+    }
+    // A wall taken back to its first point rings the city: it ends exactly
+    // there, one corner, and is finished.
+    if (ringsClosed(tool) && closesOn(draft, p, zoom)) {
+      finishDraft([...draft, draft[0]])
       return
     }
     // A second click on the same spot (a double-click) is not a new point:
@@ -2045,6 +2058,24 @@ function MapSheetView({
                         {kind === 'rail' && (
                           <path className="map-rail-ties" d={d} aria-hidden="true" />
                         )}
+                        {/* A wall's battlements — a wider stroke dashed into
+                            merlons — and a square tower at every corner, as
+                            an old plan draws a town's wall. */}
+                        {kind === 'wall' && (
+                          <g aria-hidden="true">
+                            <path className="map-wall-merlons" d={d} />
+                            {corners(pointsOf(shape)).map((p, i) => (
+                              <rect
+                                key={i}
+                                className="map-wall-tower"
+                                x={p.x - bounds.x - WALL_TOWER / 2}
+                                y={p.y - bounds.y - WALL_TOWER / 2}
+                                width={WALL_TOWER}
+                                height={WALL_TOWER}
+                              />
+                            ))}
+                          </g>
+                        )}
                       </g>
                     )
                   })
@@ -2111,7 +2142,7 @@ function MapSheetView({
                 edge middles of the selected shape. */}
             {draft.length > 0 && isShapeKind(tool) && (
               <span
-                className={`map-handle first${isClosed(tool) && draft.length >= 3 ? ' closes' : ''}`}
+                className={`map-handle first${(isClosed(tool) || ringsClosed(tool)) && draft.length >= 3 ? ' closes' : ''}`}
                 style={{
                   left: (draft[0].x - bounds.x) * zoom,
                   top: (draft[0].y - bounds.y) * zoom
