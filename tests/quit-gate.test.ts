@@ -95,4 +95,20 @@ describe('the quit gate', () => {
     expect(live()).toEqual([])
     expect(deps.quit).not.toHaveBeenCalled()
   })
+
+  it('says the quit is going through only once it is, so the close box waits until then', () => {
+    const { g, live } = gate()
+    expect(g.isQuitting()).toBe(false)
+    g.beforeQuit(() => {})
+    g.acknowledged()
+    expect(g.isQuitting()).toBe(false)
+    g.quitNow()
+    expect(g.isQuitting()).toBe(true)
+    // And when the grace period runs out on a window that never answered.
+    const other = gate()
+    other.g.beforeQuit(() => {})
+    other.live()[0].fn()
+    expect(other.g.isQuitting()).toBe(true)
+    expect(live()).toEqual([])
+  })
 })

@@ -15,6 +15,11 @@
  *   whether to quit after a failed save — and may decline.
  * - With no window open, there is nothing to put away and nothing to ask.
  *
+ * On Windows and Linux, closing the last window is how an app is quit, so
+ * main sends the window's close box through here too (`index.ts`). On the
+ * Mac the close box closes the window and the app stays, as Mac apps do;
+ * that path still has only `beforeunload`.
+ *
  * Pure, with Electron passed in, so the rules are tested without it.
  */
 
@@ -37,6 +42,8 @@ export interface QuitGate {
   acknowledged(): void
   /** The window has put everything away. */
   quitNow(): void
+  /** The quit is going through: a window closing now is part of it. */
+  isQuitting(): boolean
 }
 
 export function createQuitGate(deps: QuitGateDeps): QuitGate {
@@ -67,6 +74,9 @@ export function createQuitGate(deps: QuitGateDeps): QuitGate {
     },
     quitNow() {
       go()
+    },
+    isQuitting() {
+      return allowed
     }
   }
 }

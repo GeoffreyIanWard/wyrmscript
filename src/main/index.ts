@@ -46,6 +46,15 @@ function createWindow(): void {
     }
   })
 
+  // On Windows and Linux the close box is how the app is quit (closing the
+  // last window quits it), so it goes the way every quit goes: the window
+  // saves first. Let through once the quit is under way.
+  mainWindow.on('close', (e) => {
+    if (process.platform === 'darwin' || quitGate.isQuitting()) return
+    e.preventDefault()
+    app.quit()
+  })
+
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
@@ -89,8 +98,8 @@ app.whenReady().then(() => {
   })
 })
 
-// Every way to quit — File → Quit, ⌘Q, the app menu, the Dock — goes
-// through the window first, so the page is saved and every open project
+// Every way to quit — File → Quit, ⌘Q, the app menu, the Dock, and the close
+// box off the Mac — goes through the window first, so the page is saved and every open project
 // checkpointed before the app goes (`wyrm/quitGate.ts`).
 const quitGate = createQuitGate({
   ask: () => {

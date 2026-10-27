@@ -504,6 +504,7 @@ function MainPane({
 }
 
 function App(): JSX.Element {
+  const quittingUi = useWyrm((s) => s.quittingUi)
   // Falls back to the defaults for the first paint only; the stored appearance
   // arrives with boot(). Rendering nothing until then would flash an empty
   // window, which is worse than one frame in the default palette.
@@ -820,6 +821,16 @@ function App(): JSX.Element {
     const ink = styles.getPropertyValue('--ink').trim()
     if (paper && ink) void api.setTitleBarOverlay(paper, ink)
   }, [appearance.palette, appearance.accents])
+
+  // Quitting (F-49): everything else closes, and saves as it closes.
+  if (quittingUi)
+    return (
+      <div className="screen" data-palette={appearance.palette} data-accents={appearance.accents}>
+        <div className="quitting" role="status">
+          Saving your work…
+        </div>
+      </div>
+    )
 
   return (
     <div

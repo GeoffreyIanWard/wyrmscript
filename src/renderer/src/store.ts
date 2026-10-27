@@ -53,7 +53,7 @@ import {
   storedMapId,
   WORLD_MAP
 } from '../../shared/types'
-import { api } from './lib/api'
+import { api, apiSettled } from './lib/api'
 import { isConnected } from './lib/syncState'
 import { compile, compileFileName, PAGED_FORMATS, renderHtml } from './lib/compile'
 import { validScale } from './lib/mapScale'
@@ -626,6 +626,12 @@ interface WyrmState {
    */
   helpMode: boolean
   setHelpMode(on: boolean): void
+  /**
+   * Quitting: the window shows only that it is saving, so every part of the
+   * UI closes — and saves as it does when it closes — before the app goes
+   * (F-49). App state, not a project's.
+   */
+  quittingUi: boolean
   /** F-34: open the browse-by-tag page in place of the writing terminal. */
   showTags(): void
   /**
@@ -957,6 +963,12 @@ function takeSlice(state: WyrmState): ProjectSlice {
 let quitting = false
 /** How long quitting waits on the checkpoints before it goes anyway. */
 export const QUIT_CHECKPOINT_MS = 8000
+/** How long quitting waits on the saves before it asks. */
+export const QUIT_SAVE_MS = 10000
+const UNSAVED_PAGE =
+  'The page could not be saved, so the latest changes would be lost. Quit anyway?'
+const UNSAVED_WORK =
+  'Some changes are still being saved, and would be lost. Quit anyway, or stay and try again?'
 
 export const useWyrm = create<WyrmState>((set, get) => {
   /** Marks the open project as having work not yet checkpointed. Resolves the
@@ -1346,6 +1358,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     renamingId: null,
     typewriterMode: false,
     helpMode: false,
+    quittingUi: false,
     addCardFor: null,
     recentProjects: [],
     entities: [],
@@ -1443,18 +1456,27 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (quitting) return
       quitting = true
       try {
+        // The page first, while it is still on screen: the one save that can
+        // fail in a way the writer must hear about before anything closes.
         try {
           await get().flushSave()
         } catch {
-          // Said, not swallowed: quitting now loses what is on the page.
-          const go = window.confirm(
-            'The page could not be saved, so the latest changes would be lost. Quit anyway?'
-          )
-          if (!go) return
+          if (!window.confirm(UNSAVED_PAGE)) return
+        }
+        // Then everything closes, and every part saves as it does when it
+        // closes: a card's back, a name being typed on the map, a nudge
+        // waiting to settle. Nothing more can be typed while quitting.
+        set({ quittingUi: true })
+        await new Promise((done) => setTimeout(done, 0))
+        // Those saves are calls to the bridge; wait for them all. A disk that
+        // never answers asks, rather than holding the app open for ever.
+        if (!(await apiSettled(QUIT_SAVE_MS)) && !window.confirm(UNSAVED_WORK)) {
+          set({ quittingUi: false })
+          return
         }
         // Every open project, parked ones too; each only if it has work since
-        // its last checkpoint. Quitting must not wait on a slow disk forever,
-        // and a checkpoint that fails loses nothing — the files are saved.
+        // its last checkpoint. A checkpoint that fails loses nothing — the
+        // files are saved — so quitting does not wait on one for ever.
         const dirty = get().openPaths.filter((p) => runtimeFor(p).commitDirty)
         await Promise.race([
           Promise.all(
