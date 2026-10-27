@@ -933,6 +933,15 @@ export function createMockApi(): WyrmApi {
     },
     async setTitleBarOverlay(): Promise<void> {
       // Windows-only native chrome; nothing to recolour in a browser tab.
+    },
+    async quitApp(): Promise<void> {
+      // A tab cannot quit the browser; closing it is the nearest thing, and
+      // browsers allow it only for a tab a script opened.
+      window.close()
+    },
+    onQuitRequested(): () => void {
+      // Nothing outside the tab ever asks it to quit.
+      return () => {}
     }
   }
 }

@@ -273,6 +273,13 @@ interface WyrmState {
    * the focused project brings another open one forward if there is one.
    */
   closeProject(path?: string): Promise<void>
+  /**
+   * Quit WyrmStar: the page saved, every open project with work since its
+   * last checkpoint checkpointed, then the app goes. The projects stay open
+   * as far as the next launch is concerned, as they always have. A page
+   * that cannot be saved asks first, and the writer may stay.
+   */
+  quit(): Promise<void>
 
   /** Story bible (brief §5). */
   entities: Entity[]
@@ -946,6 +953,11 @@ function takeSlice(state: WyrmState): ProjectSlice {
   return slice as ProjectSlice
 }
 
+/** A quit already under way: a second ⌘Q while saving does not start another. */
+let quitting = false
+/** How long quitting waits on the checkpoints before it goes anyway. */
+export const QUIT_CHECKPOINT_MS = 8000
+
 export const useWyrm = create<WyrmState>((set, get) => {
   /** Marks the open project as having work not yet checkpointed. Resolves the
    *  project itself so the ~20 call sites stay one-liners. */
@@ -1425,6 +1437,42 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await api.closeProject()
       set({ ...emptySlice(), parked, openPaths })
       await get().loadRecentProjects()
+    },
+
+    async quit() {
+      if (quitting) return
+      quitting = true
+      try {
+        try {
+          await get().flushSave()
+        } catch {
+          // Said, not swallowed: quitting now loses what is on the page.
+          const go = window.confirm(
+            'The page could not be saved, so the latest changes would be lost. Quit anyway?'
+          )
+          if (!go) return
+        }
+        // Every open project, parked ones too; each only if it has work since
+        // its last checkpoint. Quitting must not wait on a slow disk forever,
+        // and a checkpoint that fails loses nothing — the files are saved.
+        const dirty = get().openPaths.filter((p) => runtimeFor(p).commitDirty)
+        await Promise.race([
+          Promise.all(
+            dirty.map((p) =>
+              api
+                .commit(p, 'Autosave on quit')
+                .then(() => {
+                  runtimeFor(p).commitDirty = false
+                })
+                .catch(() => {})
+            )
+          ),
+          new Promise((done) => setTimeout(done, QUIT_CHECKPOINT_MS))
+        ])
+        await api.quitApp()
+      } finally {
+        quitting = false
+      }
     },
 
     async cleanUpWindows() {
@@ -3203,6 +3251,11 @@ window.addEventListener('beforeunload', () => {
   void useWyrm.getState().flushSave()
   void useWyrm.getState().commitNow('Autosave on close')
 })
+
+// Every way to quit the desktop app reaches the window first (see
+// `main/wyrm/quitGate.ts`), and is answered here, with the same save as
+// File → Quit.
+api.onQuitRequested(() => void useWyrm.getState().quit())
 
 // Offline queueing (brief §7): commits are always local-first; when the
 // network returns, anything still waiting goes up quietly.

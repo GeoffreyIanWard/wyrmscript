@@ -1,9 +1,10 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { TITLE_BAR_OVERLAY_HEIGHT } from '../shared/types'
 import { registerIpc } from './wyrm/ipc'
+import { createQuitGate } from './wyrm/quitGate'
 
 function createWindow(): void {
   // Create the browser window.
@@ -87,6 +88,24 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+// Every way to quit — File → Quit, ⌘Q, the app menu, the Dock — goes
+// through the window first, so the page is saved and every open project
+// checkpointed before the app goes (`wyrm/quitGate.ts`).
+const quitGate = createQuitGate({
+  ask: () => {
+    const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
+    if (!win) return false
+    win.webContents.send('app:quit-requested')
+    return true
+  },
+  quit: () => app.quit(),
+  setTimer: (fn, ms) => setTimeout(fn, ms),
+  clearTimer: (timer) => clearTimeout(timer as NodeJS.Timeout)
+})
+app.on('before-quit', (e) => quitGate.beforeQuit(() => e.preventDefault()))
+ipcMain.on('app:quit-ack', () => quitGate.acknowledged())
+ipcMain.handle('app:quit', () => quitGate.quitNow())
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

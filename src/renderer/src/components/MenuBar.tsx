@@ -203,6 +203,15 @@ export function MenuBar({
           shortcut: '⌘P',
           disabled: !hasProject,
           action: onPrint
+        },
+        { kind: 'sep' },
+        {
+          // In File, where the early Mac kept it. Not gated on a project:
+          // the Welcome screen quits too.
+          kind: 'item',
+          label: 'Quit',
+          shortcut: '⌘Q',
+          action: () => void useWyrm.getState().quit()
         }
       ]
     },

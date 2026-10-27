@@ -931,6 +931,21 @@ Requested 2026-10-26, for outline mode. Two things to mark a board up with: **st
 
 **Found re-checking the fix in the preview:** the swallowed drop-click was first retired by a timer. A drag that ends without a click left the swallower in place for as long as the page held its timers back, which in a background window is long enough to eat the writer's next real click (Add Card did nothing). It is now retired by the next press or key, never by a timer.
 
+### F-49 · Quit ✅ shipped
+
+Requested 2026-10-27. **File → Quit (⌘Q)**: in File, where the early Mac kept it, and not gated on a project, so the Welcome screen quits too.
+
+**Every way to quit now saves first.** Quitting saves the page, checkpoints every open project that has work since its last checkpoint (parked ones too), and only then quits. Before this, ⌘Q, the WyrmStar menu's Quit and the Dock's Quit went straight to Electron. They relied on `beforeunload`, which starts the save and a checkpoint of the front project and waits for neither. Now main holds every quit at `before-quit` (`main/wyrm/quitGate.ts`) and asks the window, which runs the same `quit` action as the menu item.
+
+**It never traps the writer.**
+- With no window open, there is nothing to put away, and the quit goes at once.
+- A window that does not answer within five seconds (hung, or with nothing listening) is quit anyway.
+- A window that has answered may take as long as it needs, because it may be asking the writer something: a page that **cannot be saved** asks before quitting, and the writer may stay.
+- A checkpoint that never finishes is given eight seconds, since the files are already saved and a missed checkpoint loses nothing.
+- Pressing ⌘Q twice quits once.
+
+**The projects stay open as far as the next launch is concerned**, as they always have on quit. Quit does not close them one by one, which would empty the reopen list.
+
 ### F-42 · Outline mode ✅ shipped
 
 Build a story's shape before writing it: add scenes through a templated form, then work with them exactly like any other scene — on the corkboard, the timeline, the plot graph and the map — and click one to start writing it.

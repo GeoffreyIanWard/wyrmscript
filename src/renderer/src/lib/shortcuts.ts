@@ -77,7 +77,8 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: '⇧⌘O', what: 'Open another alongside' },
       { keys: '⇧⌘E', what: 'Compile the manuscript' },
       { keys: '⌘P', what: 'Print' },
-      { keys: '⇧⌘S', what: 'Writing stats' }
+      { keys: '⇧⌘S', what: 'Writing stats' },
+      { keys: '⌘Q', what: 'Quit, saving everything first' }
     ]
   }
 ]

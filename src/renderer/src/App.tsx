@@ -718,6 +718,11 @@ function App(): JSX.Element {
         // ⇧⌘S — Writing Stats page (F-26).
         e.preventDefault()
         state.showStats()
+      } else if (e.key === 'q' && !e.shiftKey && !e.altKey) {
+        // ⌘Q (Ctrl+Q off the Mac). On the Mac the app menu's own ⌘Q usually
+        // gets there first; either way it is the same quit, saving first.
+        e.preventDefault()
+        void state.quit()
       } else if (e.key === 'o' && !e.shiftKey) {
         // ⌘O — the menu has advertised this since Phase 2 but nothing was ever
         // bound to it, so it silently did nothing. Fixed here rather than
