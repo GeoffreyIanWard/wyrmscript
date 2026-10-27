@@ -81,6 +81,7 @@ Worth reading before touching the neighbouring code:
   6. Calls `api.quitApp`, which lets the gate through.
 
   A window that never answers is quit after `QUIT_GRACE_MS`. With no window, a quit is not held. Never make quitting call `closeProject`: that empties the reopen list, and quit has always reopened the projects at the next launch. On the Mac the close box still has only `beforeunload`.
+
 - `components/ErrorBoundary.tsx` — wraps the root and each dialog. An error thrown from a React effect otherwise unmounts the whole tree, which once left the app a dead white window with no way back to the manuscript.
 
 ## Testing
