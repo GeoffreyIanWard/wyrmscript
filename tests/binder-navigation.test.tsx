@@ -115,3 +115,34 @@ describe('binder navigation from a story-bible entry', () => {
     expect(screen.getByTestId('pane').textContent).toBe('entity')
   })
 })
+
+/**
+ * I-20: the open document stays loaded behind a folder being browsed, and its
+ * row stayed highlighted beside the folder's — two rows selected, and the
+ * document looking like what was on screen whatever was.
+ */
+describe('which row is selected', () => {
+  const selected = (): string[] =>
+    [...document.querySelectorAll('.binder-row.selected')].map((r) => r.textContent ?? '')
+
+  it('is the folder being browsed, and the document again once it is back on screen', async () => {
+    await setup()
+    clickRow('A Knock at Night')
+    await waitFor(() => expect(selected()).toEqual([expect.stringContaining('A Knock at Night')]))
+    act(() => {
+      clickRow('Part One — The Harbor')
+    })
+    await waitFor(() => expect(screen.getByTestId('pane').textContent).toBe('folder'))
+    expect(selected()).toEqual([expect.stringContaining('Part One — The Harbor')])
+    clickRow('A Knock at Night')
+    await waitFor(() => expect(selected()).toEqual([expect.stringContaining('A Knock at Night')]))
+  })
+
+  it('is no document while a story-bible entry is on screen', async () => {
+    await setup()
+    clickRow('A Knock at Night')
+    await waitFor(() => expect(selected()).toHaveLength(1))
+    showAnEntity()
+    expect(selected().some((t) => t.includes('A Knock at Night'))).toBe(false)
+  })
+})
