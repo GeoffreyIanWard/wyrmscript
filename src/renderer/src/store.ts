@@ -2152,10 +2152,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async syncNow(interactive = true) {
       const { project } = get()
       if (!project) throw new Error('No project is open')
+      const path = project.path
       await get().flushSave()
       let outcome: SyncOutcome
       try {
-        outcome = await writingTo(project.path, ['github'], () => api.syncNow(project.path))
+        outcome = await writingTo(path, ['github'], () => api.syncNow(path))
       } catch (err) {
         // A sync that failed must never look like one that worked. Callers
         // fire this with `void` (the menu item, the post-checkpoint auto-sync,
@@ -2164,29 +2165,44 @@ export const useWyrm = create<WyrmState>((set, get) => {
         // was left believing their work had reached GitHub. Raising the quiet
         // flag puts `◆ SYNC — NEEDS YOUR EYE` in the status bar — the existing
         // non-nagging channel — and we still rethrow so an interactive caller
-        // can surface the actual error (F-01).
-        set({ syncNeedsAttention: true, syncProblem: errorMessage(err) })
+        // can surface the actual error (F-01). Recorded on the project that
+        // synced, wherever it is now.
+        patchSliceAt(path, () => ({ syncNeedsAttention: true, syncProblem: errorMessage(err) }))
         throw err
       }
-      set({ syncProblem: syncProblemOf(outcome) })
-      if (outcome.status === 'conflicts') {
-        // The page is sacred: only a sync the writer asked for may put a
-        // dialog on screen. A background one leaves a quiet flag instead.
-        if (interactive)
-          set({
-            syncConflicts: outcome.conflicts,
-            syncNeedsAttention: false,
-            waitingConflicts: null
-          })
-        else set({ syncNeedsAttention: true, waitingConflicts: outcome.conflicts })
-      } else {
-        set({ syncNeedsAttention: false, waitingConflicts: null })
-        if (outcome.status === 'pulled' || outcome.status === 'merged') {
-          // The manuscript on disk changed underneath the UI — reload.
-          await reloadAfterRemoteChange()
-        }
-      }
-      await get().loadSyncStatus()
+      // Another project may have come to the front while this one synced (a
+      // fetch can take a while). Everything below is this project's, so it is
+      // recorded on its own slice; a result landing on whichever novel is in
+      // front put one novel's conflicts in another's Conflicts tab (F-50).
+      const here = get().project?.path === path
+      // Offline and error are returned, not thrown, and they say nothing new
+      // about what is waiting: keep the list rather than call it resolved.
+      const reached = outcome.status !== 'offline' && outcome.status !== 'error'
+      const pulled = outcome.status === 'pulled' || outcome.status === 'merged'
+      patchSliceAt(path, () => ({
+        syncProblem: syncProblemOf(outcome),
+        ...(outcome.status === 'conflicts'
+          ? // The page is sacred: only a sync the writer asked for, on the
+            // novel in front, may put a dialog on screen. Anything else
+            // leaves the quiet flag and the list for the Conflicts tab.
+            interactive && here
+            ? {
+                syncConflicts: outcome.conflicts,
+                syncNeedsAttention: false,
+                waitingConflicts: null
+              }
+            : { syncNeedsAttention: true, waitingConflicts: outcome.conflicts }
+          : reached
+            ? { syncNeedsAttention: false, waitingConflicts: null }
+            : {}),
+        // Pulled into a novel no longer in front: re-read it when it comes
+        // back, as a background sync does.
+        ...(pulled && !here ? { stale: true } : {})
+      }))
+      if (!here) return outcome
+      // The manuscript on disk changed underneath the UI — reload.
+      if (pulled) await reloadAfterRemoteChange()
+      if (get().project?.path === path) await get().loadSyncStatus()
       return outcome
     },
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { SyncConflict, SyncStatus } from '../src/shared/types'
+import type { SyncConflict, SyncOutcome, SyncStatus } from '../src/shared/types'
 import { DEFAULT_APPEARANCE, DEFAULT_STATS } from '../src/shared/types'
 import { api } from '../src/renderer/src/lib/api'
 import { conflictsWaiting } from '../src/renderer/src/lib/saveLocations'
@@ -41,9 +41,13 @@ const CONFLICTS: SyncConflict[] = [
 ]
 
 let path = ''
+// Captured once: the mock's "last project" becomes whatever a test opened
+// last, and a test that opens a second novel would otherwise make it the demo.
+let demoPath: string | null = null
 
 async function openDemo(): Promise<void> {
-  path = (await api.getLastProjectPath())!
+  demoPath ??= await api.getLastProjectPath()
+  path = demoPath!
   await act(async () => {
     await useWyrm.getState().openRecentProject(path)
   })
@@ -154,6 +158,90 @@ describe('what the store keeps', () => {
     }
   })
 
+  it('keeps the list when the sync could not get through', async () => {
+    useWyrm.setState({ waitingConflicts: CONFLICTS, syncNeedsAttention: true })
+    for (const outcome of [
+      { status: 'offline', detail: 'No network.' } as const,
+      { status: 'error', detail: 'GitHub said no.' } as const
+    ]) {
+      vi.spyOn(api, 'syncNow').mockResolvedValue(outcome)
+      await act(async () => {
+        await useWyrm.getState().syncNow(true)
+      })
+      expect(useWyrm.getState().waitingConflicts).toEqual(CONFLICTS)
+      expect(
+        conflictsWaiting(
+          useWyrm.getState().syncNeedsAttention,
+          useWyrm.getState().syncProblem,
+          useWyrm.getState().waitingConflicts
+        )
+      ).toBe(true)
+    }
+  })
+
+  describe('when another novel comes to the front during the sync', () => {
+    async function syncThenSwitch(
+      interactive: boolean
+    ): Promise<{ finish: (o: SyncOutcome) => Promise<void>; second: string }> {
+      let resolve: (o: SyncOutcome) => void = () => {}
+      vi.spyOn(api, 'syncNow').mockImplementation(
+        () => new Promise<SyncOutcome>((r) => (resolve = r))
+      )
+      let running: Promise<unknown> = Promise.resolve()
+      act(() => {
+        running = useWyrm
+          .getState()
+          .syncNow(interactive)
+          .catch(() => {})
+      })
+      await waitFor(() => expect(useWyrm.getState().savingTo).toContain('github'))
+      const second = await api.createProject('Second Novel')
+      await act(async () => {
+        await useWyrm.getState().openAdditionalProject(second.path)
+      })
+      return {
+        second: second.path,
+        finish: async (o) => {
+          await act(async () => {
+            resolve(o)
+            await running
+          })
+        }
+      }
+    }
+
+    it("puts this novel's conflicts on this novel, not the one in front", async () => {
+      const { finish, second } = await syncThenSwitch(false)
+      await finish({ status: 'conflicts', conflicts: CONFLICTS })
+      expect(useWyrm.getState().project?.path).toBe(second)
+      expect(useWyrm.getState().waitingConflicts).toBeNull()
+      expect(useWyrm.getState().syncNeedsAttention).toBe(false)
+      expect(useWyrm.getState().parked[path].waitingConflicts).toEqual(CONFLICTS)
+      expect(useWyrm.getState().parked[path].syncNeedsAttention).toBe(true)
+    })
+
+    it("does not clear the front novel's list with this one's clean sync", async () => {
+      const { finish } = await syncThenSwitch(false)
+      useWyrm.setState({ waitingConflicts: CONFLICTS, syncNeedsAttention: true })
+      await finish({ status: 'pushed', at: Date.now() })
+      expect(useWyrm.getState().waitingConflicts).toEqual(CONFLICTS)
+      expect(useWyrm.getState().syncNeedsAttention).toBe(true)
+    })
+
+    it('never opens the resolution screen over the other novel', async () => {
+      const { finish } = await syncThenSwitch(true)
+      await finish({ status: 'conflicts', conflicts: CONFLICTS })
+      expect(useWyrm.getState().syncConflicts).toBeNull()
+      expect(useWyrm.getState().parked[path].waitingConflicts).toEqual(CONFLICTS)
+    })
+
+    it('marks this novel to be re-read when the sync brought work in', async () => {
+      const { finish } = await syncThenSwitch(false)
+      await finish({ status: 'pulled', at: Date.now(), pushed: true })
+      expect(useWyrm.getState().parked[path].stale).toBe(true)
+    })
+  })
+
   it('does not call a sync that failed a conflict', () => {
     expect(conflictsWaiting(true, 'GitHub unreachable', null)).toBe(false)
     expect(conflictsWaiting(true, null, null)).toBe(true)
@@ -240,7 +328,7 @@ describe('the ways in', () => {
     const onOpen = vi.fn()
     render(<SaveLine now={Date.now()} onOpen={onOpen} />)
     fireEvent.click(screen.getByRole('button', { name: /^GitHub:/ }))
-    expect(onOpen).toHaveBeenCalledWith('github', 'conflicts')
+    expect(onOpen).toHaveBeenCalledWith(undefined, 'conflicts')
   })
 
   it('opens the GitHub card instead when the trouble is the connection', () => {
@@ -249,6 +337,53 @@ describe('the ways in', () => {
     render(<SaveLine now={Date.now()} onOpen={onOpen} />)
     fireEvent.click(screen.getByRole('button', { name: /^GitHub:/ }))
     expect(onOpen).toHaveBeenCalledWith('github')
+  })
+})
+
+describe('the GitHub envelope in the app', () => {
+  it('opens the drawer on Conflicts, and focus stays in the tabs after', async () => {
+    cleanup()
+    vi.spyOn(api, 'getStatsSettings').mockResolvedValue(DEFAULT_STATS)
+    vi.spyOn(api, 'getAppearance').mockResolvedValue(DEFAULT_APPEARANCE)
+    vi.spyOn(api, 'getDailyStats').mockResolvedValue([])
+    const { default: App } = await import('../src/renderer/src/App')
+    await act(async () => {
+      render(<App />)
+    })
+    await waitFor(() => expect(useWyrm.getState().booted).toBe(true))
+    await openDemo()
+    act(() => {
+      useWyrm.setState({ waitingConflicts: CONFLICTS, syncNeedsAttention: true })
+    })
+    fireEvent.click(await screen.findByRole('button', { name: /^GitHub:/ }))
+    const conflicts = await screen.findByRole('tab', { name: /Conflicts/ })
+    expect(conflicts.getAttribute('aria-selected')).toBe('true')
+    // Round to Save to from the keyboard: focus stays on the tab.
+    act(() => {
+      conflicts.focus()
+    })
+    fireEvent.keyDown(conflicts, { key: 'ArrowRight' })
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Save to' }).getAttribute('aria-selected')).toBe(
+        'true'
+      )
+    )
+    await waitFor(() => expect(screen.getAllByRole('listitem').length).toBeGreaterThan(0))
+    expect(document.activeElement?.getAttribute('role')).toBe('tab')
+  })
+})
+
+describe('a card to focus', () => {
+  it('belongs to the Save to tab: opening elsewhere never pulls focus onto it', async () => {
+    useWyrm.setState({ waitingConflicts: CONFLICTS, syncNeedsAttention: true })
+    render(<SaveDrawer initialTab="conflicts" focusId="github" onClose={() => {}} />)
+    const conflicts = await screen.findByRole('tab', { name: /Conflicts/ })
+    act(() => {
+      conflicts.focus()
+    })
+    fireEvent.keyDown(conflicts, { key: 'ArrowRight' })
+    await screen.findByRole('listitem', { name: 'GitHub' })
+    expect(document.activeElement?.getAttribute('role')).toBe('tab')
   })
 })
 

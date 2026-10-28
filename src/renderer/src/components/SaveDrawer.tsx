@@ -199,7 +199,8 @@ export function SaveDrawer({
     []
   )
   useEffect(() => {
-    if (focused.current || !focusId) return
+    // A card to focus belongs to the Save to tab it was opened on.
+    if (focused.current || !focusId || initialTab !== 'save') return
     // Compared rather than put in a selector: an id is the writer's data.
     const card = [
       ...(listRef.current?.querySelectorAll<HTMLElement>('[data-location-id]') ?? [])

@@ -146,12 +146,13 @@ export function SaveLine({
             className="save-envelope"
             aria-label={`${name}: ${STATE_WORDS[state]}${reason && state !== 'saving' ? `. ${reason}` : ''}`}
             // A GitHub envelope marked for waiting passages goes where they
-            // are resolved, not to the card that only says so.
+            // are resolved, not to the card that only says so — and with no
+            // card to focus, which would pull focus out of the tabs later.
             onClick={() =>
               location.kind === 'github' &&
               state === 'attention' &&
               conflictsWaiting(syncNeedsAttention, syncProblem, waitingConflicts)
-                ? onOpen(location.id, 'conflicts')
+                ? onOpen(undefined, 'conflicts')
                 : onOpen(location.id)
             }
           >
