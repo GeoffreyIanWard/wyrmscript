@@ -1030,6 +1030,71 @@ The test that matters most is the last one: after cloning, **the sync engine run
 
 **Today's workaround, and why it is not good enough:** clone by hand and use Open Project. It works, but the app sees `mode: 'unset'` with a `remoteUrl` present, so the writer is asked to choose a sync path for a project that already has one, then walked through connect-project to re-attach a remote that is already in `.git/config`.
 
+### F-50 · One "Save to…" for saving and syncing 📋
+
+Replace today's scattered save, backup and sync controls with one place to keep the work safe, built around a single **Save to…** button.
+
+Requested 2026-10-27: "it's a bit of a frankenstein at the moment."
+
+**What's there today**, spread across two menus and the status bar:
+
+- File: Commit Checkpoint… (⌘S), History, Variants…, and Bring Down from GitHub…
+- Project: Backup…, Sync Now, and Sync Settings…
+- The status bar: the needs-attention flag when a sync fails.
+
+Each one arrived with its own feature (F-01, F-40, Phase 5, F-43), so each has its own dialog, its own wording and its own idea of "saved".
+
+**The shape** (agreed 2026-10-27, over four messages):
+
+**One element, laid out as a file drawer.** It looks like a real filing system, with a folder tab for each screen. That could become the design language for other menus too. **File → Save** opens it. The tabs:
+
+- **Save to.** Where the work is kept.
+  - Each location is a **horizontal envelope card** in a vertical list. A card says what the location is, and **when it was last saved**.
+  - The **top card is the default.** Drag the cards to reorder them, and another one becomes the default.
+  - **Add** a location, up to **three**: **Disk** (the local drive or an SD card) or **GitHub**. GitHub counts as a location like any other. A writer may keep only a GitHub copy, which also suits devices that don't handle a file system well.
+  - **Remove** any location but the last. There is always at least one.
+  - **Switching repositories is not its own action.** Add the new one and remove the old.
+  - A **Save to multiple locations** toggle. Turning it off removes every card but the default.
+- **Restore from.** The same kind of screen in the other direction: bring a project back from a backup on disk or from GitHub. It replaces Restore from Backup and Bring Down from GitHub as separate entries.
+- **Settings.** Automatic saving and sync: how often, and whether a checkpoint syncs.
+- **GitHub.** Everything about GitHub on one screen:
+  - **Connection status**, with a prompt to reconnect when it isn't connected.
+  - The account: sign in, switch account, sign out.
+  - Connect this project to a repository that already exists, or create a new one.
+  - Disconnect.
+  - **Force sync.**
+  - Later: views that track commits.
+- **Conflicts.** At least a way into a dedicated place for resolving sync conflicts.
+
+**Resolving conflicts, visually** (to brainstorm further). The idea is a skeuomorphic merge: each side's changed text is broken into separate text-block cards, and the writer drags the blocks they want to keep into the document where they belong. It's a resolution the writer can see and touch, not a choice between two versions of a file.
+
+**The status line: one envelope per location** (chosen 2026-10-27 from two mock-ups). At the right of the status bar sits a small envelope for each location, in drawer order, default first, followed by the time since the last save. Clicking it opens the drawer, and clicking an envelope opens that location's card.
+
+- **Saved:** every envelope filled.
+- **Saving:** envelopes fill in as each location is written.
+- **A location missing:** that envelope is drawn dashed.
+- **Needs attention:** that envelope is marked, and the line ends in "!".
+
+The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places"). It was clearer to read, but the envelopes match the drawer's cards.
+
+**When a location can't be reached** (decided 2026-10-27): its card says **Broken connection!** Hovering over that shows the particular cause, such as "SD card not connected" or "GitHub unreachable". The same tooltip shows on the location's envelope in the status line.
+
+**Still to design:**
+
+- **How the file drawer looks.** The tabs, the envelope cards, and how dragging a card into the default slot reads.
+
+**Settled questions:**
+
+- GitHub counts as one of the three locations.
+- Removing a GitHub location disconnects the project from the repository. It never deletes the repository.
+- The first location is the default, and reordering the cards changes it.
+- History and Variants stay where they are. They are about looking back, not keeping safe.
+
+**Open questions:**
+
+- Whether ⌘S stays Commit Checkpoint or becomes Save.
+- How an SD card is told apart from a fixed drive. F-40 already treats a card that isn't plugged in as skipped, not failed.
+
 ## Known issues
 
 | ID   | Issue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -1054,6 +1119,7 @@ The test that matters most is the last one: after cloning, **the sync engine run
 | I-18 | On a new computer, Bring Down from GitHub said "Sign in with GitHub first" with nowhere to do it: signing in (and the one-time client id) lived only in the Sync dialog, which needs an open project, and a new computer has none. Pasting an address was no way round it, since cloning goes through the signed-in account and every space the app makes is private. Reported 2026-10-22, right after v0.5.0                                                                                               | ✅ fixed: signing in is a shared `GitHubSignIn` panel, used by Sync and by Bring Down, backed by an app-level `getGithubAccount`/`setGithubClientId` that needs no project. Bring Down asks for the account first and lists spaces only once there is one; the address hint says a private one needs signing in. The preview's mock now refuses the list until signed in, as main does — it listed spaces regardless, which is why the preview never showed this. A StrictMode test pins the dialog getting past "Looking…" (a mount flag cleared on StrictMode's first cleanup was found in the preview) The app now also carries its own OAuth client id (`BUILT_IN_CLIENT_ID`, public by design — it names the app, not an account), so a new computer goes straight to signing in rather than asking the writer to register an OAuth app and paste its id; a saved id still wins. Decided 2026-10-22 with Geoffrey while he is the main user — revisit if many others use the app                                                                                                                                                                               |
 | I-19 | Clicking something on the world map and pressing Delete did nothing, though the hint line said "Delete removes it". A click chooses a shape or stamp without always giving it keyboard focus — a road, border or railway is caught by its hit band, which cannot take focus — and Delete was only handled on the focused item. Reported 2026-10-22                                                                                                                                                          | ✅ fixed: Delete or Backspace (the Mac's delete key) removes whatever is chosen, wherever focus is on the map; a corner with focus still takes out just that corner, and a name being typed keeps its Backspace. Tests click a border's hit band and a stamp, then press the key on the map; both fail without the fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | I-20 | Browsing a folder left the open document's row highlighted in the binder beside the folder's, so a new project's First Scene looked selected whatever was on screen. The document stays loaded behind a folder, an entry or the stats, and its row was drawn selected whenever it was the open document                                                                                                                                                                                                     | ✅ fixed: a document's row is selected only while that document is what is showing; `binder-navigation.test.tsx` checks the folder, the document again, and a story-bible entry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| I-21 | On Windows, a writer approved the GitHub sign-in code on github.com, but WyrmStar never noticed. The panel polled GitHub on a fixed 5-second tick and ignored GitHub's interval. Once GitHub answered slow_down, every later poll was too soon again, earned another slow_down, and the approval was never seen. A slower connection makes the first slow_down likelier                                                                                                                                     | ✅ fixed: the main process decides when a poll reaches GitHub. It spaces polls by GitHub's interval plus 1s, counted from the answer rather than the send, and takes the interval GitHub names after a slow_down. The panel ticks every second, one poll at a time, and counts only polls that reached GitHub. The review found four more ways to lose an approved sign-in, all fixed: a stalled request now times out after 15s; a dropped connection or a busy GitHub keeps waiting instead of ending the sign-in; a slow poll from an older code no longer clears a newer one; and once the token arrives it is kept while reading the account is retried, up to three tries. Tests in `tests/github-auth.test.ts` replay the stuck sign-in against a fake GitHub that enforces its interval                                                                                                                                                                                                                                                                                                                                                                     |
 | I-22 | On Windows with the taskbar set to hide itself, the maximise button left the taskbar on screen. View → Full Screen (F-39) covered it, and the maximise button didn't. The cause was not found: the window draws its own title bar (`titleBarStyle: 'hidden'` with an overlay), and the auto-hide taskbar does not slide away for it                                                                                                                                                                         | ✅ fixed by decision rather than diagnosis: on Windows the maximise button goes full screen (`src/main/wyrm/maximise.ts`), which is what a writer pressing it expects. Double-clicking the menu bar and Win+Up maximise too, so they also go full screen. The window is unmaximised first, so leaving full screen returns to the ordinary window instead of a maximised one that would come straight back. **The review found a way to get stranded:** in full screen, Windows draws none of the window's own minimise, restore and close buttons, and an ordinary maximise click now lands there. So the window tells the page when it enters and leaves full screen (`onFullScreenChanged`). The menu bar then shows **Exit Full Screen** where those buttons were, the View item reads Exit Full Screen, and the space kept for the buttons goes. Not verified on Windows                                                                                                                                                                                                                                                                                        |
 
 ---
