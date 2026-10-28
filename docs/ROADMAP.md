@@ -1026,18 +1026,37 @@ Requested 2026-10-27: "it's a bit of a frankenstein at the moment."
 
 Each one arrived with its own feature (F-01, F-40, Phase 5, F-43), so each has its own dialog, its own wording and its own idea of "saved".
 
-**The shape asked for:** one central element for saving and syncing. Its **Save to…** button offers:
+**The shape asked for** (2026-10-27, over three messages):
 
-- **Disk.** The writer then picks where: the local drive or an SD card (any removable drive). This is today's backup (F-40) under a plainer name.
-- **GitHub.** This opens the GitHub menu: sign in, connect, sync now, and sync settings.
+- **One Save screen** for saving and syncing. **File → Save** opens it.
+- **Save to…** offers two kinds of location:
+  - **Disk.** The writer then picks where: the local drive or an SD card (any removable drive). This is today's backup (F-40) under a plainer name.
+  - **GitHub.** This opens the GitHub screen.
+- **Several locations, up to three.** An add button adds another location, and each one can be removed. The first is the **primary**. A **Save to multiple locations** toggle, when turned off, removes every location but the primary. F-40 already keeps a list of backup locations with no limit, so the cap of three and the primary are new.
+- **The GitHub screen** holds everything about GitHub on one screen:
+  - Set up the account: sign in, see who is signed in, sign out.
+  - Sync this project with a repository that already exists.
+  - Create a new repository for it.
+  - Sync now.
+  - Later: views that track commits.
+
+**Probably belongs here too** (suggested, not yet agreed):
+
+- **What "saved" means.** The app already writes every keystroke to the project folder, so Save is really "make a checkpoint and copy it to every location". The screen should say when each location was last saved. F-40 already keeps that per location.
+- **Sync conflicts.** When both computers changed the same file, the conflict panel needs a home, and this screen is the obvious one.
+- **Automatic saving.** Today's "back up automatically" and sync-on-checkpoint settings.
+- **Disconnecting**, or switching a project to a different repository.
+- **Restoring.** Restore from Backup and Bring Down from GitHub are the same locations in the other direction.
+- **A status line** in the status bar that opens the screen: saved, saving, a location missing, or sync needs attention.
+- **The custom OAuth client ID** field, for writers who use their own GitHub app. It belongs in an "advanced" corner of the GitHub screen.
 
 **Open questions:**
 
-- Where the central element lives. It could be a menu entry, a button in the status bar, or both. The status bar already shows sync trouble, so it's the natural place for a single "your work is safe" indicator.
-- Whether ⌘S stays Commit Checkpoint, or becomes Save to… with the last-used destination.
+- Whether GitHub counts as one of the three locations or sits beside them. F-40 kept GitHub separate on purpose: it pulls as well as pushes, and it can conflict.
+- Whether ⌘S stays Commit Checkpoint or becomes Save.
 - What happens to History and Variants. They are about looking back, not keeping safe, and probably stay where they are.
-- Whether Bring Down from GitHub and Restore from Backup join as the reverse direction ("Open from…"), or stay with New and Open Project.
-- How an SD card is told apart from a fixed drive, and what happens when it is ejected between saves. F-40 already handles a backup location that is missing.
+- Which location is kept when the multiple-locations toggle is turned off: the first one added, or one the writer marks as primary.
+- How an SD card is told apart from a fixed drive. F-40 already treats a card that isn't plugged in as skipped, not failed.
 
 ## Known issues
 
