@@ -1088,10 +1088,10 @@ The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places")
 
 **Making a card read as a loose sheet** (decided 2026-10-28, from a mock-up):
 
-- **A paper clip** holds the default card to the folder, drawn in pixels in ink. When another card is dragged to the top, the clip moves to it.
+- **A paper clip** holds the default card to the folder, drawn in pixels in ink. Where its wires run side by side, at least one pixel of paper separates them, and a one-pixel paper outline keeps the clip clear of the card's border. When another card is dragged to the top, the clip moves to it.
 - **A slight tilt**: each card sits a little off straight.
 - **Paper grain**: a sparse speckle of ink on the card.
-- **An envelope flap** drawn across each card in a dotted line.
+- **No flap line.** A dotted envelope flap across each card was tried and dropped, because it didn't read as an envelope.
 - **No pocket.** A pocket lip over the bottom of the stack was considered and dropped, because nothing the writer can click should be hidden.
 - **Dragging a card**: it lifts, its offset shadow grows, and the clip moves to whichever card lands on top.
 
