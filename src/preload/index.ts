@@ -14,6 +14,17 @@ import type {
   WyrmApi
 } from '../shared/types'
 
+// Main's quit request is answered at once, before the listener does any
+// work: the answer tells main the window is alive and dealing with it, so
+// main waits as long as the save and any question to the writer take. With
+// no listener there is no answer, and main quits after its grace period.
+let quitListener: (() => void) | null = null
+ipcRenderer.on('app:quit-requested', () => {
+  if (!quitListener) return
+  ipcRenderer.send('app:quit-ack')
+  quitListener()
+})
+
 const api: WyrmApi = {
   createProject: (title) => ipcRenderer.invoke('project:create', title),
   openProject: () => ipcRenderer.invoke('project:open'),
@@ -109,7 +120,14 @@ const api: WyrmApi = {
 
   toggleFullScreen: () => ipcRenderer.invoke('window:toggleFullScreen'),
   setTitleBarOverlay: (color, symbolColor) =>
-    ipcRenderer.invoke('window:titleBarOverlay', color, symbolColor)
+    ipcRenderer.invoke('window:titleBarOverlay', color, symbolColor),
+  quitApp: () => ipcRenderer.invoke('app:quit'),
+  onQuitRequested: (listener) => {
+    quitListener = listener
+    return () => {
+      if (quitListener === listener) quitListener = null
+    }
+  }
 }
 
 contextBridge.exposeInMainWorld('wyrm', api)

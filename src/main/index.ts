@@ -1,9 +1,10 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { TITLE_BAR_OVERLAY_HEIGHT } from '../shared/types'
 import { registerIpc } from './wyrm/ipc'
+import { createQuitGate } from './wyrm/quitGate'
 
 function createWindow(): void {
   // Create the browser window.
@@ -43,6 +44,15 @@ function createWindow(): void {
       sandbox: false,
       spellcheck: false
     }
+  })
+
+  // On Windows and Linux the close box is how the app is quit (closing the
+  // last window quits it), so it goes the way every quit goes: the window
+  // saves first. Let through once the quit is under way.
+  mainWindow.on('close', (e) => {
+    if (process.platform === 'darwin' || quitGate.isQuitting()) return
+    e.preventDefault()
+    app.quit()
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -87,6 +97,24 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+// Every way to quit — File → Quit, ⌘Q, the app menu, the Dock, and the close
+// box off the Mac — goes through the window first, so the page is saved and every open project
+// checkpointed before the app goes (`wyrm/quitGate.ts`).
+const quitGate = createQuitGate({
+  ask: () => {
+    const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
+    if (!win) return false
+    win.webContents.send('app:quit-requested')
+    return true
+  },
+  quit: () => app.quit(),
+  setTimer: (fn, ms) => setTimeout(fn, ms),
+  clearTimer: (timer) => clearTimeout(timer as NodeJS.Timeout)
+})
+app.on('before-quit', (e) => quitGate.beforeQuit(() => e.preventDefault()))
+ipcMain.on('app:quit-ack', () => quitGate.acknowledged())
+ipcMain.handle('app:quit', () => quitGate.quitNow())
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

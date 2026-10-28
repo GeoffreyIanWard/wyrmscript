@@ -5612,3 +5612,16 @@ button.string-label:focus-visible {
   background: radial-gradient(circle, transparent 0 0.9px, var(--paper) 1.4px) 0 0 / 3px 3px;
   pointer-events: none;
 }
+
+/* Quitting (F-49): the whole window, while every part saves as it closes. */
+.quitting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-family: var(--font-chrome);
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--paper);
+}

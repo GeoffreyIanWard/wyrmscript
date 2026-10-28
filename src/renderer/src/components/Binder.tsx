@@ -88,6 +88,10 @@ function BinderRow({
 
   const isFolder = node.type === 'folder'
   const isOpenFolder = isFolder && mainView.kind === 'folder' && mainView.id === node.id
+  // The open document stays loaded behind a folder, an entry or the stats,
+  // but it is only *the* selected row while it is what is showing; otherwise
+  // it sat highlighted beside the folder being browsed (I-20).
+  const isOpenDoc = node.id === activeId && mainView.kind === 'doc'
   const hint = dropHint?.id === node.id ? dropHint.position : null
 
   const positionFor = (e: DragEvent<HTMLDivElement>): DropPosition => {
@@ -103,7 +107,7 @@ function BinderRow({
       data-node-type={node.type}
       className={[
         'binder-row',
-        node.id === activeId || isOpenFolder ? 'selected' : '',
+        isOpenDoc || isOpenFolder ? 'selected' : '',
         node.id === cursorId ? 'cursor' : '',
         hint ? `drop-${hint}` : ''
       ]

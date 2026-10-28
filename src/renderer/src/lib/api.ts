@@ -933,9 +933,76 @@ export function createMockApi(): WyrmApi {
     },
     async setTitleBarOverlay(): Promise<void> {
       // Windows-only native chrome; nothing to recolour in a browser tab.
+    },
+    async quitApp(): Promise<void> {
+      // A tab cannot quit the browser; closing it is the nearest thing, and
+      // browsers allow it only for a tab a script opened.
+      window.close()
+    },
+    onQuitRequested(): () => void {
+      // Nothing outside the tab ever asks it to quit.
+      return () => {}
     }
   }
 }
 
-export const api: WyrmApi = window.wyrm ?? createMockApi()
+/**
+ * Every call to the bridge still in flight. Quitting closes the whole UI so
+ * that each part saves the way it does when it closes — the page, a card's
+ * back, a name being typed on the map, a nudge waiting to settle — and then
+ * waits for those writes here, rather than every component reporting its
+ * own (F-49).
+ */
+const inFlight = new Set<Promise<unknown>>()
+
+function track(result: Promise<unknown>): void {
+  inFlight.add(result)
+  result.then(
+    () => inFlight.delete(result),
+    () => inFlight.delete(result)
+  )
+}
+
+/** For tests: a call a spy has replaced is not tracked, so say it is. */
+export const __trackInFlight = track
+
+function tracked(raw: WyrmApi): WyrmApi {
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(raw)) {
+    const fn = (raw as unknown as Record<string, unknown>)[key]
+    if (typeof fn !== 'function') {
+      out[key] = fn
+      continue
+    }
+    out[key] = (...args: unknown[]) => {
+      const result = fn.apply(raw, args)
+      if (result instanceof Promise) track(result)
+      return result
+    }
+  }
+  return out as unknown as WyrmApi
+}
+
+/**
+ * Resolves true once nothing is in flight — including anything started
+ * while it waited — or false if `ms` passes first.
+ */
+/** For tests: the tracking wrapper, around any object of calls. */
+export const __tracked = tracked as unknown as <T extends object>(raw: T) => T
+
+export async function apiSettled(ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms
+  while (inFlight.size > 0) {
+    const left = deadline - Date.now()
+    if (left <= 0) return false
+    const timedOut = await Promise.race([
+      Promise.allSettled([...inFlight]).then(() => false),
+      new Promise<boolean>((done) => setTimeout(() => done(true), left))
+    ])
+    if (timedOut) return false
+  }
+  return true
+}
+
+export const api: WyrmApi = tracked(window.wyrm ?? createMockApi())
 export const isElectron = Boolean(window.wyrm)
