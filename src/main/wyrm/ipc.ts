@@ -665,7 +665,7 @@ export function registerIpc(): void {
   // Real OS fullscreen, which is what actually covers the Windows taskbar —
   // maximize never does. Returns the resulting state rather than letting the
   // renderer track its own copy, which would drift the moment the window is
-  // un-fullscreened by any other route (Esc on macOS, the caption buttons).
+  // un-fullscreened by any other route (Esc on macOS, the maximise button on Windows).
   ipcMain.handle('window:toggleFullScreen', () => {
     const win = focusedWindow()
     if (!win) return false

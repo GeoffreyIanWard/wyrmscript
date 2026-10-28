@@ -942,6 +942,10 @@ export function createMockApi(): WyrmApi {
     onQuitRequested(): () => void {
       // Nothing outside the tab ever asks it to quit.
       return () => {}
+    },
+    onFullScreenChanged(): () => void {
+      // The tab has no OS window of its own to take full screen.
+      return () => {}
     }
   }
 }

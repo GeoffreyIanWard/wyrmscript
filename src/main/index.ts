@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { TITLE_BAR_OVERLAY_HEIGHT } from '../shared/types'
 import { registerIpc } from './wyrm/ipc'
+import { maximiseAsFullScreen } from './wyrm/maximise'
 import { createQuitGate } from './wyrm/quitGate'
 
 function createWindow(): void {
@@ -54,6 +55,12 @@ function createWindow(): void {
     e.preventDefault()
     app.quit()
   })
+
+  maximiseAsFullScreen(mainWindow, process.platform)
+  // Told to the page so it can offer a way back: on Windows, full screen
+  // takes the window's own minimise, restore and close buttons away.
+  mainWindow.on('enter-full-screen', () => mainWindow.webContents.send('window:fullscreen', true))
+  mainWindow.on('leave-full-screen', () => mainWindow.webContents.send('window:fullscreen', false))
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()

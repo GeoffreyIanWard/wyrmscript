@@ -26,6 +26,10 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'The binder',
     body: 'Your manuscript as a tree of documents and folders. A novel is written in pieces here rather than as one long file, and the order of this list is the order of the book. Drag a row to move a scene.'
   },
+  'exit-full-screen': {
+    title: 'Exit Full Screen',
+    body: 'Back to the ordinary window. F11 or View → Full Screen does the same.'
+  },
   trash: {
     title: 'Trash',
     body: 'Deleted documents wait here rather than leaving. Nothing in WyrmStar is ever truly lost: even emptying this keeps the text in the project history, where it can still be recovered.'

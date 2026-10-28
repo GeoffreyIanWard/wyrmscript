@@ -127,6 +127,13 @@ const api: WyrmApi = {
     return () => {
       if (quitListener === listener) quitListener = null
     }
+  },
+  onFullScreenChanged: (listener) => {
+    const relay = (_e: Electron.IpcRendererEvent, fullScreen: boolean): void => listener(fullScreen)
+    ipcRenderer.on('window:fullscreen', relay)
+    return () => {
+      ipcRenderer.off('window:fullscreen', relay)
+    }
   }
 }
 

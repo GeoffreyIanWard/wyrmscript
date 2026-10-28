@@ -36,6 +36,8 @@ type MenuBarProps = {
   onFocusMode: () => void
   /** F-39: real OS fullscreen, distinct from Focus Mode's in-window declutter. */
   onFullScreen: () => void
+  /** Whether the window is full screen now, so the way back can be offered. */
+  fullScreen?: boolean
   /** Set by App to a function that moves keyboard focus into the menu bar (F-07). */
   registerFocusMenus?: (focus: () => void) => void
 }
@@ -62,6 +64,7 @@ export function MenuBar({
   focusMode,
   onFocusMode,
   onFullScreen,
+  fullScreen = false,
   registerFocusMenus
 }: MenuBarProps): JSX.Element {
   const [open, setOpen] = useState<string | null>(null)
@@ -280,7 +283,7 @@ export function MenuBar({
           // is a property of the window, not of the manuscript, and the
           // Welcome screen is exactly where someone might want it too.
           kind: 'item',
-          label: 'Full Screen',
+          label: fullScreen ? 'Exit Full Screen' : 'Full Screen',
           shortcut: 'F11',
           action: onFullScreen
         },
@@ -596,6 +599,20 @@ export function MenuBar({
             )}
           </div>
         ))}
+        {fullScreen && (
+          // On Windows, full screen takes away the window's own minimise,
+          // restore and close buttons, and maximise now lands there (I-22).
+          // This is the way back, where those buttons were.
+          <button
+            type="button"
+            className="menu-exit-full-screen"
+            data-help="exit-full-screen"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onFullScreen}
+          >
+            Exit Full Screen
+          </button>
+        )}
       </div>
       {open !== null && <div className="menu-overlay" onMouseDown={() => setOpen(null)} />}
     </>
