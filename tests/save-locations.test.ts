@@ -436,13 +436,13 @@ describe('the stored order', () => {
       await import('../src/main/wyrm/settings')
     await addBackupTarget(PROJECT, '/Volumes/CARD/Winter.wyrm.git')
     await addBackupTarget(PROJECT, '/Users/me/Backups/Winter.wyrm.git')
-    let [card, folder] = (await readBackupSettings(PROJECT)).targets
+    const [card, folder] = (await readBackupSettings(PROJECT)).targets
     expect(card.removable).toBe(true)
     expect(folder.removable).toBe(false)
     await updateBackupTarget(PROJECT, card.id, { removable: false })
     await writeSaveSettings(PROJECT, { auto: true })
-    ;[card] = (await readBackupSettings(PROJECT)).targets
-    expect(card.removable).toBe(false)
+    const [after] = (await readBackupSettings(PROJECT)).targets
+    expect(after.removable).toBe(false)
   })
 
   it('is absent until the writer reorders', async () => {
