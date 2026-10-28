@@ -1030,6 +1030,71 @@ The test that matters most is the last one: after cloning, **the sync engine run
 
 **Today's workaround, and why it is not good enough:** clone by hand and use Open Project. It works, but the app sees `mode: 'unset'` with a `remoteUrl` present, so the writer is asked to choose a sync path for a project that already has one, then walked through connect-project to re-attach a remote that is already in `.git/config`.
 
+### F-50 · One "Save to…" for saving and syncing 📋
+
+Replace today's scattered save, backup and sync controls with one place to keep the work safe, built around a single **Save to…** button.
+
+Requested 2026-10-27: "it's a bit of a frankenstein at the moment."
+
+**What's there today**, spread across two menus and the status bar:
+
+- File: Commit Checkpoint… (⌘S), History, Variants…, and Bring Down from GitHub…
+- Project: Backup…, Sync Now, and Sync Settings…
+- The status bar: the needs-attention flag when a sync fails.
+
+Each one arrived with its own feature (F-01, F-40, Phase 5, F-43), so each has its own dialog, its own wording and its own idea of "saved".
+
+**The shape** (agreed 2026-10-27, over four messages):
+
+**One element, laid out as a file drawer.** It looks like a real filing system, with a folder tab for each screen. That could become the design language for other menus too. **File → Save** opens it. The tabs:
+
+- **Save to.** Where the work is kept.
+  - Each location is a **horizontal envelope card** in a vertical list. A card says what the location is, and **when it was last saved**.
+  - The **top card is the default.** Drag the cards to reorder them, and another one becomes the default.
+  - **Add** a location, up to **three**: **Disk** (the local drive or an SD card) or **GitHub**. GitHub counts as a location like any other. A writer may keep only a GitHub copy, which also suits devices that don't handle a file system well.
+  - **Remove** any location but the last. There is always at least one.
+  - **Switching repositories is not its own action.** Add the new one and remove the old.
+  - A **Save to multiple locations** toggle. Turning it off removes every card but the default.
+- **Restore from.** The same kind of screen in the other direction: bring a project back from a backup on disk or from GitHub. It replaces Restore from Backup and Bring Down from GitHub as separate entries.
+- **Settings.** Automatic saving and sync: how often, and whether a checkpoint syncs.
+- **GitHub.** Everything about GitHub on one screen:
+  - **Connection status**, with a prompt to reconnect when it isn't connected.
+  - The account: sign in, switch account, sign out.
+  - Connect this project to a repository that already exists, or create a new one.
+  - Disconnect.
+  - **Force sync.**
+  - Later: views that track commits.
+- **Conflicts.** At least a way into a dedicated place for resolving sync conflicts.
+
+**Resolving conflicts, visually** (to brainstorm further). The idea is a skeuomorphic merge: each side's changed text is broken into separate text-block cards, and the writer drags the blocks they want to keep into the document where they belong. It's a resolution the writer can see and touch, not a choice between two versions of a file.
+
+**The status line: one envelope per location** (chosen 2026-10-27 from two mock-ups). At the right of the status bar sits a small envelope for each location, in drawer order, default first, followed by the time since the last save. Clicking it opens the drawer, and clicking an envelope opens that location's card.
+
+- **Saved:** every envelope filled.
+- **Saving:** envelopes fill in as each location is written.
+- **A location missing:** that envelope is drawn dashed.
+- **Needs attention:** that envelope is marked, and the line ends in "!".
+
+The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places"). It was clearer to read, but the envelopes match the drawer's cards.
+
+**When a location can't be reached** (decided 2026-10-27): its card says **Broken connection!** Hovering over that shows the particular cause, such as "SD card not connected" or "GitHub unreachable". The same tooltip shows on the location's envelope in the status line.
+
+**Still to design:**
+
+- **How the file drawer looks.** The tabs, the envelope cards, and how dragging a card into the default slot reads.
+
+**Settled questions:**
+
+- GitHub counts as one of the three locations.
+- Removing a GitHub location disconnects the project from the repository. It never deletes the repository.
+- The first location is the default, and reordering the cards changes it.
+- History and Variants stay where they are. They are about looking back, not keeping safe.
+
+**Open questions:**
+
+- Whether ⌘S stays Commit Checkpoint or becomes Save.
+- How an SD card is told apart from a fixed drive. F-40 already treats a card that isn't plugged in as skipped, not failed.
+
 ## Known issues
 
 | ID   | Issue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
