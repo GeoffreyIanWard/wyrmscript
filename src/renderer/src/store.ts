@@ -493,6 +493,8 @@ interface WyrmState {
   saveEverywhere(): Promise<SaveEverywhere>
   /** F-50: store the drawer's card order (location ids, default first). */
   setSaveOrder(order: string[]): Promise<void>
+  /** F-50 step 4: say whether a backup's drive is removable. */
+  setTargetRemovable(targetId: string, removable: boolean): Promise<void>
   /** F-50 step 3: the Settings tab — how often save points are made, and where they go. */
   setSaveSettings(patch: SaveSettingsPatch): Promise<void>
   /** Restore a backup into a new project and open it. True if one was opened. */
@@ -2269,6 +2271,14 @@ export const useWyrm = create<WyrmState>((set, get) => {
           .catch((e: unknown) => ({ status: 'error', detail: errorMessage(e) }) as const)
       }
       return result
+    },
+
+    async setTargetRemovable(targetId, removable) {
+      const { project } = get()
+      if (!project) return
+      const path = project.path
+      const settings = await api.setTargetRemovable(path, targetId, removable)
+      patchSliceAt(path, () => ({ backupSettings: settings }))
     },
 
     async setSaveSettings(patch) {

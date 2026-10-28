@@ -89,6 +89,78 @@ describe('the cards', () => {
   })
 })
 
+describe('removable drives', () => {
+  it('warns as a card is added, by its name', async () => {
+    renderDrawer()
+    await waitFor(() => expect(cardNames()).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'A Drive or Card…' }))
+    await waitFor(() => expect(cardNames()).toHaveLength(2))
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /Backup is removable: saves skip it whenever it is not plugged in/
+    )
+    const card = screen.getAllByRole('listitem')[1]
+    expect(
+      within(card).getByRole('checkbox', { name: 'Removable drive' }).getAttribute('aria-checked')
+    ).toBe('true')
+  })
+
+  it('says nothing when the drive added is one that is always there', async () => {
+    vi.spyOn(api, 'chooseBackupLocation').mockImplementation(async (p) => {
+      const current = await api.getBackupSettings(p)
+      return {
+        ...current,
+        targets: [
+          ...current.targets,
+          {
+            id: 'fixed',
+            path: '/Users/me/Backups/W.wyrm.git',
+            lastBackupAt: null,
+            removable: false
+          }
+        ]
+      }
+    })
+    renderDrawer()
+    await waitFor(() => expect(cardNames()).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'A Drive or Card…' }))
+    await waitFor(() => expect(cardNames()).toHaveLength(2))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('lets the writer correct the guess, and warns when one is made removable', async () => {
+    const [drive] = await addDrives(1)
+    const write = vi.spyOn(api, 'setTargetRemovable')
+    renderDrawer()
+    const toggle = await screen.findByRole('checkbox', { name: 'Removable drive' })
+    await act(async () => {
+      fireEvent.click(toggle)
+    })
+    expect(write).toHaveBeenCalledWith(path, drive, false)
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
+    expect(screen.queryByRole('alert')).toBeNull()
+    await act(async () => {
+      fireEvent.click(toggle)
+    })
+    expect(write).toHaveBeenLastCalledWith(path, drive, true)
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Backup is removable/)
+  })
+
+  it('calls a missing fixed drive not found, rather than not connected', async () => {
+    const [drive] = await addDrives(1)
+    await api.setTargetRemovable(path, drive, false)
+    vi.spyOn(api, 'checkSaveLocations').mockResolvedValue({
+      unreachable: [drive],
+      behind: [],
+      diverged: []
+    })
+    renderDrawer()
+    await screen.findByText(/Broken connection!/)
+    expect(screen.getByRole('tooltip', { hidden: true }).textContent).toBe('Drive not found')
+  })
+})
+
 describe('the GitHub card', () => {
   it('says GitHub is unreachable after a sync that could not reach it', async () => {
     vi.spyOn(api, 'getSyncStatus').mockResolvedValue(SYNCED)

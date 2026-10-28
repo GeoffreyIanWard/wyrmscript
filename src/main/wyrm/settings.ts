@@ -15,6 +15,7 @@ import {
   SAVE_EVERY_CHOICES
 } from '../../shared/types'
 import { randomUUID } from 'node:crypto'
+import { guessRemovable } from '../../shared/removable'
 import type {
   BackupSettings,
   BackupTarget,
@@ -214,7 +215,16 @@ export async function addBackupTarget(projectPath: string, path: string): Promis
   // it twice in the panel; treat a repeat add as a no-op.
   if (current.targets.some((t) => t.path === path)) return current
   return writeBackupSettings(projectPath, {
-    targets: [...current.targets, { id: randomUUID(), path, lastBackupAt: null }]
+    targets: [
+      ...current.targets,
+      {
+        id: randomUUID(),
+        path,
+        lastBackupAt: null,
+        // The first guess (F-50 step 4); the writer can change it on the card.
+        removable: guessRemovable(path, process.env.SystemDrive)
+      }
+    ]
   })
 }
 

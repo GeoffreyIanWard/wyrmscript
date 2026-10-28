@@ -3582,6 +3582,11 @@ button.map-place-name {
   font-size: 11px;
 }
 
+.save-card-removable {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
 /* Reversed out, the way the bar marks an alert: an ink block, paper text. */
 .broken-connection {
   position: relative;

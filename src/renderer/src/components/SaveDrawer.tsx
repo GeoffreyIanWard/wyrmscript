@@ -10,7 +10,9 @@ import {
   brokenReason,
   describeLocation,
   DIVERGED,
-  isRemovable,
+  driveName,
+  removableWarning,
+  canBeRemoved,
   MAX_LOCATIONS,
   moveLocation,
   removedBySingle,
@@ -20,6 +22,7 @@ import {
   type SaveLocation
 } from '../lib/saveLocations'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { guessRemovable } from '../../../shared/removable'
 import { useWyrm } from '../store'
 import { BringDownPanel } from './BringDownPanel'
 import { SaveDrawerGitHub } from './SaveDrawerGitHub'
@@ -338,11 +341,29 @@ export function SaveDrawer({
     setNote(null)
     setAddOpen(false)
     setBusy('add')
+    const before = new Set((backupSettings?.targets ?? []).map((t) => t.id))
     void useWyrm
       .getState()
       .chooseBackupLocation()
+      .then(() => {
+        // Said as the drive arrives, when the guess is that it is removable;
+        // the switch on its card is there if the guess is wrong (F-50 step 4).
+        const added = useWyrm.getState().backupSettings?.targets.find((t) => !before.has(t.id))
+        if (added && (added.removable ?? guessRemovable(added.path))) {
+          setNote(removableWarning(driveName(added.path)))
+        }
+      })
       .catch((e: unknown) => setError(errorMessage(e)))
       .finally(() => setBusy(null))
+  }
+
+  const toggleRemovable = (targetId: string, removable: boolean, name: string): void => {
+    setError(null)
+    void useWyrm
+      .getState()
+      .setTargetRemovable(targetId, removable)
+      .then(() => setNote(removable ? removableWarning(name) : null))
+      .catch((e: unknown) => setError(errorMessage(e)))
   }
 
   const remove = async (location: SaveLocation): Promise<void> => {
@@ -502,6 +523,22 @@ export function SaveDrawer({
                           <div className="save-card-detail" title={detail}>
                             {detail}
                           </div>
+                          {location.kind === 'disk' && (
+                            <button
+                              type="button"
+                              role="checkbox"
+                              aria-checked={location.removable}
+                              className="control-row save-card-removable"
+                              data-help="save-removable"
+                              disabled={busy != null}
+                              onClick={() =>
+                                toggleRemovable(location.id, !location.removable, name)
+                              }
+                            >
+                              <span className={`check${location.removable ? ' on' : ''}`} />
+                              <span>Removable drive</span>
+                            </button>
+                          )}
                           {problem != null && <div className="error-text">{problem}</div>}
                           {diverged.includes(location.id) && (
                             <div className="error-text">{DIVERGED}</div>
@@ -521,7 +558,7 @@ export function SaveDrawer({
                                 : 'Never saved'}
                             </span>
                           )}
-                          {isRemovable(location) && (
+                          {canBeRemoved(location) && (
                             <button
                               type="button"
                               className="btn small"

@@ -30,6 +30,10 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'A place your work is kept',
     body: 'The top card is the default. Drag a card, or press ⌥↑ and ⌥↓ on it, to change the order. This computer is always here; the others can be removed, and removing one never deletes the copy.'
   },
+  'save-removable': {
+    title: 'Removable drive',
+    body: 'A card or a stick that is not always plugged in. Saves skip it while it is out, and its envelope is dashed, not an alarm. A drive that is not removable should always be there, so if it goes missing its envelope is marked !.'
+  },
   'save-add-location': {
     title: 'Add Location',
     body: 'Keep another copy on a drive, a card, or GitHub. Up to three places, counting this computer.'

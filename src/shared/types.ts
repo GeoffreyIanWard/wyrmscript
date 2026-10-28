@@ -901,6 +901,14 @@ export interface BackupTarget {
    * normal case, not a fault.
    */
   lastBackupAt: number | null
+  /**
+   * F-50 step 4: a card or a stick rather than a drive that is always there.
+   * A removable drive that is missing is skipped quietly (F-40); a fixed one
+   * that is missing needs the writer. Guessed when the drive is added
+   * (`guessRemovable`), then the writer's to change; absent on targets added
+   * before this, which are guessed when read.
+   */
+  removable?: boolean
 }
 
 export interface BackupSettings {
@@ -1166,6 +1174,8 @@ export interface WyrmApi {
   chooseBackupLocation(path: string): Promise<BackupSettings | null>
   setBackupAuto(path: string, auto: boolean): Promise<BackupSettings>
   removeBackupTarget(path: string, targetId: string): Promise<BackupSettings>
+  /** F-50 step 4: say whether a backup's drive is removable. */
+  setTargetRemovable(path: string, targetId: string, removable: boolean): Promise<BackupSettings>
   /** F-50 step 3: change how often save points are made and where they go on their own. */
   setSaveSettings(path: string, patch: SaveSettingsPatch): Promise<BackupSettings>
   /** F-50: store the Save to drawer's card order (location ids, default first). */
