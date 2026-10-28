@@ -62,6 +62,26 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'Trash',
     body: 'Deleted documents wait here rather than leaving. Nothing in WyrmStar is ever truly lost: even emptying this keeps the text in the project history, where it can still be recovered.'
   },
+  'scratch-pad': {
+    title: 'Scratch Pad',
+    body: 'Text you want to keep but not in the book: passages moved here with Edit → Move to Scratch Pad (⇧⌘X), and notes. It is never compiled, counted or put on the corkboard, but Find in Project searches it. The number is how many scraps are on it.'
+  },
+  'scratch-pad-view': {
+    title: 'The scratch pad',
+    body: 'Each sheet is one scrap, newest on top, saying where it came from and when. Write on any of them, and copy from them back onto the page: bold, italic and highlight come with the text. Esc goes back to where you were.'
+  },
+  'scratch-new-note': {
+    title: 'New Note',
+    body: 'A blank sheet at the top of the pad, to write on. A note left without a word in it is not kept.'
+  },
+  'scratch-go-to': {
+    title: 'Go to the chapter',
+    body: 'Opens the document this scrap was cut from, to put it back. Shown while that document is still in the binder.'
+  },
+  'scratch-throw-away': {
+    title: 'Throw Away',
+    body: 'Takes the scrap off the pad, after asking. A save point is made first, so its text stays in the project’s history.'
+  },
   'entity-panel': {
     title: 'The story bible',
     body: 'Characters, places and terms, each its own entry. Anything you name here is found automatically in your prose and quietly linked — the link is drawn over the text, never written into it, so your manuscript stays plain words.'

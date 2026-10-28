@@ -12,6 +12,7 @@ import { HelpLayer } from './components/HelpLayer'
 import { CloneDialog } from './components/CloneDialog'
 import { StatsPage } from './components/StatsPage'
 import { TagBrowser } from './components/TagBrowser'
+import { ScratchPad } from './components/ScratchPad'
 import { TimelineDialog } from './components/TimelineDialog'
 import { PlotGraphDialog } from './components/PlotGraphDialog'
 import { PlotlinesDialog } from './components/PlotlinesDialog'
@@ -460,6 +461,7 @@ function MainPane({
   if (mainView.kind === 'folder') return <FolderView key={mainView.id} folderId={mainView.id} />
   if (mainView.kind === 'stats') return <StatsPage />
   if (mainView.kind === 'tags') return <TagBrowser />
+  if (mainView.kind === 'scratch') return <ScratchPad />
   if (mainView.kind === 'map') return <WorldMap />
   if (mainView.kind === 'corkboard')
     return (
@@ -710,6 +712,19 @@ function App(): JSX.Element {
         // ⇧⌘S — Writing Stats page (F-26).
         e.preventDefault()
         state.showStats()
+      } else if (e.shiftKey && !e.altKey && e.key.toLowerCase() === 'x' && state.activeDoc) {
+        // ⇧⌘X — Move to Scratch Pad (F-51). Shift must really be held, never
+        // inferred from an uppercase key: with Caps Lock on, ⌘X reports "X",
+        // and an ordinary cut must never become a move. Only with focus in
+        // the page itself: in a tag or rename field (or a dialog) the page
+        // keeps its selection but nobody can see it, and moving text the
+        // writer cannot see is not a cut they chose. Once per press: a held
+        // key repeats.
+        const page = state.editor?.view.dom
+        if (!page || !page.contains(document.activeElement)) return
+        e.preventDefault()
+        if (e.repeat) return
+        void state.moveToScratchPad()
       } else if (e.key === 'q' && !e.shiftKey && !e.altKey) {
         // ⌘Q (Ctrl+Q off the Mac). On the Mac the app menu's own ⌘Q usually
         // gets there first; either way it is the same quit, saving first.
@@ -1042,6 +1057,12 @@ function App(): JSX.Element {
                   title: 'Keyboard Shortcuts…',
                   subtitle: 'WyrmStar',
                   run: () => setShortcutsOpen(true)
+                },
+                {
+                  id: 'scratch-pad',
+                  title: 'Scratch Pad',
+                  subtitle: 'Project',
+                  run: () => useWyrm.getState().showScratchPad()
                 },
                 {
                   id: 'corkboard',

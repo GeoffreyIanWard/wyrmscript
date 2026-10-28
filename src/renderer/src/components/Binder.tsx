@@ -4,7 +4,15 @@ import type { BinderNode, EntitySortMode, EntityType } from '../../../shared/typ
 import type { DropPosition } from '../lib/tree'
 import { defaultSortMode, sortEntities, sortModesFor } from '../lib/entitySort'
 import { useWyrm } from '../store'
-import { CharacterIcon, DocIcon, FolderIcon, GlossaryIcon, TrashIcon, WorldIcon } from './icons'
+import {
+  CharacterIcon,
+  DocIcon,
+  FolderIcon,
+  GlossaryIcon,
+  PadIcon,
+  TrashIcon,
+  WorldIcon
+} from './icons'
 
 const SORT_LABELS: Record<EntitySortMode, string> = {
   pin: 'Pin',
@@ -298,6 +306,9 @@ export function Binder(): JSX.Element {
   const selectDoc = useWyrm((s) => s.selectDoc)
   const showFolder = useWyrm((s) => s.showFolder)
   const renamingId = useWyrm((s) => s.renamingId)
+  const scrapCount = useWyrm((s) => s.scraps.length)
+  const padOpen = useWyrm((s) => s.mainView.kind === 'scratch')
+  const showScratchPad = useWyrm((s) => s.showScratchPad)
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -436,6 +447,20 @@ export function Binder(): JSX.Element {
       >
         {renderNodes(project.data.binder, 0, false)}
         <div className="binder-sep" />
+        {/* F-51: beside the Trash, and like it never part of the book. */}
+        <div
+          className={`binder-row${padOpen ? ' selected' : ''}`}
+          data-node-type="scratch"
+          data-help="scratch-pad"
+          onClick={() => showScratchPad()}
+        >
+          <span className="twist" aria-hidden />
+          <span className="glyph">
+            <PadIcon />
+          </span>
+          <span className="row-title">Scratch Pad</span>
+          {scrapCount > 0 && <span className="entity-count">{scrapCount}</span>}
+        </div>
         <div
           className="binder-row"
           data-node-type="trash"

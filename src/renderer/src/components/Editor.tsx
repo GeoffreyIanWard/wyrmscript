@@ -2,11 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { JSX, MouseEvent } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
-import StarterKit from '@tiptap/starter-kit'
-import Highlight from '@tiptap/extension-highlight'
 import type { Entity } from '../../../shared/types'
 import { DOC_PINS, SCENE_TAG, type EntityType } from '../../../shared/types'
 import { markdownToDoc } from '../lib/markdown'
+import { proseExtensions } from '../lib/proseKit'
 import { EntityLinks } from '../lib/entityLinks'
 import { BlockCursor } from '../lib/blockCursor'
 import { TypewriterScroll } from '../lib/typewriterScroll'
@@ -215,21 +214,7 @@ export function Editor(): JSX.Element {
     {
       content: activeDoc ? markdownToDoc(activeDoc.body) : undefined,
       extensions: [
-        StarterKit.configure({
-          blockquote: false,
-          bulletList: false,
-          orderedList: false,
-          listItem: false,
-          listKeymap: false,
-          heading: false,
-          codeBlock: false,
-          code: false,
-          horizontalRule: false,
-          strike: false,
-          underline: false,
-          link: false
-        }),
-        Highlight,
+        ...proseExtensions(),
         BlockCursor,
         TypewriterScroll.configure({
           getEnabled: () => useWyrm.getState().typewriterMode

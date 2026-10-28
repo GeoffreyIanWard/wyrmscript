@@ -590,6 +590,35 @@ export interface BoardSticker {
   modified: string
 }
 
+/**
+ * F-51: how a scrap came to be on the scratch pad. `cut` is Move to Scratch
+ * Pad from the editor; `local` and `incoming` are cards kept from a merge,
+ * this computer's and the other one's. A note written on the pad has none.
+ */
+export const SCRAP_HOWS = ['cut', 'local', 'incoming'] as const
+export type ScrapHow = (typeof SCRAP_HOWS)[number]
+
+/**
+ * F-51: a scrap on the scratch pad — text the writer could not bear to lose
+ * and does not want in the book. One file per scrap (`scratch/<id>.md`),
+ * never one pad file, so two computers adding to the pad never conflict.
+ * Never compiled, counted or put on the board: none of those read this
+ * folder.
+ */
+export interface Scrap {
+  id: string
+  /** Markdown, exactly as a document body is stored. */
+  body: string
+  created: string
+  modified: string
+  /** Absent for a note written on the pad. */
+  how?: ScrapHow
+  /** The document it came from, and that document's title at the time — kept
+   *  so the scrap still names a chapter renamed or thrown away since. */
+  fromDoc?: string
+  fromTitle?: string
+}
+
 export interface BoardString {
   id: string
   from: StringEnd
@@ -1022,7 +1051,8 @@ export type SignInPoll =
 export interface SyncConflict {
   /** Repo-relative path — the id the resolution answers by. */
   path: string
-  kind: 'doc' | 'entity' | 'project' | 'file'
+  /** `scrap`: a note on the scratch pad (F-51), changed on both devices. */
+  kind: 'doc' | 'entity' | 'scrap' | 'project' | 'file'
   /** Human name: document title, entity name, or a file label. */
   title: string
   /** Body text on this device; null means it was deleted here. */
@@ -1125,6 +1155,11 @@ export interface WyrmApi {
   listBoardStickers(path: string): Promise<BoardSticker[]>
   writeBoardSticker(path: string, s: BoardSticker): Promise<void>
   deleteBoardSticker(path: string, id: string): Promise<void>
+
+  /** F-51: the scratch pad, one file per scrap. */
+  listScraps(path: string): Promise<Scrap[]>
+  writeScrap(path: string, scrap: Scrap): Promise<void>
+  deleteScrap(path: string, id: string): Promise<void>
 
   /** Show a save dialog and write compiled output. Returns the path, or null if cancelled.
    *  `dialog` names the save dialog for what is being written (Compile by default). */

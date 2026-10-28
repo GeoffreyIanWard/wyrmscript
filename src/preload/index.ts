@@ -11,6 +11,7 @@ import type {
   Plotline,
   ProjectData,
   Relationship,
+  Scrap,
   WyrmApi
 } from '../shared/types'
 
@@ -77,6 +78,9 @@ const api: WyrmApi = {
   listBoardStickers: (path) => ipcRenderer.invoke('boardSticker:list', path),
   writeBoardSticker: (path, s: BoardSticker) => ipcRenderer.invoke('boardSticker:write', path, s),
   deleteBoardSticker: (path, id) => ipcRenderer.invoke('boardSticker:delete', path, id),
+  listScraps: (path) => ipcRenderer.invoke('scrap:list', path),
+  writeScrap: (path, scrap: Scrap) => ipcRenderer.invoke('scrap:write', path, scrap),
+  deleteScrap: (path, id) => ipcRenderer.invoke('scrap:delete', path, id),
 
   exportFile: (defaultName, data, dialog) =>
     ipcRenderer.invoke('compile:export', defaultName, data, dialog),

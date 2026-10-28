@@ -3,6 +3,7 @@ import type { JSX, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { EntityType } from '../../../shared/types'
 import { useWyrm } from '../store'
 import { isConnected } from '../lib/syncState'
+import { selectionOnScreen } from '../lib/scratchPad'
 import { WyrmIcon } from './icons'
 
 type MenuItem =
@@ -85,6 +86,8 @@ export function MenuBar({
   // A boolean, not the view object: the label flips between the two places a
   // writer works, so the menu has to re-render when the board opens or closes.
   const onBoard = useWyrm((s) => s.mainView.kind === 'corkboard')
+  const mainViewKind = useWyrm((s) => s.mainView.kind)
+  const padEditor = useWyrm((s) => s.padEditor)
   const helpMode = useWyrm((s) => s.helpMode)
   const editor = useWyrm((s) => s.editor)
   const newProjectAction = (): void => {
@@ -92,6 +95,9 @@ export function MenuBar({
   }
   const hasProject = Boolean(project)
   const hasDoc = Boolean(useWyrm((s) => s.activeDoc))
+  /** The editor Edit's Undo and formatting act on: the page's on the page,
+   *  the pad's sheet on the scratch pad, none anywhere else. */
+  const writingIn = mainViewKind === 'doc' ? editor : mainViewKind === 'scratch' ? padEditor : null
   // Gated on an actual reachable remote, not on the stored intent: a project
   // whose remote vanished from .git/config still has mode 'github', and Sync
   // Now used to stay live and throw (F-01).
@@ -229,41 +235,54 @@ export function MenuBar({
       key: 'edit',
       title: 'Edit',
       items: [
+        // On the page, the page; on the scratch pad, the sheet last written
+        // in (F-51). Anywhere else there is nothing for them to act on, and
+        // they say so by being off rather than doing nothing.
         {
           kind: 'item',
           label: 'Undo',
           shortcut: '⌘Z',
-          disabled: !hasDoc,
-          action: () => editor?.chain().focus().undo().run()
+          disabled: !writingIn,
+          action: () => writingIn?.chain().focus().undo().run()
         },
         {
           kind: 'item',
           label: 'Redo',
           shortcut: '⇧⌘Z',
-          disabled: !hasDoc,
-          action: () => editor?.chain().focus().redo().run()
+          disabled: !writingIn,
+          action: () => writingIn?.chain().focus().redo().run()
         },
         { kind: 'sep' },
         {
           kind: 'item',
           label: 'Bold',
           shortcut: '⌘B',
-          disabled: !hasDoc,
-          action: () => editor?.chain().focus().toggleBold().run()
+          disabled: !writingIn,
+          action: () => writingIn?.chain().focus().toggleBold().run()
         },
         {
           kind: 'item',
           label: 'Italic',
           shortcut: '⌘I',
-          disabled: !hasDoc,
-          action: () => editor?.chain().focus().toggleItalic().run()
+          disabled: !writingIn,
+          action: () => writingIn?.chain().focus().toggleItalic().run()
         },
         {
           kind: 'item',
           label: 'Highlight',
           shortcut: '⇧⌘H',
-          disabled: !hasDoc,
-          action: () => editor?.chain().focus().toggleHighlight().run()
+          disabled: !writingIn,
+          action: () => writingIn?.chain().focus().toggleHighlight().run()
+        },
+        { kind: 'sep' },
+        {
+          kind: 'item',
+          label: 'Move to Scratch Pad',
+          shortcut: '⇧⌘X',
+          // Read as the menu opens, so it is live exactly when there is a
+          // selection on the page to move, and it is the one on screen.
+          disabled: !hasDoc || mainViewKind !== 'doc' || !editor || !selectionOnScreen(editor),
+          action: () => void useWyrm.getState().moveToScratchPad()
         }
       ]
     },
@@ -390,6 +409,12 @@ export function MenuBar({
           label: 'Browse by Tag…',
           disabled: !hasProject,
           action: onBrowseTags
+        },
+        {
+          kind: 'item',
+          label: 'Scratch Pad',
+          disabled: !hasProject,
+          action: () => useWyrm.getState().showScratchPad()
         },
         { kind: 'sep' },
         {

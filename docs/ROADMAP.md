@@ -1118,7 +1118,7 @@ The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places")
 - ⌘S runs Create Save Point.
 - The writer says whether a drive is removable, and the app only guesses.
 
-### F-51 · Resolving conflicts, visually 📋
+### F-51 · Resolving conflicts, visually 🔨
 
 Split out of F-50 (2026-10-28), whose Conflicts tab opens today's resolution screen: one passage at a time, keep mine, keep theirs, or keep both as a variant.
 
@@ -1164,13 +1164,22 @@ Split out of F-50 (2026-10-28), whose Conflicts tab opens today's resolution scr
 - **Never in the book.** It is left out of Compile, word counts, stats and the corkboard. It is **in search**, so a cut line can be found again.
 - **Move to Scratch Pad**, a command in the editor for any selection. It takes the text out of the manuscript and onto the pad, so cutting a passage never means losing it. Many writers keep a file of cuts anyway; this is that file.
 
-Still open, for step 1: whether the writer can also write on the pad directly.
+**Writing on the pad** (settled 2026-10-28, with step 1): yes. Every scrap can be written on where it sits, and **New Note** adds a blank sheet on top; a note left without a word in it is not kept. A pad that could not be written on would not be a legal pad.
 
 **Under the hood.** Today the engine resolves a whole file one way: mine, theirs, or both. This needs a new answer: the arranged text of each chapter, plus the scraps, in the same combined save point. The screen must also finish against exactly the two versions it showed, so background sync pauses for that novel while the screen is open, and a resolve whose versions have moved underneath is refused with a fresh list rather than applied.
 
 **Build steps** (agreed 2026-10-28, one PR each):
 
-1. **The scratch pad.** Scraps on disk (`scratch/<id>.md`, a one-file-per-id store like the corkboard's strings), the binder entry beside the Trash, the pad's view with copying out, left out of Compile, word counts, stats and the corkboard, found by search, and **Move to Scratch Pad** in the editor. It is useful on its own before any merge uses it.
+1. **The scratch pad** ✅.
+   - **Storage.** Scraps are one file each in `scratch/` (`main/wyrm/scratch.ts`). Two computers that each keep a scrap merge without asking. A scrap rewritten on both is a prose conflict, named on the resolution screen as the scratch pad.
+   - **Where it lives.** **Scratch Pad** sits in the binder above the Trash, with a count. It is also in the Project menu and the palette. It opens in place of the page as a detour, so Esc goes back to where the writer was.
+   - **The sheets.** Each scrap is a ruled sheet, newest on top, gummed along the top in ink. Each says where it came from and when: "Cut from “The Ferry”", "A note", and, for step 4, "Kept from … as written on this computer" or "on your other computer".
+   - **Writing and copying.** Every sheet is a small editor with the page's own prose kit (`lib/proseKit.ts`, which the page now shares), so copying from it keeps bold, italic and highlight. Typing is saved as it settles, and again as the sheet goes.
+   - **Go to “…”** opens the chapter a scrap was cut from, while it is still in the binder.
+   - **Edit's Undo, Redo, Bold, Italic and Highlight** act on the sheet being written in, as they act on the page; anywhere with nothing for them to act on they are off, not silently dead.
+   - **Throw Away…** asks first, and makes a save point, so the text stays in the history.
+   - **Edit → Move to Scratch Pad (⇧⌘X)** puts the selection on the pad, and only then takes it off the page, following any typing meanwhile. If the passage itself changed, or another document came forward during the write, the passage stays on the page as well: twice is recoverable, a wrong cut is not. Shift must really be held, so with Caps Lock on, ⌘X stays an ordinary cut. It acts only with the page itself in focus, so a selection hidden behind a tag or rename field is never moved, and a held key moves once.
+   - **Never in the book.** Find in Project searches the pad. Compile, the word counts, stats and the corkboard never read it.
 2. **Laying out the pages.** Pure and DOM-free (`lib/mergePages.ts`): paragraphs from the three versions, the disputes as pages with their context, one-sided changes placed and marked, the underlines and New tags, deletions, the Both edits card, and composing a chapter's text back from an arrangement. All of it tested without a screen.
 3. **The engine's new answer.** A conflict carries the text from before and when each side was written. Resolving takes arranged text and scraps, and a chapter's details (title, tags, synopsis) still merge field by field, as in a clean sync; only the prose is arranged. A resolve refuses if either version has moved, and background sync pauses while the screen is open.
 4. **The screen.** The view, the stacks and their clips, the page and its cursor, the bin, the scratch pad, ⌘Z, Finish and Later, and the simple pages for what isn't prose. It replaces today's resolution dialog.

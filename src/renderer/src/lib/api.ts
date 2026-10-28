@@ -8,6 +8,7 @@ import type {
   BinderNode,
   BoardString,
   BoardSticker,
+  Scrap,
   CommitInfo,
   DeviceCodeInfo,
   SignInPoll,
@@ -101,6 +102,8 @@ interface MockProject {
   mapMarks: Map<string, MapMark>
   boardStrings: Map<string, BoardString>
   boardStickers: Map<string, BoardSticker>
+  /** F-51: the scratch pad, by scrap id. */
+  scraps: Map<string, Scrap>
   /** F-47: portrait data URLs by entry id — the image files of a project with no disk. */
   portraits: Map<string, string>
 }
@@ -167,6 +170,7 @@ function starterProject(title: string): MockProject {
     mapMarks: new Map(),
     boardStrings: new Map(),
     boardStickers: new Map(),
+    scraps: new Map(),
     portraits: new Map()
   }
   commitInto(project, `Create project “${title}”`)
@@ -312,6 +316,7 @@ function demoProject(): MockProject {
     // first string a reader draws is the first one on it.
     boardStrings: new Map(),
     boardStickers: new Map(),
+    scraps: new Map(),
     portraits: new Map()
   }
 
@@ -686,6 +691,17 @@ export function createMockApi(): WyrmApi {
     },
     async deleteBoardSticker(path: string, id: string): Promise<void> {
       mustGet(path).boardStickers.delete(id)
+    },
+    async listScraps(path: string): Promise<Scrap[]> {
+      return [...mustGet(path).scraps.values()].map((s) => ({ ...s }))
+    },
+    async writeScrap(path: string, scrap: Scrap): Promise<void> {
+      // As on disk: the body ends in a newline, and modified is the write's.
+      const body = scrap.body.endsWith('\n') ? scrap.body : scrap.body + '\n'
+      mustGet(path).scraps.set(scrap.id, { ...scrap, body, modified: new Date().toISOString() })
+    },
+    async deleteScrap(path: string, id: string): Promise<void> {
+      mustGet(path).scraps.delete(id)
     },
 
     async getSyncStatus(path: string): Promise<SyncStatus> {

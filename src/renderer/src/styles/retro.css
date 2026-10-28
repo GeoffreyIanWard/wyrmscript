@@ -3892,6 +3892,118 @@ button.map-place-name {
   max-width: 720px;
 }
 
+/* F-51: the scratch pad. Each scrap is a sheet torn from a legal pad: a
+   gummed band of ink across the top, a ruled body with a margin line, and the
+   app's hard ink shadow. Everything is ink on paper, so it reads in every
+   palette; the rules are a gradient in var(--ink), not a baked image. */
+.scratch-body {
+  max-width: 760px;
+}
+
+.scratch-hint {
+  margin: 0 0 14px;
+}
+
+.scratch-sheets {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.scratch-empty {
+  border: 2px dashed var(--ink);
+  padding: 14px 16px;
+  font-size: 12px;
+}
+
+.scrap-sheet {
+  border: 2px solid var(--ink);
+  border-top-width: 7px;
+  background: var(--paper);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.scrap-sheet:focus-within {
+  box-shadow: 5px 5px 0 var(--ink);
+}
+
+.scrap-head,
+.scrap-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.scrap-head {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ink);
+}
+
+.scrap-foot {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--ink);
+}
+
+.scrap-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Ruled at the line height, with the margin rule two pixels wide: the paper
+   inset covers the rules in the margin, the ink inset draws the line. */
+.scrap-text {
+  --scrap-line: 24px;
+  min-height: calc(var(--scrap-line) * 3);
+  padding: 0 14px 0 44px;
+  font-family: var(--font-prose);
+  font-size: 15px;
+  line-height: var(--scrap-line);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--scrap-line) - 1px),
+    var(--ink) calc(var(--scrap-line) - 1px),
+    var(--ink) var(--scrap-line)
+  );
+  box-shadow:
+    inset 32px 0 0 var(--paper),
+    inset 34px 0 0 var(--ink);
+  outline: none;
+  white-space: pre-wrap;
+}
+
+/* The page's highlight and selection, in the sheet's own two inks: without
+   these the browser's yellow mark and blue selection show through, outside
+   every palette. The phosphor palettes' inverse video follows below. */
+.scrap-text mark {
+  background: var(--highlight-bg);
+  color: inherit;
+  box-shadow: 0 0 0 1px var(--ink);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 1px 2px;
+  margin: 0 -2px;
+}
+
+.scrap-text ::selection,
+.scrap-text.ProseMirror::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.scrap-text p {
+  margin: 0;
+}
+
+.scrap-text p + p {
+  margin-top: var(--scrap-line);
+}
+
 /* F-08: a folder's rows want the room a prose column doesn't need. */
 .folder-view-body {
   max-width: none;
@@ -4410,7 +4522,11 @@ button.map-place-name {
 [data-palette='green'] .page mark,
 [data-palette='amber'] .page mark,
 [data-palette='vaporwave'] .page mark,
-[data-palette='virtualwyrm'] .page mark {
+[data-palette='virtualwyrm'] .page mark,
+[data-palette='green'] .scrap-text mark,
+[data-palette='amber'] .scrap-text mark,
+[data-palette='vaporwave'] .scrap-text mark,
+[data-palette='virtualwyrm'] .scrap-text mark {
   background: var(--ink);
   color: var(--paper);
   text-shadow: none;

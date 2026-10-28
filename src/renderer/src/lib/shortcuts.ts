@@ -33,7 +33,8 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: '⇧⌘H', what: 'Highlight' },
       { keys: '⌘Z', what: 'Undo' },
       { keys: '⇧⌘Z', what: 'Redo' },
-      { keys: '⌘S', what: 'Commit a checkpoint' },
+      { keys: '⇧⌘X', what: 'Move the selection to the scratch pad' },
+      { keys: '⌘S', what: 'Create a save point' },
       { keys: '⌘Y', what: 'History of this document' }
     ]
   },
