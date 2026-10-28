@@ -21,6 +21,8 @@ type MenuBarProps = {
   /** F-38: send the manuscript to the OS print dialog. */
   onPrint: () => void
   onBackup: () => void
+  /** F-50: the Save To drawer. */
+  onSaveTo: () => void
   onStats: () => void
   /** F-34: the browse-by-tag page. */
   onBrowseTags: () => void
@@ -51,6 +53,7 @@ export function MenuBar({
   onCompile,
   onPrint,
   onBackup,
+  onSaveTo,
   onStats,
   onBrowseTags,
   onTimeline,
@@ -148,10 +151,17 @@ export function MenuBar({
         { kind: 'sep' },
         {
           kind: 'item',
-          label: 'Commit Checkpoint…',
+          label: 'Create Save Point…',
           shortcut: '⌘S',
           disabled: !hasProject,
           action: () => onVersionDialog('commit')
+        },
+        {
+          // F-50: where the work is kept — this folder, drives and cards, GitHub.
+          kind: 'item',
+          label: 'Save To…',
+          disabled: !hasProject,
+          action: onSaveTo
         },
         {
           kind: 'item',

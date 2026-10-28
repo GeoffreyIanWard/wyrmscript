@@ -3373,6 +3373,240 @@ button.map-place-name {
   margin-top: 4px;
 }
 
+/* F-50: the Save To drawer. A folder with tabs along its top, holding one
+   envelope card per place the work is kept. Strictly the palette's two inks:
+   the folder is paper under the light dither, the cards are paper with the
+   house hard-offset shadow, and the grain is drawn through a mask so the ink
+   colour comes from the palette rather than from a baked-in data-URI (a
+   seventh pattern every palette would otherwise have to restate). */
+.save-drawer {
+  width: 560px;
+  max-width: 560px;
+}
+
+.drawer-tabs {
+  display: flex;
+  padding-left: 8px;
+  /* The active tab's bottom edge is the folder's top edge. */
+  margin-bottom: -2px;
+}
+
+.drawer-tab {
+  position: relative;
+  font: inherit;
+  font-family: var(--font-chrome);
+  color: var(--ink);
+  padding: 4px 10px 5px;
+  margin-right: -2px;
+  border: 2px solid var(--ink);
+  border-bottom: none;
+  background-color: var(--paper);
+  background-image: var(--dither-50);
+  cursor: pointer;
+}
+
+.drawer-tab > span {
+  background: var(--paper);
+  padding: 0 3px;
+}
+
+.drawer-tab.on {
+  background-image: var(--dither-25);
+  padding-bottom: 7px;
+  z-index: 1;
+}
+
+.drawer-tab:focus-visible > span {
+  outline: 1px dotted var(--ink);
+}
+
+.drawer-folder {
+  border: 2px solid var(--ink);
+  background-color: var(--paper);
+  background-image: var(--dither-25);
+  padding: 22px 18px 14px;
+  min-height: 260px;
+}
+
+/* Text sitting straight on the dithered folder gets a paper backing, or it
+   reads through the dots. */
+.drawer-paper {
+  background: var(--paper);
+  padding: 0 4px;
+  width: fit-content;
+}
+
+.save-cards {
+  list-style: none;
+  margin: 0;
+  padding: 6px 4px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.save-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px 9px 14px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  touch-action: none;
+  cursor: grab;
+  isolation: isolate;
+}
+
+/* Paper grain: a sparse speckle of ink, under the text. */
+.save-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--ink);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='29' height='23'%3E%3Cpath d='M3 4h1v1H3zM17 2h1v1h-1zM24 13h1v1h-1zM9 17h1v1H9zM14 10h1v1h-1zM27 20h1v1h-1zM5 12h1v1H5z' fill='%23000'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='29' height='23'%3E%3Cpath d='M3 4h1v1H3zM17 2h1v1h-1zM24 13h1v1h-1zM9 17h1v1H9zM14 10h1v1h-1zM27 20h1v1h-1zM5 12h1v1H5z' fill='%23000'/%3E%3C/svg%3E");
+}
+
+.save-card.lifted {
+  box-shadow: 6px 6px 0 var(--ink);
+  cursor: grabbing;
+  z-index: 2;
+}
+
+.save-card:focus-visible {
+  outline: 2px dotted var(--ink);
+  outline-offset: 3px;
+}
+
+.save-card.default {
+  padding-left: 34px;
+}
+
+.paper-clip {
+  position: absolute;
+  left: 12px;
+  top: -20px;
+  pointer-events: none;
+}
+
+.save-card-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.save-card-name {
+  font-family: var(--font-chrome);
+}
+
+.save-card-default {
+  font-size: 9px;
+  border: 2px solid var(--ink);
+  padding: 0 4px;
+  margin-left: 6px;
+}
+
+.save-card-detail {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.save-card-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.save-card-when {
+  font-size: 11px;
+}
+
+/* Reversed out, the way the bar marks an alert: an ink block, paper text. */
+.broken-connection {
+  position: relative;
+  font-family: var(--font-chrome);
+  font-size: 10px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 2px 5px;
+  cursor: help;
+}
+
+.save-tip {
+  visibility: hidden;
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  white-space: nowrap;
+  background: var(--paper);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  padding: 3px 7px;
+  font-family: var(--font-prose);
+  font-size: 12px;
+  z-index: 3;
+}
+
+.broken-connection:hover > .save-tip,
+.broken-connection:focus-visible > .save-tip {
+  visibility: visible;
+}
+
+.save-confirm {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--ink);
+  padding-top: 6px;
+  font-size: 11px;
+}
+
+.drawer-paper.save-confirm {
+  border: 2px solid var(--ink);
+  padding: 6px 8px;
+  margin-top: 10px;
+  width: auto;
+}
+
+.drawer-hint {
+  font-size: 10px;
+  margin-top: 10px;
+}
+
+.drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.drawer-add {
+  position: relative;
+}
+
+.drawer-add-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  z-index: 4;
+}
+
 .dialog-hint {
   font-size: 10px;
   line-height: 1.8;

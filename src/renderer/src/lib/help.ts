@@ -26,6 +26,26 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'The binder',
     body: 'Your manuscript as a tree of documents and folders. A novel is written in pieces here rather than as one long file, and the order of this list is the order of the book. Drag a row to move a scene.'
   },
+  'save-location': {
+    title: 'A place your work is kept',
+    body: 'The top card is the default. Drag a card, or press ⌥↑ and ⌥↓ on it, to change the order. This computer is always here; the others can be removed, and removing one never deletes the copy.'
+  },
+  'save-add-location': {
+    title: 'Add Location',
+    body: 'Keep another copy on a drive, a card, or GitHub. Up to three places, counting this computer.'
+  },
+  'save-multiple': {
+    title: 'Save to multiple locations',
+    body: 'Turning this off stops saving everywhere but the default. This computer always stays, and the copies already made are left where they are.'
+  },
+  'save-now': {
+    title: 'Save Now',
+    body: 'Makes a save point, then copies it to every location. A drive that is not connected is skipped.'
+  },
+  'broken-connection': {
+    title: 'Broken connection',
+    body: 'This location could not be reached. Point at it to see why.'
+  },
   'exit-full-screen': {
     title: 'Exit Full Screen',
     body: 'Back to the ordinary window. F11 or View → Full Screen does the same.'

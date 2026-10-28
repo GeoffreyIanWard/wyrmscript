@@ -907,6 +907,13 @@ export interface BackupSettings {
   targets: BackupTarget[]
   /** Mirror to every reachable target automatically after each checkpoint. */
   auto: boolean
+  /**
+   * F-50: the order of the Save to drawer's cards, by location id — `folder`
+   * (the project's own folder), `github`, or a target's id. The first is the
+   * default. Absent until the writer reorders; an id that is no longer a
+   * location is ignored, and a location missing from it goes after the rest.
+   */
+  order?: string[]
 }
 
 /** What happened at one target during a backup run. */
@@ -1124,6 +1131,10 @@ export interface WyrmApi {
   chooseBackupLocation(path: string): Promise<BackupSettings | null>
   setBackupAuto(path: string, auto: boolean): Promise<BackupSettings>
   removeBackupTarget(path: string, targetId: string): Promise<BackupSettings>
+  /** F-50: store the Save to drawer's card order (location ids, default first). */
+  setSaveOrder(path: string, order: string[]): Promise<BackupSettings>
+  /** F-50: which backup targets cannot be reached right now (a drive not connected). */
+  unreachableTargets(path: string): Promise<string[]>
   /** Checkpoint, then mirror this project into every reachable target (F-40). */
   backupNow(path: string): Promise<BackupRun>
   /** Pick a backup and a destination, then open the restored project. Null if cancelled. */

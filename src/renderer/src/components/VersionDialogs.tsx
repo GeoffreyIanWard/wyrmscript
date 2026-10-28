@@ -39,7 +39,7 @@ export function DiffView({ oldText, newText }: { oldText: string; newText: strin
   )
 }
 
-/* ---------- Commit checkpoint ---------- */
+/* ---------- Create save point (was Commit Checkpoint; F-50) ---------- */
 
 export function CommitDialog({ onClose }: { onClose: () => void }): JSX.Element {
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
@@ -50,7 +50,7 @@ export function CommitDialog({ onClose }: { onClose: () => void }): JSX.Element 
   useEffect(() => inputRef.current?.focus(), [])
 
   const commit = (): void => {
-    const message = inputRef.current?.value.trim() || 'Checkpoint'
+    const message = inputRef.current?.value.trim() || 'Save point'
     void commitNow(message).then(onClose)
   }
 
@@ -59,7 +59,7 @@ export function CommitDialog({ onClose }: { onClose: () => void }): JSX.Element 
       <div className="dialog" ref={trapRef} onMouseDown={(e) => e.stopPropagation()}>
         <div className="title-bar">
           <button type="button" aria-label="Close" className="close-box" onClick={onClose} />
-          <span className="title">Commit Checkpoint</span>
+          <span className="title">Create Save Point</span>
         </div>
         <div className="dialog-body">
           <div className="field-name" style={{ marginBottom: 6 }}>
@@ -69,7 +69,7 @@ export function CommitDialog({ onClose }: { onClose: () => void }): JSX.Element 
             <input
               ref={inputRef}
               className="text-field"
-              placeholder="Checkpoint"
+              placeholder="Save point"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') commit()
                 if (e.key === 'Escape') onClose()
@@ -78,7 +78,7 @@ export function CommitDialog({ onClose }: { onClose: () => void }): JSX.Element 
           </div>
           <div className="dialog-hint">
             {lastCommitAt
-              ? `Last checkpoint ${timeAgo(lastCommitAt)}. Every version is kept — forever.`
+              ? `Last save point ${timeAgo(lastCommitAt)}. Every version is kept — forever.`
               : 'Every version is kept — forever.'}
           </div>
         </div>
@@ -87,7 +87,7 @@ export function CommitDialog({ onClose }: { onClose: () => void }): JSX.Element 
             Cancel
           </button>
           <button type="button" className="btn default" onClick={commit}>
-            Commit
+            Save
           </button>
         </div>
       </div>

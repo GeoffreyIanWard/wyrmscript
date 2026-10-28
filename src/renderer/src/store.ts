@@ -55,6 +55,7 @@ import {
 } from '../../shared/types'
 import { api, apiSettled } from './lib/api'
 import { isConnected } from './lib/syncState'
+import { errorMessage } from './lib/errors'
 import { compile, compileFileName, PAGED_FORMATS, renderHtml } from './lib/compile'
 import { validScale } from './lib/mapScale'
 import {
@@ -80,6 +81,12 @@ import { buildEntityIndex, type EntityIndex } from './lib/entities'
 import { refreshEntityLinks } from './lib/entityLinks'
 import { findNode, firstDoc, moveNode, removeNode, type DropPosition } from './lib/tree'
 import { withPatch, type BackPatch } from './lib/cardBack'
+
+/** F-50: what Save Now did at each kind of location. Null where there was none. */
+export interface SaveEverywhere {
+  backup: BackupRun | { error: string } | null
+  sync: SyncOutcome | null
+}
 
 export type SaveState = 'saved' | 'dirty' | 'saving'
 
@@ -433,6 +440,14 @@ interface WyrmState {
   setBackupAuto(auto: boolean): Promise<void>
   removeBackupTarget(targetId: string): Promise<void>
   backupNow(): Promise<BackupRun>
+  /**
+   * F-50: the drawer's Save Now — a save point, then a copy to every disk
+   * location and GitHub. Each part runs even if another fails, and reports
+   * separately, because the locations fall out of date independently.
+   */
+  saveEverywhere(): Promise<SaveEverywhere>
+  /** F-50: store the drawer's card order (location ids, default first). */
+  setSaveOrder(order: string[]): Promise<void>
   /** Restore a backup into a new project and open it. True if one was opened. */
   restoreFromBackup(): Promise<boolean>
   /** F-43: make a local project from one on GitHub and open it. */
@@ -2070,6 +2085,42 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const run = await api.backupNow(project.path)
       await get().loadBackupSettings()
       return run
+    },
+
+    async saveEverywhere() {
+      const { project } = get()
+      if (!project) throw new Error('No project is open')
+      const path = project.path
+      await get().flushSave()
+      const committed = await api.commit(path, 'Save point')
+      // The writer may have brought another project to the front during that
+      // await; everything after acts on the focused project, so stop rather
+      // than copy the wrong novel (the drawer closes on a focus change anyway).
+      if (get().project?.path !== path) return { backup: null, sync: null }
+      clearDirty()
+      if (committed) {
+        set({ lastCommitAt: Date.now() })
+        void get().refreshStats()
+      }
+      const result: SaveEverywhere = { backup: null, sync: null }
+      if (get().backupSettings?.targets.length) {
+        result.backup = await get()
+          .backupNow()
+          .catch((e: unknown) => ({ error: errorMessage(e) }))
+      }
+      if (get().project?.path !== path) return result
+      if (isConnected(get().syncStatus)) {
+        result.sync = await get()
+          .syncNow(true)
+          .catch((e: unknown) => ({ status: 'error', detail: errorMessage(e) }) as const)
+      }
+      return result
+    },
+
+    async setSaveOrder(order) {
+      const { project } = get()
+      if (!project) return
+      set({ backupSettings: await api.setSaveOrder(project.path, order) })
     },
 
     async restoreFromBackup() {
