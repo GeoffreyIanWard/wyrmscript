@@ -157,3 +157,47 @@ describe('reopening the dialog when already signed in', () => {
     await waitFor(() => expect(screen.queryByText(/SIGNED IN AS/)).toBeNull())
   })
 })
+
+describe('how often the panel asks', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Start the code with only the poll's interval faked, so waitFor still runs. */
+  async function startWaiting(): Promise<void> {
+    await openSignIn()
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    fireEvent.click(screen.getByText('Sign in with GitHub'))
+    await waitFor(() => expect(screen.getByText('WYRM-1234')).toBeTruthy())
+  }
+
+  it('counts only the checks that reached GitHub', async () => {
+    const poll = vi
+      .spyOn(api, 'signInPoll')
+      .mockResolvedValueOnce({ state: 'pending' })
+      .mockResolvedValue({ state: 'pending', held: true })
+    await startWaiting()
+    await waitFor(() => expect(screen.getByText(/checked 1 time\b/)).toBeTruthy())
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        vi.advanceTimersByTime(1000)
+      })
+    }
+    expect(poll.mock.calls.length).toBeGreaterThan(1)
+    expect(screen.getByText(/checked 1 time\b/)).toBeTruthy()
+  })
+
+  // A tick landing while the last was answering found the sign-in already
+  // finished and reported "No sign-in is running" over one that worked.
+  it('never asks again while the last check is still answering', async () => {
+    const poll = vi.spyOn(api, 'signInPoll').mockReturnValue(new Promise(() => {}))
+    await startWaiting()
+    // Past the old fixed 5s tick too, so this would fail on that code.
+    for (let i = 0; i < 6; i++) {
+      await act(async () => {
+        vi.advanceTimersByTime(1000)
+      })
+    }
+    expect(poll).toHaveBeenCalledTimes(1)
+  })
+})
