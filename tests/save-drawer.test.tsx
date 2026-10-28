@@ -147,6 +147,57 @@ describe('removable drives', () => {
     expect((await screen.findByRole('alert')).textContent).toMatch(/Backup is removable/)
   })
 
+  it('names the drive just added, not one already there', async () => {
+    const [first] = await addDrives(1)
+    // The one already listed is fixed; the one being added is a card.
+    await api.setTargetRemovable(path, first, false)
+    renderDrawer()
+    await waitFor(() => expect(cardNames()).toHaveLength(2))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'A Drive or Card…' }))
+    await waitFor(() => expect(cardNames()).toHaveLength(3))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/^CARD is removable/)
+  })
+
+  it('withdraws the warning when the writer says the drive is not removable', async () => {
+    renderDrawer()
+    await waitFor(() => expect(cardNames()).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'A Drive or Card…' }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/is removable/)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Removable drive' }))
+    })
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+  })
+
+  it('keeps the switch where the writer put it when an older check lands after', async () => {
+    const [drive] = await addDrives(1)
+    // A check that takes a while: walking a card's history.
+    let finish: () => void = () => {}
+    vi.spyOn(api, 'checkSaveLocations').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ unreachable: [], behind: [], diverged: [] })
+        })
+    )
+    renderDrawer()
+    const toggle = await screen.findByRole('checkbox', { name: 'Removable drive' })
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    await act(async () => {
+      fireEvent.click(toggle)
+    })
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
+    await act(async () => {
+      finish()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    expect((await api.getBackupSettings(path)).targets.find((t) => t.id === drive)?.removable).toBe(
+      false
+    )
+  })
+
   it('calls a missing fixed drive not found, rather than not connected', async () => {
     const [drive] = await addDrives(1)
     await api.setTargetRemovable(path, drive, false)
