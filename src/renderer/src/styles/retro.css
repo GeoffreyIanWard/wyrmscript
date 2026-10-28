@@ -3517,6 +3517,11 @@ button.map-place-name {
   text-overflow: ellipsis;
 }
 
+/* A sentence rather than a path: let it wrap. */
+.save-card-detail.wraps {
+  white-space: normal;
+}
+
 .save-card-side {
   display: flex;
   align-items: center;

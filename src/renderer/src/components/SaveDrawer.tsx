@@ -645,7 +645,7 @@ export function SaveDrawer({
                 <li className="save-card" style={{ transform: `rotate(${tiltOf('backup')}deg)` }}>
                   <div className="save-card-text">
                     <div className="save-card-name">From a backup</div>
-                    <div className="save-card-detail">
+                    <div className="save-card-detail wraps">
                       A copy on a drive or card. It opens as a new project, beside this one.
                     </div>
                   </div>
@@ -663,7 +663,7 @@ export function SaveDrawer({
                 <li className="save-card" style={{ transform: `rotate(${tiltOf('github')}deg)` }}>
                   <div className="save-card-text">
                     <div className="save-card-name">From GitHub</div>
-                    <div className="save-card-detail">
+                    <div className="save-card-detail wraps">
                       A project you keep on GitHub, brought down to this computer.
                     </div>
                   </div>
