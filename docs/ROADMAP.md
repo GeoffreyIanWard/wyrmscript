@@ -1026,37 +1026,47 @@ Requested 2026-10-27: "it's a bit of a frankenstein at the moment."
 
 Each one arrived with its own feature (F-01, F-40, Phase 5, F-43), so each has its own dialog, its own wording and its own idea of "saved".
 
-**The shape asked for** (2026-10-27, over three messages):
+**The shape** (agreed 2026-10-27, over four messages):
 
-- **One Save screen** for saving and syncing. **File → Save** opens it.
-- **Save to…** offers two kinds of location:
-  - **Disk.** The writer then picks where: the local drive or an SD card (any removable drive). This is today's backup (F-40) under a plainer name.
-  - **GitHub.** This opens the GitHub screen.
-- **Several locations, up to three.** An add button adds another location, and each one can be removed. The first is the **primary**. A **Save to multiple locations** toggle, when turned off, removes every location but the primary. F-40 already keeps a list of backup locations with no limit, so the cap of three and the primary are new.
-- **The GitHub screen** holds everything about GitHub on one screen:
-  - Set up the account: sign in, see who is signed in, sign out.
-  - Sync this project with a repository that already exists.
-  - Create a new repository for it.
-  - Sync now.
+**One element, laid out as a file drawer.** It looks like a real filing system, with a folder tab for each screen. That could become the design language for other menus too. **File → Save** opens it. The tabs:
+
+- **Save to.** Where the work is kept.
+  - Each location is a **horizontal envelope card** in a vertical list. A card says what the location is, and **when it was last saved**.
+  - The **top card is the default.** Drag the cards to reorder them, and another one becomes the default.
+  - **Add** a location, up to **three**: **Disk** (the local drive or an SD card) or **GitHub**. GitHub counts as a location like any other. A writer may keep only a GitHub copy, which also suits devices that don't handle a file system well.
+  - **Remove** any location but the last. There is always at least one.
+  - **Switching repositories is not its own action.** Add the new one and remove the old.
+  - A **Save to multiple locations** toggle. Turning it off removes every card but the default.
+- **Restore from.** The same kind of screen in the other direction: bring a project back from a backup on disk or from GitHub. It replaces Restore from Backup and Bring Down from GitHub as separate entries.
+- **Settings.** Automatic saving and sync: how often, and whether a checkpoint syncs.
+- **GitHub.** Everything about GitHub on one screen:
+  - **Connection status**, with a prompt to reconnect when it isn't connected.
+  - The account: sign in, switch account, sign out.
+  - Connect this project to a repository that already exists, or create a new one.
+  - Disconnect.
+  - **Force sync.**
   - Later: views that track commits.
+- **Conflicts.** At least a way into a dedicated place for resolving sync conflicts.
 
-**Probably belongs here too** (suggested, not yet agreed):
+**Resolving conflicts, visually** (to brainstorm further). The idea is a skeuomorphic merge: each side's changed text is broken into separate text-block cards, and the writer drags the blocks they want to keep into the document where they belong. It's a resolution the writer can see and touch, not a choice between two versions of a file.
 
-- **What "saved" means.** The app already writes every keystroke to the project folder, so Save is really "make a checkpoint and copy it to every location". The screen should say when each location was last saved. F-40 already keeps that per location.
-- **Sync conflicts.** When both computers changed the same file, the conflict panel needs a home, and this screen is the obvious one.
-- **Automatic saving.** Today's "back up automatically" and sync-on-checkpoint settings.
-- **Disconnecting**, or switching a project to a different repository.
-- **Restoring.** Restore from Backup and Bring Down from GitHub are the same locations in the other direction.
-- **A status line** in the status bar that opens the screen: saved, saving, a location missing, or sync needs attention.
-- **The custom OAuth client ID** field, for writers who use their own GitHub app. It belongs in an "advanced" corner of the GitHub screen.
+**Still to design:**
+
+- **A status line** in the status bar that opens the drawer: saved, saving, a location missing, or sync needs attention. Needs a mock-up before it's built.
+- **How the file drawer looks.** The tabs, the envelope cards, and how dragging a card into the default slot reads.
+
+**Settled questions:**
+
+- GitHub counts as one of the three locations.
+- The first location is the default, and reordering the cards changes it.
+- History and Variants stay where they are. They are about looking back, not keeping safe.
 
 **Open questions:**
 
-- Whether GitHub counts as one of the three locations or sits beside them. F-40 kept GitHub separate on purpose: it pulls as well as pushes, and it can conflict.
 - Whether ⌘S stays Commit Checkpoint or becomes Save.
-- What happens to History and Variants. They are about looking back, not keeping safe, and probably stay where they are.
-- Which location is kept when the multiple-locations toggle is turned off: the first one added, or one the writer marks as primary.
 - How an SD card is told apart from a fixed drive. F-40 already treats a card that isn't plugged in as skipped, not failed.
+- What the drawer says when the default location is unreachable: an SD card left out, or GitHub offline.
+- How removing a GitHub location relates to the repository itself. Removing the card should disconnect, never delete the repository.
 
 ## Known issues
 
