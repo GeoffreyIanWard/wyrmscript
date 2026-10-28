@@ -1186,4 +1186,9 @@ export interface WyrmApi {
    * writer decides to stay, does nothing. Returns the unsubscribe.
    */
   onQuitRequested(listener: () => void): () => void
+  /**
+   * The window went into or out of full screen, by any route: F11, the menu,
+   * or (on Windows) the maximise button. Returns the unsubscribe.
+   */
+  onFullScreenChanged(listener: (fullScreen: boolean) => void): () => void
 }

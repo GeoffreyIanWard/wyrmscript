@@ -511,6 +511,10 @@ function App(): JSX.Element {
   const appearance = useWyrm((s) => s.appearance) ?? DEFAULT_APPEARANCE
   const setAppearance = useWyrm((s) => s.setAppearance)
   const screenRef = useRef<HTMLDivElement>(null)
+  // Told by the window, never toggled here: it can go full screen by routes
+  // the page never sees, like the maximise button on Windows (I-22).
+  const [fullScreen, setFullScreen] = useState(false)
+  useEffect(() => api.onFullScreenChanged(setFullScreen), [])
   const typewriterMode = useWyrm((s) => s.typewriterMode)
   const printSettings = useWyrm((s) => s.printSettings)
   // F-38: fetched when Preferences opens rather than at boot — the printer
@@ -837,7 +841,7 @@ function App(): JSX.Element {
       ref={screenRef}
       className={`screen${isElectronMac ? ' is-electron-mac' : ''}${
         isElectronWin ? ' is-electron-win' : ''
-      }`}
+      }${fullScreen ? ' is-full-screen' : ''}`}
       data-accents={appearance.accents}
       data-palette={appearance.palette}
       data-indent={appearance.firstLineIndent ? 'on' : 'off'}
@@ -878,6 +882,7 @@ function App(): JSX.Element {
         focusMode={focusMode}
         onFocusMode={() => setFocusMode((v) => !v)}
         onFullScreen={() => void api.toggleFullScreen()}
+        fullScreen={fullScreen}
         registerFocusMenus={(focus) => {
           focusMenusRef.current = focus
         }}

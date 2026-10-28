@@ -201,6 +201,31 @@ button {
   padding-right: 138px;
 }
 
+/* With them gone in full screen, the space kept for them would be an empty
+   strip; the exit button takes their place instead. */
+.is-electron-win.is-full-screen .menu-bar {
+  padding-right: 8px;
+}
+
+/* I-22: full screen takes the window's own buttons away on Windows, so the
+   way back sits where they were, at the bar's right end. */
+.menu-exit-full-screen {
+  margin-left: auto;
+  align-self: center;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 0 8px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.menu-exit-full-screen:hover {
+  color: var(--paper);
+  background: var(--ink);
+}
+
 .menu-slot {
   display: flex;
   align-items: stretch;

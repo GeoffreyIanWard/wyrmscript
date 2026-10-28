@@ -99,3 +99,48 @@ describe('fullscreen', () => {
     expect(toggle).not.toHaveBeenCalled()
   })
 })
+
+// I-22: on Windows, maximise now goes full screen, and full screen takes the
+// window's own buttons away. The page is told, and offers the way back.
+describe('the way out of full screen', () => {
+  /** Render with a hand on the window's full-screen announcements. */
+  async function renderWithWindow(): Promise<(full: boolean) => void> {
+    let announce: ((full: boolean) => void) | null = null
+    vi.spyOn(api, 'onFullScreenChanged').mockImplementation((listener) => {
+      announce = listener
+      return () => {
+        announce = null
+      }
+    })
+    await renderApp()
+    return (full) => act(() => announce?.(full))
+  }
+
+  it('appears in the menu bar only while full screen, and leaves it', async () => {
+    const announce = await renderWithWindow()
+    expect(screen.queryByText('Exit Full Screen')).toBeNull()
+
+    announce(true)
+    const toggle = vi.spyOn(api, 'toggleFullScreen').mockResolvedValue(false)
+    fireEvent.click(screen.getByText('Exit Full Screen'))
+    expect(toggle).toHaveBeenCalledTimes(1)
+
+    announce(false)
+    expect(screen.queryByText('Exit Full Screen')).toBeNull()
+  })
+
+  it('renames the View menu item while full screen', async () => {
+    const announce = await renderWithWindow()
+    announce(true)
+    fireEvent.mouseDown(screen.getByRole('menuitem', { name: 'View' }))
+    expect(screen.getAllByText('Exit Full Screen')).toHaveLength(2)
+  })
+
+  it('marks the screen, so the space kept for the window buttons goes', async () => {
+    const announce = await renderWithWindow()
+    announce(true)
+    expect(document.querySelector('.screen.is-full-screen')).not.toBeNull()
+    announce(false)
+    expect(document.querySelector('.screen.is-full-screen')).toBeNull()
+  })
+})
