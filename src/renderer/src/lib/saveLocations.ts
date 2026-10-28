@@ -125,6 +125,56 @@ export function brokenReason(
   return null
 }
 
+/**
+ * F-50 step 2: how one location's envelope is drawn in the status line.
+ *
+ * - `saving`: being written right now. It fills in when the write finishes.
+ * - `missing`: a drive that is not connected. Dashed, and quiet: an unplugged
+ *   card is the normal state of removable media, never an alarm (F-40).
+ * - `attention`: something the writer has to act on. The line ends in "!".
+ * - `behind`: reachable, but without the latest save point yet.
+ * - `saved`: holds the latest save point. Filled.
+ */
+export type EnvelopeState = 'saving' | 'missing' | 'attention' | 'behind' | 'saved'
+
+export interface EnvelopeContext {
+  sync: SyncStatus | null
+  unreachable: readonly string[]
+  syncProblem: string | null
+  /** Conflicts waiting for the writer (the store's `syncNeedsAttention`). */
+  syncNeedsAttention: boolean
+  savingTo: readonly string[]
+  /** When the latest save point was made, or null if there is none yet. */
+  lastCommitAt: number | null
+}
+
+export function envelopeOf(
+  location: SaveLocation,
+  ctx: EnvelopeContext
+): { state: EnvelopeState; reason: string | null } {
+  if (ctx.savingTo.includes(location.id)) return { state: 'saving', reason: 'Saving…' }
+  const broken = brokenReason(location, ctx.sync, ctx.unreachable, ctx.syncProblem)
+  if (location.kind === 'disk' && broken) return { state: 'missing', reason: broken }
+  if (broken) return { state: 'attention', reason: broken }
+  if (location.kind === 'github' && ctx.syncNeedsAttention)
+    return { state: 'attention', reason: 'Some passages need your eye' }
+  const behind =
+    location.lastSavedAt == null ||
+    (location.kind === 'github'
+      ? ctx.sync?.pendingSync === true
+      : location.kind === 'disk' &&
+        ctx.lastCommitAt != null &&
+        location.lastSavedAt < ctx.lastCommitAt)
+  if (behind) {
+    return {
+      state: 'behind',
+      reason:
+        location.lastSavedAt == null ? 'Not saved here yet' : 'Not up to date with the last save'
+    }
+  }
+  return { state: 'saved', reason: null }
+}
+
 /** "just now", "5 min ago", "3 h ago", "yesterday", "4 days ago". */
 export function timeAgo(timestamp: number, now: number = Date.now()): string {
   const mins = Math.floor((now - timestamp) / 60000)

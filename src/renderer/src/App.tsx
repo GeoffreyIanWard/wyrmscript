@@ -19,7 +19,6 @@ import { CharacterGraphDialog } from './components/CharacterGraphDialog'
 import { WorldMap } from './components/WorldMap'
 import { CommitDialog, HistoryDialog, VariantsDialog } from './components/VersionDialogs'
 import { CompileDialog } from './components/CompileDialog'
-import { isConnected, isRemoteMissing } from './lib/syncState'
 import {
   MIN_WIDTH,
   cascadeFor,
@@ -35,6 +34,7 @@ import type { WindowGeometry } from '../../shared/types'
 import { BackupDialog } from './components/BackupDialog'
 import { SyncDialog } from './components/SyncDialog'
 import { SaveDrawer } from './components/SaveDrawer'
+import { SaveLine } from './components/SaveLine'
 import { ConflictDialog } from './components/ConflictDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchDialog } from './components/SearchDialog'
@@ -66,24 +66,11 @@ function useNow(intervalMs: number): number {
   return now
 }
 
-function agoLabel(timestamp: number | null, now: number): string {
-  if (!timestamp) return 'NO CHECKPOINT YET'
-  const mins = Math.floor((now - timestamp) / 60000)
-  if (mins < 1) return 'COMMITTED JUST NOW'
-  if (mins === 1) return 'COMMITTED 1 MIN AGO'
-  return `COMMITTED ${mins} MIN AGO`
-}
-
-function StatusBar(): JSX.Element {
-  const project = useWyrm((s) => s.project)
+function StatusBar({ onOpenSaveTo }: { onOpenSaveTo: (locationId?: string) => void }): JSX.Element {
   const wordCount = useWyrm((s) => s.wordCount)
   const helpMode = useWyrm((s) => s.helpMode)
   const saveState = useWyrm((s) => s.saveState)
   const activeDoc = useWyrm((s) => s.activeDoc)
-  const lastCommitAt = useWyrm((s) => s.lastCommitAt)
-  const backupSettings = useWyrm((s) => s.backupSettings)
-  const syncStatus = useWyrm((s) => s.syncStatus)
-  const syncNeedsAttention = useWyrm((s) => s.syncNeedsAttention)
   // Select the stable slices and derive during render — a selector returning a
   // fresh object re-renders forever (house rule).
   const dailyStats = useWyrm((s) => s.dailyStats)
@@ -93,26 +80,6 @@ function StatusBar(): JSX.Element {
   const today = statsSettings ? summarize(dailyStats, statsSettings) : null
 
   const saveLabel = saveState === 'saved' ? 'SAVED' : saveState === 'saving' ? 'SAVING…' : 'EDITED'
-  // States what is true, and stays quiet otherwise — neither an unbacked-up
-  // nor a local-only project is nagged at from the status bar (F-01).
-  //
-  // `isConnected` rather than `mode === 'github'`: a project whose remote has
-  // gone from .git/config used to report ◆ SYNCED while having nowhere to push,
-  // which is the one lie this bar must never tell. It now reads as needing
-  // attention, which is what it is.
-  const placeLabel = !isElectron
-    ? '◇ DEMO — IN MEMORY'
-    : isConnected(syncStatus)
-      ? syncNeedsAttention
-        ? '◆ SYNC — NEEDS YOUR EYE'
-        : syncStatus?.pendingSync
-          ? '◆ SYNC — WAITING'
-          : '◆ SYNCED'
-      : isRemoteMissing(syncStatus)
-        ? '◆ SYNC — NEEDS YOUR EYE'
-        : backupSettings?.targets.length
-          ? '◆ LOCAL + BACKUP'
-          : '◆ LOCAL'
   // One switch covers every ambient counter (here and in the editor header):
   // a writer who does not want to watch a number climb does not want it in
   // two places. Writing Stats still answers on demand.
@@ -137,13 +104,14 @@ function StatusBar(): JSX.Element {
         </span>
       )}
       <span className="spacer" />
-      <span data-help="last-commit">{agoLabel(lastCommitAt, now)}</span>
-      <span
-        data-help="place"
-        title={syncStatus?.remoteUrl ?? backupSettings?.targets[0]?.path ?? project?.path}
-      >
-        {placeLabel}
-      </span>
+      {/* F-50: where the work is kept, one envelope per place. It replaces
+          the old place label (◆ LOCAL, ◆ SYNCED…) and the checkpoint age,
+          and keeps their rule: say what is true, never claim a copy that is
+          not there (a GitHub link gone from .git/config is an envelope
+          marked "!", never a filled one). The preview still says it is a
+          demo, since nothing in it reaches a disk. */}
+      {!isElectron && <span>◇ DEMO — IN MEMORY</span>}
+      <SaveLine now={now} onOpen={onOpenSaveTo} />
       {/* The way in. In the status bar because it is always there and always
           the same size — a question mark in the chrome is the oldest
           convention there is for "what is this?". */}
@@ -538,6 +506,12 @@ function App(): JSX.Element {
   const [backupOpen, setBackupOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
   const [saveToOpen, setSaveToOpen] = useState(false)
+  /** F-50: the card the drawer opens on, when an envelope opened it. */
+  const [saveToFocus, setSaveToFocus] = useState<string | undefined>(undefined)
+  const openSaveTo = useCallback((locationId?: string): void => {
+    setSaveToFocus(locationId)
+    setSaveToOpen(true)
+  }, [])
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   /** F-38: printing happens without a dialog, so a failure needs somewhere
@@ -872,7 +846,7 @@ function App(): JSX.Element {
         onCompile={() => setCompileOpen(true)}
         onPrint={runPrint}
         onBackup={() => setBackupOpen(true)}
-        onSaveTo={() => setSaveToOpen(true)}
+        onSaveTo={() => openSaveTo()}
         onStats={() => useWyrm.getState().showStats()}
         onBrowseTags={() => useWyrm.getState().showTags()}
         onTimeline={() => setTimelineOpen(true)}
@@ -948,7 +922,7 @@ function App(): JSX.Element {
                       </ErrorBoundary>
                       {!focusMode && <EntityPanel />}
                     </div>
-                    {!focusMode && <StatusBar />}
+                    {!focusMode && <StatusBar onOpenSaveTo={openSaveTo} />}
                   </FocusedProjectWindow>
                 )
               })
@@ -1029,6 +1003,7 @@ function App(): JSX.Element {
         {saveToOpen && (
           <ErrorBoundary label="Save To" onDismiss={() => setSaveToOpen(false)}>
             <SaveDrawer
+              focusId={saveToFocus}
               onClose={() => setSaveToOpen(false)}
               onAddGithub={() => {
                 setSaveToOpen(false)
@@ -1135,7 +1110,7 @@ function App(): JSX.Element {
                   id: 'save-to',
                   title: 'Save To…',
                   subtitle: 'File',
-                  run: () => setSaveToOpen(true)
+                  run: () => openSaveTo()
                 },
                 {
                   id: 'history',

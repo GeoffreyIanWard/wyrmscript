@@ -5,7 +5,6 @@ import type {
   PointerEvent as ReactPointerEvent
 } from 'react'
 import type { SyncOutcome } from '../../../shared/types'
-import { api } from '../lib/api'
 import { errorMessage } from '../lib/errors'
 import {
   brokenReason,
@@ -116,10 +115,13 @@ interface Drag {
 }
 
 export function SaveDrawer({
+  focusId,
   onClose,
   onAddGithub,
   onBringDown
 }: {
+  /** The card to put focus on as the drawer opens — an envelope's location. */
+  focusId?: string
   onClose: () => void
   /** Opens the GitHub set-up, since connecting is not on this screen yet. */
   onAddGithub: () => void
@@ -133,9 +135,11 @@ export function SaveDrawer({
   const syncNeedsAttention = useWyrm((s) => s.syncNeedsAttention)
   const lastSyncProblem = useWyrm((s) => s.syncProblem)
   const lastCommitAt = useWyrm((s) => s.lastCommitAt)
+  // Which drives are missing lives in the store, so the status line's
+  // envelopes and these cards always agree (F-50 step 2).
+  const unreachable = useWyrm((s) => s.unreachable)
 
   const [tab, setTab] = useState<Tab>('save')
-  const [unreachable, setUnreachable] = useState<string[]>([])
   const [busy, setBusy] = useState<'save' | 'add' | 'remove' | 'restore' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
@@ -161,24 +165,35 @@ export function SaveDrawer({
   const locationsRef = useRef(locations)
 
   useEffect(() => {
-    const { loadBackupSettings, loadSyncStatus } = useWyrm.getState()
-    void loadBackupSettings().catch((e: unknown) => setError(errorMessage(e)))
+    const { loadBackupSettings, loadSyncStatus, checkReach } = useWyrm.getState()
+    void loadBackupSettings()
+      .then(() => checkReach())
+      .catch((e: unknown) => setError(errorMessage(e)))
     void loadSyncStatus().catch(() => {})
   }, [])
 
+  // Opened from an envelope: land on that location's card, once, as soon as
+  // it is on screen (the cards wait for the settings to load).
+  const focused = useRef(false)
+  // StrictMode mounts twice, and the focus trap's second mount puts focus
+  // back on its first control; a flag that outlived the first mount would
+  // then never focus the card again.
+  useEffect(
+    () => () => {
+      focused.current = false
+    },
+    []
+  )
   useEffect(() => {
-    if (!path) return
-    let live = true
-    api
-      .unreachableTargets(path)
-      .then((ids) => {
-        if (live) setUnreachable(ids)
-      })
-      .catch(() => {})
-    return () => {
-      live = false
-    }
-  }, [path, backupSettings])
+    if (focused.current || !focusId) return
+    // Compared rather than put in a selector: an id is the writer's data.
+    const card = [
+      ...(listRef.current?.querySelectorAll<HTMLElement>('[data-location-id]') ?? [])
+    ].find((el) => el.dataset.locationId === focusId)
+    if (!card) return
+    focused.current = true
+    card.focus()
+  })
 
   /* ---------- order ---------- */
 
@@ -365,10 +380,8 @@ export function SaveDrawer({
         if (backup && 'error' in backup) {
           for (const l of locations) if (l.kind === 'disk') found[l.id] = backup.error
         } else if (backup) {
+          // The store has already marked the drives this run could not reach.
           for (const r of backup.results) if (r.status === 'failed') found[r.targetId] = r.message
-          setUnreachable(
-            backup.results.filter((r) => r.status === 'unreachable').map((r) => r.targetId)
-          )
         }
         const problem = sync && syncProblem(sync)
         if (problem) found.github = problem
@@ -460,6 +473,7 @@ export function SaveDrawer({
                     return (
                       <li
                         key={location.id}
+                        data-location-id={location.id}
                         className={`save-card${lifted ? ' lifted' : ''}${isDefault ? ' default' : ''}`}
                         style={{
                           transform: lifted

@@ -74,13 +74,9 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'Saved',
     body: 'Your words are written to disk as you type, so this rarely says anything else. Saving is not the same as a checkpoint: this is the file, a checkpoint is a moment in the history.'
   },
-  'last-commit': {
-    title: 'Last checkpoint',
-    body: 'How long since a version of the whole project was recorded. Checkpoints happen on their own as you write, and ⌘S makes one with a note of your choosing. Any of them can be returned to.'
-  },
-  place: {
-    title: 'Where this project lives',
-    body: 'Whether this project is only on this machine, backed up to a second place, or synced with a remote. Hover the words for the actual location.'
+  'save-line': {
+    title: 'Where your work is saved',
+    body: 'One envelope for each place your work is kept, the default first, then how long since it was saved. A filled envelope holds your latest save; an empty one is behind; a dashed one is a drive that is not connected; one marked ! needs you. Point at an envelope to see why. Click an envelope to open its card, or the time to open Save To.'
   },
   'zoom-box': {
     title: 'Focus mode',

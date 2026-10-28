@@ -1049,6 +1049,56 @@ button {
   background: none;
 }
 
+/* F-50 step 2: the save line — one envelope per place the work is kept.
+   The bar's spans get a paper backing; this one is a row of buttons, so it
+   takes the same backing itself and its buttons stay bare. */
+.status-bar > .save-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 5px;
+}
+
+.save-envelope,
+.save-line-time {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+  color: var(--ink);
+  background: none;
+  border: none;
+  padding: 1px 0;
+  cursor: pointer;
+}
+
+.save-line-time {
+  margin-left: 4px;
+}
+
+.save-envelope:focus-visible,
+.save-line-time:focus-visible {
+  outline: 1px dotted var(--ink);
+  outline-offset: 1px;
+}
+
+/* Reversed out, like the drawer's Broken connection! */
+.save-line-bang {
+  margin-left: 4px;
+  padding: 0 3px;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.save-envelope > .save-tip {
+  font-size: 11px;
+}
+
+.save-envelope:hover > .save-tip,
+.save-envelope:focus-visible > .save-tip {
+  visibility: visible;
+}
+
 /* ---------- writing stats (4c) ---------- */
 
 /* Goal met inverts rather than colouring, so the "you did it" reads at a
