@@ -14,15 +14,15 @@ type Menu = { title: string | JSX.Element; key: string; items: MenuItem[] }
 type MenuBarProps = {
   onAbout: () => void
   onShortcuts: () => void
-  onCloneFromGithub: () => void
   onPreferences: () => void
   onVersionDialog: (dialog: 'commit' | 'history' | 'variants') => void
   onCompile: () => void
   /** F-38: send the manuscript to the OS print dialog. */
   onPrint: () => void
-  onBackup: () => void
   /** F-50: the Save To drawer. */
   onSaveTo: () => void
+  /** F-50 step 3: the drawer's Restore from tab. */
+  onRestoreFrom: () => void
   onStats: () => void
   /** F-34: the browse-by-tag page. */
   onBrowseTags: () => void
@@ -31,7 +31,6 @@ type MenuBarProps = {
   onPlotlines: () => void
   onCharacterGraph: () => void
   onWorldMap: () => void
-  onSyncSettings: () => void
   onSearch: () => void
   onPalette: () => void
   focusMode: boolean
@@ -47,12 +46,10 @@ type MenuBarProps = {
 export function MenuBar({
   onAbout,
   onShortcuts,
-  onCloneFromGithub,
   onPreferences,
   onVersionDialog,
   onCompile,
   onPrint,
-  onBackup,
   onSaveTo,
   onStats,
   onBrowseTags,
@@ -61,7 +58,7 @@ export function MenuBar({
   onPlotlines,
   onCharacterGraph,
   onWorldMap,
-  onSyncSettings,
+  onRestoreFrom,
   onSearch,
   onPalette,
   focusMode,
@@ -164,6 +161,14 @@ export function MenuBar({
           action: onSaveTo
         },
         {
+          // F-50 step 3: a backup or a project on GitHub, opened beside this
+          // one. With nothing open, the home screen offers the same two.
+          kind: 'item',
+          label: 'Restore From…',
+          disabled: !hasProject,
+          action: onRestoreFrom
+        },
+        {
           kind: 'item',
           label: 'History',
           shortcut: '⌘Y',
@@ -193,14 +198,6 @@ export function MenuBar({
           shortcut: '⇧⌘O',
           disabled: !hasProject,
           action: () => void useWyrm.getState().openAnotherProject()
-        },
-        {
-          // F-43. Beside Open rather than under Project's sync items: this
-          // makes a project, it does not configure one, and the writer
-          // reaching for it has nothing open to configure.
-          kind: 'item',
-          label: 'Bring Down from GitHub…',
-          action: onCloneFromGithub
         },
         { kind: 'sep' },
         {
@@ -395,7 +392,6 @@ export function MenuBar({
           action: onBrowseTags
         },
         { kind: 'sep' },
-        { kind: 'item', label: 'Backup…', disabled: !hasProject, action: onBackup },
         {
           kind: 'item',
           label: 'Sync Now',
@@ -410,7 +406,6 @@ export function MenuBar({
               .catch(() => {})
           }
         },
-        { kind: 'item', label: 'Sync Settings…', disabled: !hasProject, action: onSyncSettings },
         {
           kind: 'item',
           label: 'Project Search…',

@@ -8,9 +8,19 @@ import type {
   RecentProject,
   StatsSettings
 } from '../../shared/types'
-import { DEFAULT_APPEARANCE, DEFAULT_PRINT, DEFAULT_STATS } from '../../shared/types'
+import {
+  DEFAULT_APPEARANCE,
+  DEFAULT_PRINT,
+  DEFAULT_STATS,
+  SAVE_EVERY_CHOICES
+} from '../../shared/types'
 import { randomUUID } from 'node:crypto'
-import type { BackupSettings, BackupTarget, WindowGeometry } from '../../shared/types'
+import type {
+  BackupSettings,
+  BackupTarget,
+  SaveSettingsPatch,
+  WindowGeometry
+} from '../../shared/types'
 
 /** F-24: how many recently-opened projects the home screen offers. */
 const RECENT_PROJECTS_LIMIT = 8
@@ -153,8 +163,14 @@ interface LegacyBackupSettings {
 function migrate(stored: (BackupSettings & LegacyBackupSettings) | undefined): BackupSettings {
   if (stored == null) return NO_BACKUP
   if (Array.isArray(stored.targets)) {
+    // Each optional field carried through or this read would drop it, and the
+    // next write of anything (a backup's time) would lose the writer's choice.
     const order = Array.isArray(stored.order) ? { order: stored.order } : {}
-    return { targets: stored.targets, auto: stored.auto ?? false, ...order }
+    const every =
+      typeof stored.everyMinutes === 'number' ? { everyMinutes: stored.everyMinutes } : {}
+    const send =
+      typeof stored.sendToGithub === 'boolean' ? { sendToGithub: stored.sendToGithub } : {}
+    return { targets: stored.targets, auto: stored.auto ?? false, ...order, ...every, ...send }
   }
   const targets: BackupTarget[] =
     typeof stored.path === 'string' && stored.path.length > 0
@@ -210,6 +226,27 @@ export async function removeBackupTarget(
   return writeBackupSettings(projectPath, {
     targets: current.targets.filter((t) => t.id !== targetId)
   })
+}
+
+/**
+ * F-50 step 3: the Settings tab's choices, checked here because they arrive
+ * over IPC: an interval that is not one of the choices is refused rather than
+ * stored, since a zero or a fraction would make the autosave timer spin.
+ */
+export async function writeSaveSettings(
+  projectPath: string,
+  patch: SaveSettingsPatch
+): Promise<BackupSettings> {
+  const clean: SaveSettingsPatch = {}
+  if (typeof patch.auto === 'boolean') clean.auto = patch.auto
+  if (typeof patch.sendToGithub === 'boolean') clean.sendToGithub = patch.sendToGithub
+  if (patch.everyMinutes !== undefined) {
+    if (!(SAVE_EVERY_CHOICES as readonly number[]).includes(patch.everyMinutes as number)) {
+      throw new Error(`A save point every ${String(patch.everyMinutes)} minutes is not a choice.`)
+    }
+    clean.everyMinutes = patch.everyMinutes
+  }
+  return writeBackupSettings(projectPath, clean)
 }
 
 export async function readWindowGeometry(projectPath: string): Promise<WindowGeometry | null> {

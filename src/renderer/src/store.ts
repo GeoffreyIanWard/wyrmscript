@@ -19,6 +19,7 @@ import type {
   ConflictResolution,
   SyncConflict,
   SyncOutcome,
+  SaveSettingsPatch,
   WindowGeometry,
   SyncStatus,
   CompileResult,
@@ -42,6 +43,7 @@ import type {
   CompileBlock
 } from '../../shared/types'
 import {
+  DEFAULT_SAVE_EVERY,
   MAP_STAMP_KINDS,
   MARK_SIZES,
   markSizeOf,
@@ -488,6 +490,8 @@ interface WyrmState {
   saveEverywhere(): Promise<SaveEverywhere>
   /** F-50: store the drawer's card order (location ids, default first). */
   setSaveOrder(order: string[]): Promise<void>
+  /** F-50 step 3: the Settings tab — how often save points are made, and where they go. */
+  setSaveSettings(patch: SaveSettingsPatch): Promise<void>
   /** Restore a backup into a new project and open it. True if one was opened. */
   restoreFromBackup(): Promise<boolean>
   /** F-43: make a local project from one on GitHub and open it. */
@@ -1086,6 +1090,28 @@ export const useWyrm = create<WyrmState>((set, get) => {
   }
 
   /**
+   * The project's own save point every `minutes`, while it has unsaved work.
+   * Re-armed when the writer changes the interval (F-50 step 3); a project
+   * that has closed has no runtime left to arm.
+   */
+  function armAutosave(path: string, minutes: number): void {
+    const runtime = runtimeFor(path)
+    if (runtime.commitTimer) clearInterval(runtime.commitTimer)
+    runtime.commitTimer = setInterval(
+      () => {
+        if (!runtime.commitDirty) return
+        // A project that is open but not focused still has to checkpoint. Its
+        // state is parked rather than in the flat fields, so `commitNow` —
+        // which acts on the focused project — cannot do it, and skipping it
+        // would mean a background project silently never writing history.
+        if (get().project?.path === path) void get().commitNow('Autosave')
+        else void commitParked(path)
+      },
+      minutes * 60 * 1000
+    )
+  }
+
+  /**
    * F-50: runs `write` with `ids` marked as being written in the project at
    * `path`, wherever that project is by the time it finishes — the envelope
    * must not stay half-filled because the writer brought another novel
@@ -1318,7 +1344,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const ids = slice.backupSettings.targets.map((t) => t.id)
       void writingTo(path, ids, () => api.backupNow(path)).catch(() => {})
     }
-    if (isConnected(slice.syncStatus)) {
+    if (isConnected(slice.syncStatus) && slice.backupSettings?.sendToGithub !== false) {
       void syncParked(path)
     }
   }
@@ -1402,20 +1428,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // here, and drawing stamped with it would vanish onto a map that is not.
       mapId: WORLD_MAP
     })
-    const runtime = runtimeFor(info.path)
-    if (runtime.commitTimer) clearInterval(runtime.commitTimer)
-    runtime.commitTimer = setInterval(
-      () => {
-        if (!runtime.commitDirty) return
-        // A project that is open but not focused still has to checkpoint. Its
-        // state is parked rather than in the flat fields, so `commitNow` —
-        // which acts on the focused project — cannot do it, and skipping it
-        // would mean a background project silently never writing history.
-        if (get().project?.path === info.path) void get().commitNow('Autosave')
-        else void commitParked(info.path)
-      },
-      5 * 60 * 1000
-    )
+    armAutosave(info.path, DEFAULT_SAVE_EVERY)
     // A remembered position, if this project has one. Windows with none are
     // given a default by App, which is the only place that knows how big the
     // desktop currently is.
@@ -1425,6 +1438,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
     if (first) await get().selectDoc(first.id)
     await get().loadEntities()
     await get().loadBackupSettings()
+    // The project's own interval, now that its settings are read (F-50).
+    armAutosave(info.path, get().backupSettings?.everyMinutes ?? DEFAULT_SAVE_EVERY)
     void get()
       .checkLocations()
       .catch(() => {})
@@ -1813,7 +1828,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
       }
       // Auto-sync likewise: background, quiet, and conflicts never pop UI
       // from here (brief §7 — commits are local-first, the push is best-effort).
-      if (committed && get().syncStatus?.mode === 'github') {
+      if (
+        committed &&
+        get().syncStatus?.mode === 'github' &&
+        get().backupSettings?.sendToGithub !== false
+      ) {
         void get()
           .syncNow(false)
           .catch(() => {})
@@ -2239,6 +2258,17 @@ export const useWyrm = create<WyrmState>((set, get) => {
           .catch((e: unknown) => ({ status: 'error', detail: errorMessage(e) }) as const)
       }
       return result
+    },
+
+    async setSaveSettings(patch) {
+      const { project } = get()
+      if (!project) return
+      const path = project.path
+      const settings = await api.setSaveSettings(path, patch)
+      patchSliceAt(path, () => ({ backupSettings: settings }))
+      if (patch.everyMinutes !== undefined && runtimes.has(path)) {
+        armAutosave(path, settings.everyMinutes ?? DEFAULT_SAVE_EVERY)
+      }
     },
 
     async setSaveOrder(order) {

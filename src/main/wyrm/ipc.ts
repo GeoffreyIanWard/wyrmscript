@@ -18,6 +18,7 @@ import type {
   Plotline,
   ProjectData,
   Relationship,
+  SaveSettingsPatch,
   PrintSettings,
   StatsSettings,
   SyncOutcome,
@@ -69,6 +70,7 @@ import {
   touchRecentProject,
   writeAppearance,
   writeBackupSettings,
+  writeSaveSettings,
   writeSettings,
   writePrintSettings,
   writeStatsSettings,
@@ -316,6 +318,10 @@ export function registerIpc(): void {
 
   ipcMain.handle('backup:remove', (_e, path: string, targetId: string) =>
     removeBackupTarget(path, targetId)
+  )
+
+  ipcMain.handle('save:settings', (_e, path: string, patch: SaveSettingsPatch) =>
+    writeSaveSettings(path, patch ?? {})
   )
 
   ipcMain.handle('backup:order', (_e, path: string, order: unknown) =>

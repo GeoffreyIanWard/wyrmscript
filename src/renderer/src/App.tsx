@@ -31,9 +31,7 @@ import {
 import type { Size } from './lib/windowGeometry'
 import { useWindowDrag } from './lib/useWindowDrag'
 import type { WindowGeometry } from '../../shared/types'
-import { BackupDialog } from './components/BackupDialog'
-import { SyncDialog } from './components/SyncDialog'
-import { SaveDrawer } from './components/SaveDrawer'
+import { SaveDrawer, type SaveDrawerTab } from './components/SaveDrawer'
 import { SaveLine } from './components/SaveLine'
 import { ConflictDialog } from './components/ConflictDialog'
 import { CommandPalette } from './components/CommandPalette'
@@ -503,14 +501,14 @@ function App(): JSX.Element {
   const [cloneOpen, setCloneOpen] = useState(false)
   const [versionDialog, setVersionDialog] = useState<'commit' | 'history' | 'variants' | null>(null)
   const [compileOpen, setCompileOpen] = useState(false)
-  const [backupOpen, setBackupOpen] = useState(false)
-  const [syncOpen, setSyncOpen] = useState(false)
-  const [saveToOpen, setSaveToOpen] = useState(false)
-  /** F-50: the card the drawer opens on, when an envelope opened it. */
-  const [saveToFocus, setSaveToFocus] = useState<string | undefined>(undefined)
-  const openSaveTo = useCallback((locationId?: string): void => {
-    setSaveToFocus(locationId)
-    setSaveToOpen(true)
+  /**
+   * F-50: the Save To drawer — open, and where it opens: a tab (the palette's
+   * GitHub and Restore From), and a card to focus (an envelope's location).
+   * It replaced the Backup and Sync dialogs (step 3).
+   */
+  const [saveTo, setSaveTo] = useState<{ tab?: SaveDrawerTab; focus?: string } | null>(null)
+  const openSaveTo = useCallback((tab?: SaveDrawerTab, focus?: string): void => {
+    setSaveTo({ tab, focus })
   }, [])
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -543,9 +541,7 @@ function App(): JSX.Element {
     setCharacterGraphOpen(false)
     setVersionDialog(null)
     setCompileOpen(false)
-    setBackupOpen(false)
-    setSyncOpen(false)
-    setSaveToOpen(false)
+    setSaveTo(null)
     setPaletteOpen(false)
     setSearchOpen(false)
     // Deliberately not About: it belongs to the application, not a project,
@@ -835,7 +831,6 @@ function App(): JSX.Element {
       <MenuBar
         onAbout={() => setAboutOpen(true)}
         onShortcuts={() => setShortcutsOpen(true)}
-        onCloneFromGithub={() => setCloneOpen(true)}
         onPreferences={() => setPrefsOpen(true)}
         onVersionDialog={(dialog) => {
           void useWyrm
@@ -845,7 +840,6 @@ function App(): JSX.Element {
         }}
         onCompile={() => setCompileOpen(true)}
         onPrint={runPrint}
-        onBackup={() => setBackupOpen(true)}
         onSaveTo={() => openSaveTo()}
         onStats={() => useWyrm.getState().showStats()}
         onBrowseTags={() => useWyrm.getState().showTags()}
@@ -854,7 +848,7 @@ function App(): JSX.Element {
         onPlotlines={() => setPlotlinesOpen(true)}
         onCharacterGraph={() => setCharacterGraphOpen(true)}
         onWorldMap={() => useWyrm.getState().showMap()}
-        onSyncSettings={() => setSyncOpen(true)}
+        onRestoreFrom={() => openSaveTo('restore')}
         onSearch={() => setSearchOpen(true)}
         onPalette={() => setPaletteOpen(true)}
         focusMode={focusMode}
@@ -922,7 +916,9 @@ function App(): JSX.Element {
                       </ErrorBoundary>
                       {!focusMode && <EntityPanel />}
                     </div>
-                    {!focusMode && <StatusBar onOpenSaveTo={openSaveTo} />}
+                    {!focusMode && (
+                      <StatusBar onOpenSaveTo={(focus) => openSaveTo('save', focus)} />
+                    )}
                   </FocusedProjectWindow>
                 )
               })
@@ -995,37 +991,12 @@ function App(): JSX.Element {
             <CompileDialog onClose={() => setCompileOpen(false)} />
           </ErrorBoundary>
         )}
-        {backupOpen && (
-          <ErrorBoundary label="Backup" onDismiss={() => setBackupOpen(false)}>
-            <BackupDialog onClose={() => setBackupOpen(false)} />
-          </ErrorBoundary>
-        )}
-        {saveToOpen && (
-          <ErrorBoundary label="Save To" onDismiss={() => setSaveToOpen(false)}>
+        {saveTo != null && (
+          <ErrorBoundary label="Save To" onDismiss={() => setSaveTo(null)}>
             <SaveDrawer
-              focusId={saveToFocus}
-              onClose={() => setSaveToOpen(false)}
-              onAddGithub={() => {
-                setSaveToOpen(false)
-                setSyncOpen(true)
-              }}
-              onBringDown={() => {
-                setSaveToOpen(false)
-                setCloneOpen(true)
-              }}
-            />
-          </ErrorBoundary>
-        )}
-        {syncOpen && (
-          <ErrorBoundary label="Sync" onDismiss={() => setSyncOpen(false)}>
-            <SyncDialog
-              onClose={() => setSyncOpen(false)}
-              // Hands the writer straight to Backup from the local-only panel,
-              // rather than naming a menu item and leaving them to find it.
-              onOpenBackup={() => {
-                setSyncOpen(false)
-                setBackupOpen(true)
-              }}
+              initialTab={saveTo.tab}
+              focusId={saveTo.focus}
+              onClose={() => setSaveTo(null)}
             />
           </ErrorBoundary>
         )}
@@ -1047,10 +1018,10 @@ function App(): JSX.Element {
                   run: () => setSearchOpen(true)
                 },
                 {
-                  id: 'clone-github',
-                  title: 'Bring Down from GitHub…',
+                  id: 'restore-from',
+                  title: 'Restore From…',
                   subtitle: 'File',
-                  run: () => setCloneOpen(true)
+                  run: () => openSaveTo('restore')
                 },
                 {
                   id: 'shortcuts',
@@ -1119,16 +1090,16 @@ function App(): JSX.Element {
                   run: () => setVersionDialog('history')
                 },
                 {
-                  id: 'backup',
-                  title: 'Backup…',
-                  subtitle: 'Project',
-                  run: () => setBackupOpen(true)
+                  id: 'save-settings',
+                  title: 'Saving Settings (Save To)',
+                  subtitle: 'File',
+                  run: () => openSaveTo('settings')
                 },
                 {
-                  id: 'sync',
-                  title: 'Sync Settings…',
-                  subtitle: 'Project',
-                  run: () => setSyncOpen(true)
+                  id: 'github',
+                  title: 'GitHub (Save To)',
+                  subtitle: 'File',
+                  run: () => openSaveTo('github')
                 },
                 {
                   id: 'prefs',

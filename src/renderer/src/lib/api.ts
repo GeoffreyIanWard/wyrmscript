@@ -4,6 +4,7 @@ import type {
   WindowGeometry,
   BackupSettings,
   SaveCheck,
+  SaveSettingsPatch,
   BinderNode,
   BoardString,
   BoardSticker,
@@ -823,6 +824,11 @@ export function createMockApi(): WyrmApi {
     async removeBackupTarget(path: string, targetId: string): Promise<BackupSettings> {
       const current = backups.get(path) ?? demoBackup()
       const settings = { ...current, targets: current.targets.filter((t) => t.id !== targetId) }
+      backups.set(path, settings)
+      return { ...settings }
+    },
+    async setSaveSettings(path: string, patch: SaveSettingsPatch): Promise<BackupSettings> {
+      const settings = { ...(backups.get(path) ?? demoBackup()), ...patch }
       backups.set(path, settings)
       return { ...settings }
     },

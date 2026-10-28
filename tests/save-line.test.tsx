@@ -151,12 +151,7 @@ describe('opening the drawer', () => {
     // mount must not leave focus on the close box.
     render(
       <StrictMode>
-        <SaveDrawer
-          focusId={target}
-          onClose={() => {}}
-          onAddGithub={() => {}}
-          onBringDown={() => {}}
-        />
+        <SaveDrawer focusId={target} onClose={() => {}} />
       </StrictMode>
     )
     await waitFor(() =>

@@ -5,7 +5,7 @@ import type { SyncStatus } from '../src/shared/types'
 import { api } from '../src/renderer/src/lib/api'
 import { useWyrm } from '../src/renderer/src/store'
 import { MenuBar } from '../src/renderer/src/components/MenuBar'
-import { SyncDialog } from '../src/renderer/src/components/SyncDialog'
+import { SaveDrawer } from '../src/renderer/src/components/SaveDrawer'
 import { hasSecondCopy, isConnected, isRemoteMissing } from '../src/renderer/src/lib/syncState'
 
 /**
@@ -54,9 +54,8 @@ function renderMenuBar(): void {
       onPreferences={noop}
       onVersionDialog={noop}
       onCompile={noop}
-      onBackup={noop}
       onSaveTo={noop}
-      onSyncSettings={noop}
+      onRestoreFrom={noop}
       onSearch={noop}
       onPalette={noop}
       focusMode={false}
@@ -172,60 +171,63 @@ describe('a failing sync', () => {
   })
 })
 
-describe('the local-only panel', () => {
-  it('says plainly that one disk holds everything', async () => {
-    useWyrm.setState({ syncStatus: LOCAL_ONLY, backupSettings: null })
-    render(<SyncDialog onClose={() => {}} />)
+describe('keeping only this computer', () => {
+  // F-50 step 3: the Sync dialog's local-only panel became the Save To
+  // drawer's own words, under the cards. Its rules stand: say plainly what
+  // is true, offer a door rather than an instruction, never nag a writer
+  // who is covered, and never push GitHub as the remedy.
+  async function renderSaveTo(): Promise<void> {
+    vi.spyOn(api, 'getSyncStatus').mockResolvedValue(LOCAL_ONLY)
+    render(<SaveDrawer onClose={() => {}} />)
+    await waitFor(() => expect(screen.getAllByRole('listitem').length).toBeGreaterThan(0))
+  }
 
-    expect(screen.getByText(/lives on this machine and nowhere else/i)).toBeTruthy()
+  async function addDrive(): Promise<void> {
+    const path = useWyrm.getState().project!.path
+    await api.chooseBackupLocation(path)
+  }
+
+  afterEach(async () => {
+    const path = await api.getLastProjectPath()
+    if (!path) return
+    for (const t of (await api.getBackupSettings(path)).targets) {
+      await api.removeBackupTarget(path, t.id)
+    }
+  })
+
+  it('says plainly that one disk holds everything', async () => {
+    await renderSaveTo()
+    expect(screen.getByText(/This computer holds the only copy/)).toBeTruthy()
     expect(screen.getByText(/a disk that dies takes it with it/i)).toBeTruthy()
   })
 
-  it('offers the backup control rather than naming a menu item', async () => {
+  it('offers the way to another location rather than naming a menu item', async () => {
     // "go to Project → Backup…" is an instruction; a button is a door.
-    const onOpenBackup = vi.fn()
-    useWyrm.setState({ syncStatus: LOCAL_ONLY, backupSettings: null })
-    render(<SyncDialog onClose={() => {}} onOpenBackup={onOpenBackup} />)
-
-    fireEvent.click(screen.getByText('Set Up a Backup…'))
-
-    expect(onOpenBackup).toHaveBeenCalled()
+    await renderSaveTo()
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location…' }))
+    expect(screen.getByRole('menuitem', { name: 'A Drive or Card…' })).toBeTruthy()
   })
 
   it('does not warn a writer who already has a backup', async () => {
     // Telling someone who is covered that they have only one copy is both
     // false and exactly the nagging F-01 forbids.
-    useWyrm.setState({
-      syncStatus: LOCAL_ONLY,
-      backupSettings: {
-        targets: [{ id: 't1', path: '/Volumes/ext/novel', lastBackupAt: null }],
-        auto: true
-      }
-    })
-    render(<SyncDialog onClose={() => {}} onOpenBackup={() => {}} />)
-
-    expect(screen.queryByText(/lives on this machine and nowhere else/i)).toBeNull()
-    expect(screen.getByText(/copied to your backup location/i)).toBeTruthy()
+    await addDrive()
+    await renderSaveTo()
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    expect(screen.queryByText(/This computer holds the only copy/)).toBeNull()
   })
 
   it('is honest that a backup on the same disk does not count', async () => {
-    useWyrm.setState({
-      syncStatus: LOCAL_ONLY,
-      backupSettings: {
-        targets: [{ id: 't1', path: '/Users/x/novel-backup', lastBackupAt: null }],
-        auto: true
-      }
-    })
-    render(<SyncDialog onClose={() => {}} onOpenBackup={() => {}} />)
-
-    expect(screen.getByText(/if it is a folder on this same disk, it is not/i)).toBeTruthy()
+    await addDrive()
+    await renderSaveTo()
+    await waitFor(() =>
+      expect(screen.getByText(/A folder on this same disk\s+does not/)).toBeTruthy()
+    )
   })
 
   it('never pushes GitHub as the remedy', async () => {
     // Local-only is a peer choice (PR #11), not a lesser path being corrected.
-    useWyrm.setState({ syncStatus: LOCAL_ONLY, backupSettings: null })
-    const { container } = render(<SyncDialog onClose={() => {}} onOpenBackup={() => {}} />)
-
-    expect(container.textContent).not.toMatch(/you should|we recommend|instead,? sync/i)
+    await renderSaveTo()
+    expect(document.body.textContent).not.toMatch(/you should|we recommend|instead,? sync/i)
   })
 })
