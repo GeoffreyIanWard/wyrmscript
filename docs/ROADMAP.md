@@ -1118,13 +1118,63 @@ The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places")
 - ⌘S runs Create Save Point.
 - The writer says whether a drive is removable, and the app only guesses.
 
-### F-51 · Resolving conflicts, visually 💭
+### F-51 · Resolving conflicts, visually 📋
 
 Split out of F-50 (2026-10-28), whose Conflicts tab opens today's resolution screen: one passage at a time, keep mine, keep theirs, or keep both as a variant.
 
-**The idea** (Geoffrey, 2026-10-27, to brainstorm further): a skeuomorphic merge. Each side's changed text is broken into separate text-block cards, and the writer drags the blocks they want to keep into the document where they belong. A resolution the writer can see and touch, not a choice between two versions of a file. It would live in the drawer's Conflicts tab, or open from it, in the drawer's 1-bit paper-and-ink look.
+**The idea** (Geoffrey, 2026-10-27): a skeuomorphic merge. Each side's changed text is broken into cards, and the writer drags the ones they want onto the page where they belong. A resolution the writer can see and touch, not a choice between two versions of a file.
 
-**Still to design:** how a passage is broken into blocks (sentences, paragraphs, the changed runs only?); what the document being built looks like while blocks are dragged in; how a block the writer leaves out is kept (a variant, as "keep both" does today — nothing is ever lost); and the keyboard way through it.
+**The screen** (agreed 2026-10-28, from a mock-up):
+
+- **The page in the middle, Local on the left, Incoming on the right.** Each side is labelled with when it was written, such as "This computer · today 2:14 pm" and "Other computer · yesterday 9:40 pm". That is often the quickest way to remember which draft is the better one.
+- **One disputed passage per page**, drawn as a manuscript page in the prose face: the text both computers agree on, with a few paragraphs either side for context. A chapter with three disputes is three pages.
+- **A dashed gap marks where the disputed passage was.** It shows how the passage read before, crossed out, and is gone when the writer finishes.
+- **One card per paragraph.** The merge already compares paragraph by paragraph (each paragraph is one line in the saved file), and writers think in paragraphs. Each side's paragraphs for a dispute are a stack, in order. Finer control may come later, if long use shows it is needed.
+- **Underlines show what changed** in each card, against how it read before. Without them, two cards from the same paragraph are a game of spot-the-difference. A paragraph that had no before gets a **New** tag instead.
+- **Dragging a card over the page shows a cursor where it will land.** The cursor lands only between paragraphs. Anything finer is fixed in the manuscript afterwards, by copy and paste.
+- **Both cards can go in.** A card cannot go inside another card's text, for now.
+- **A placed card stays a unit until the writer finishes**, marked Local or Incoming. It can be dragged again, or back to its stack.
+- **The paper clip on a stack moves the whole stack, in order.** The mock-up left this unclear, so hovering the clip says what it does, the pointer becomes a hand, and guided help explains it. **All into the gap** does the same without dragging.
+- **The page is not editable here.** This screen is for arranging; writing happens in the manuscript.
+- **The bin** takes a card the writer doesn't want. It keeps the card until Finish, and can put it back. After that the text is still in the history, because the combined save point keeps both computers' versions.
+- **The scratch pad** takes a card the writer can't bear to bin. It is never part of the book.
+- **⌘Z** undoes every move on this screen.
+- **Finish is never dead.** Cards left on the stacks go to the scratch pad, and the button says how many.
+- **Later** leaves the screen and keeps the arrangement while the app is open.
+- **It is a view in the novel's own window**, like the corkboard, not a dialog over the whole app, so the other open novels stay usable.
+
+**Changes only one side made**, in a chapter that also has a dispute. Today the whole chapter comes to the writer, because two devices editing one document's prose never merges on its own. On this screen those changes are already on the page, marked "only changed there", and can be lifted off like any placed card.
+
+**Edge cases:**
+
+- **A paragraph deleted on one side and edited on the other:** that side's stack says "Deleted on your other computer", and leaving it empty agrees.
+- **A whole chapter deleted on one side, the binder, an image:** these are not paragraphs. Each gets a simple page on the same screen, keep this one or that one, as today. Story-bible entries are prose and get cards, as chapters do.
+
+**A Both edits card** (first version, if it can be done cleanly). The commonest real conflict is a typo fixed on one computer and a different sentence rewritten in the same paragraph on the other. When a dispute is one paragraph on each side and the two changed different words, so that a word-by-word three-way merge of the paragraph is clean, a third card offers both edits combined. It is only ever a card: nothing is combined unless the writer places it. When the changes overlap, it isn't offered.
+
+**When the screen comes up** (changed 2026-10-28 from "whenever a conflict is found"):
+
+- **Only when the writer asked for the sync**: Save Now, Sync Now, or Resolve… in the Conflicts tab. A background sync that finds conflicts marks the envelope and the Conflicts tab "!" and waits. A timer never pulls the writer off the page mid-sentence.
+- **Only sending to GitHub waits for it.** Saving on this computer and copying to drives carry on, so a conflict never stops the book being backed up.
+
+**The scratch pad** (agreed 2026-10-28). The name stays: it should feel tangible, like an index card full of lines or a little legal pad for leaving notes. Writers are reluctant to throw changes away, and this is where they go instead.
+
+- **A pile of scraps, one file each** (`scratch/`), never one document. Two computers adding to one file would make the scratch pad the next conflict. Each scrap says where and when it came from.
+- **In the binder, beside the Trash.** Opening it shows the scraps on a ruled pad, and their text can be selected and copied into the manuscript.
+- **Never in the book.** It is left out of Compile, word counts, stats and the corkboard. It is **in search**, so a cut line can be found again.
+- **Move to Scratch Pad**, a command in the editor for any selection. It takes the text out of the manuscript and onto the pad, so cutting a passage never means losing it. Many writers keep a file of cuts anyway; this is that file.
+
+Still open, for step 1: whether the writer can also write on the pad directly.
+
+**Under the hood.** Today the engine resolves a whole file one way: mine, theirs, or both. This needs a new answer: the arranged text of each chapter, plus the scraps, in the same combined save point. The screen must also finish against exactly the two versions it showed, so background sync pauses for that novel while the screen is open, and a resolve whose versions have moved underneath is refused with a fresh list rather than applied.
+
+**Build steps** (agreed 2026-10-28, one PR each):
+
+1. **The scratch pad.** Scraps on disk (`scratch/<id>.md`, a one-file-per-id store like the corkboard's strings), the binder entry beside the Trash, the pad's view with copying out, left out of Compile, word counts, stats and the corkboard, found by search, and **Move to Scratch Pad** in the editor. It is useful on its own before any merge uses it.
+2. **Laying out the pages.** Pure and DOM-free (`lib/mergePages.ts`): paragraphs from the three versions, the disputes as pages with their context, one-sided changes placed and marked, the underlines and New tags, deletions, the Both edits card, and composing a chapter's text back from an arrangement. All of it tested without a screen.
+3. **The engine's new answer.** A conflict carries the text from before and when each side was written. Resolving takes arranged text and scraps, and a chapter's details (title, tags, synopsis) still merge field by field, as in a clean sync; only the prose is arranged. A resolve refuses if either version has moved, and background sync pauses while the screen is open.
+4. **The screen.** The view, the stacks and their clips, the page and its cursor, the bin, the scratch pad, ⌘Z, Finish and Later, and the simple pages for what isn't prose. It replaces today's resolution dialog.
+5. **The keyboard and guided help.** Tab moves between the stacks and the page, ↑ and ↓ move the cursor between paragraphs, Return places, Delete bins, and S sends to the scratch pad. Every control gets help, the clip first.
 
 ## Known issues
 
