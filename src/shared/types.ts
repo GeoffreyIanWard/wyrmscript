@@ -1171,4 +1171,16 @@ export interface WyrmApi {
    * into TypeScript would be a second source of truth. No-op off Windows.
    */
   setTitleBarOverlay(color: string, symbolColor: string): Promise<void>
+  /**
+   * Quit, once the window has put its work away (`main/wyrm/quitGate.ts`).
+   * Every other way to quit is held in main and handed to the listener
+   * below, so all of them go through the same save.
+   */
+  quitApp(): Promise<void>
+  /**
+   * Main asks the window to put its work away before the app quits. The
+   * listener saves and checkpoints, then calls `quitApp` — or, if the
+   * writer decides to stay, does nothing. Returns the unsubscribe.
+   */
+  onQuitRequested(listener: () => void): () => void
 }

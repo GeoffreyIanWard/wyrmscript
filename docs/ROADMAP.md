@@ -923,6 +923,7 @@ Requested 2026-10-26, for outline mode. Two things to mark a board up with: **st
 **Found in the browser preview:** the board is only as tall as its cards, so a click on the cork below them did nothing. The cork click now belongs to the whole board view, and a place in the margin is kept on the board. The sticker in hand used to widen the Sticker button and slide the swatches out from under the pointer: picking orange, then a sticker, then clicking "green" chose yellow. The sticker now takes the pin's slot, which never changes size.
 
 **The adversarial review confirmed eight findings, all fixed with tests and mutation-checked.**
+
 - With a sticker in hand, every click inside Add Card or the back of a card stuck a stray sticker on the cork under it, because both dialogs are children of the board. The cork click now counts only on the cork itself.
 - Dragging a sticker from one card onto a card later in the stack had two faults. The sticker passed under that card for the whole drag, because each card is its own stacking context; its card now comes up while it is carried. And the drop's click landed on the board and, with a sticker in hand, stuck a second one there. The click a drag ends with is now swallowed.
 - Recolouring a string or a relationship wrote into, and marked dirty, whichever project was in front when the write came back. Both writes now go to the project written, and so does the relationship save the Character Graph shares.
@@ -930,6 +931,24 @@ Requested 2026-10-26, for outline mode. Two things to mark a board up with: **st
 - Four test gaps are closed: relationship colours at every layer, a project switch mid-write, a drop where two cards overlap or within a sticker's own card, and a card drag or a tag click with a sticker in hand.
 
 **Found re-checking the fix in the preview:** the swallowed drop-click was first retired by a timer. A drag that ends without a click left the swallower in place for as long as the page held its timers back, which in a background window is long enough to eat the writer's next real click (Add Card did nothing). It is now retired by the next press or key, never by a timer.
+
+### F-49 · Quit ✅ shipped
+
+Requested 2026-10-27. **File → Quit (⌘Q)**: in File, where the early Mac kept it, and not gated on a project, so the Welcome screen quits too.
+
+**Every way to quit now saves first.** Before this, ⌘Q, the WyrmStar menu's Quit and the Dock's Quit went straight to Electron. They relied on `beforeunload`, which starts the save and a checkpoint of the front project and waits for neither. On Windows and Linux the window's close box, the usual way out there, did the same. Now main holds every quit at `before-quit` (`main/wyrm/quitGate.ts`) and asks the window, which runs the same `quit` action as the menu item:
+
+1. The page is saved while it is still on screen. If it cannot be saved, the writer is asked, and may stay.
+2. The window shows only "Saving your work…". Everything else closes, and **every part saves the way it does when it closes**: a card's back, a name being typed on the map, a nudge waiting to settle. Nothing more can be typed.
+3. Quitting waits for every one of those writes (`apiSettled`: each call to the bridge is tracked while it is in flight). A disk that stops answering is given ten seconds, then the writer is asked whether to quit anyway or stay.
+4. Every open project with work since its last checkpoint is checkpointed, parked ones too. A checkpoint gets eight seconds: the files are saved by then, and a missed checkpoint loses nothing.
+5. The app goes.
+
+**It never traps the writer.** With no window open there is nothing to put away, and the quit goes at once. A window that does not answer within five seconds (hung, or with nothing listening) is quit anyway. Pressing ⌘Q twice quits once. On the Mac the close box closes the window and the app stays, as Mac apps do; that path still has only `beforeunload`.
+
+**The projects stay open as far as the next launch is concerned**, as they always have on quit. Quit does not close them one by one, which would empty the reopen list.
+
+**The adversarial review confirmed four findings, all fixed with tests and mutation-checked.** The first version saved only the page, so a card back left open, a map name being typed or a nudge still settling was lost: they save when they close, and a quit closed nothing. Text typed during the checkpoint wait was lost the same way. A save that never finished left the app unable to quit, with every later quit swallowed. And the close box on Windows and Linux skipped the save altogether.
 
 ### F-42 · Outline mode ✅ shipped
 
