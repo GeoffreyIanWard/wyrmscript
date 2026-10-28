@@ -74,7 +74,8 @@ import {
   writeStatsSettings,
   writeSyncProject
 } from './settings'
-import { backupNameFor, backupToAll, restoreBackup, unreachableTargets } from './backup'
+import { backupNameFor, backupToAll, restoreBackup } from './backup'
+import { checkSaveLocations } from './saveCheck'
 import { cloneProject } from './clone'
 import { dailyStats } from './stats'
 import {
@@ -323,8 +324,12 @@ export function registerIpc(): void {
     })
   )
 
-  ipcMain.handle('backup:unreachable', async (_e, path: string) =>
-    unreachableTargets((await readBackupSettings(path)).targets)
+  ipcMain.handle('save:check', async (_e, path: string) =>
+    checkSaveLocations(
+      path,
+      (await readBackupSettings(path)).targets,
+      (await getRemoteUrl(path).catch(() => null)) != null
+    )
   )
 
   ipcMain.handle('backup:now', async (_e, path: string) => {

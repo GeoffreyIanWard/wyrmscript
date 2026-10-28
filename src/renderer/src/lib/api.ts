@@ -3,6 +3,7 @@ import type {
   BackupRun,
   WindowGeometry,
   BackupSettings,
+  SaveCheck,
   BinderNode,
   BoardString,
   BoardSticker,
@@ -830,11 +831,25 @@ export function createMockApi(): WyrmApi {
       backups.set(path, settings)
       return { ...settings }
     },
-    async unreachableTargets(path: string): Promise<string[]> {
-      // The same stand-in for an unplugged card as backupNow uses below.
-      return (backups.get(path)?.targets ?? [])
+    async checkSaveLocations(path: string): Promise<SaveCheck> {
+      // The same stand-in for an unplugged card as backupNow uses below; and
+      // "behind" by time, since the preview has no repositories to compare.
+      const project = mustGet(path)
+      const head = project.commits[project.commits.length - 1]?.timestamp ?? null
+      const targets = backups.get(path)?.targets ?? []
+      const unreachable = targets
         .filter((t) => t.path.startsWith('/Volumes/Archive'))
         .map((t) => t.id)
+      if (head == null) return { unreachable, behind: [] }
+      const behind = targets
+        .filter((t) => !unreachable.includes(t.id))
+        .filter((t) => t.lastBackupAt == null || t.lastBackupAt < head)
+        .map((t) => t.id)
+      const linked = sync.get(path)
+      if (linked?.mode === 'github' && (linked.lastSyncAt == null || linked.lastSyncAt < head)) {
+        behind.push('github')
+      }
+      return { unreachable, behind }
     },
     async backupNow(path: string): Promise<BackupRun> {
       const settings = backups.get(path)

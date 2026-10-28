@@ -7,6 +7,7 @@ import {
   brokenReason,
   describeLocation,
   driveName,
+  envelopeOf,
   isRemovable,
   moveLocation,
   removedBySingle,
@@ -150,6 +151,99 @@ describe('a location that cannot be reached', () => {
 
   it('never calls the project folder broken', () => {
     expect(brokenReason(folder, SYNCED, ['folder'], 'GitHub unreachable')).toBeNull()
+  })
+})
+
+describe('the envelopes in the status line', () => {
+  const at = 1_000_000
+  const base = {
+    sync: SYNCED,
+    unreachable: [] as string[],
+    syncProblem: null,
+    syncNeedsAttention: false,
+    savingTo: [] as string[],
+    // What the main process says does not hold the latest save point.
+    behind: ['old']
+  }
+  const list = saveLocations(
+    PROJECT,
+    at,
+    {
+      targets: [
+        { id: 'card', path: '/Volumes/CARD/W.wyrm.git', lastBackupAt: at + 5 },
+        { id: 'old', path: '/Volumes/OLD/W.wyrm.git', lastBackupAt: at - 5 }
+      ],
+      auto: true
+    },
+    SYNCED
+  )
+  const [folder, card, old, github] = list
+  const state = (l: (typeof list)[number], ctx = {}): string =>
+    envelopeOf(l, { ...base, ...ctx }).state
+
+  it('fills an envelope that holds the latest save', () => {
+    expect(state(folder)).toBe('saved')
+    expect(state(card)).toBe('saved')
+    expect(state(github)).toBe('saved')
+  })
+
+  it('goes by what the repositories say, never by the times', () => {
+    // GitHub last synced long before the last save point: its time is no
+    // evidence either way, only whether it holds the save point is.
+    expect(github.lastSavedAt).toBeLessThan(at)
+    expect(state(github, { behind: ['github'] })).toBe('behind')
+    expect(state(github, { behind: [] })).toBe('saved')
+    // A drive written after the last save point can still lack it (the main
+    // process committed on its own since), and is behind if it does.
+    expect(card.lastSavedAt).toBeGreaterThan(at)
+    expect(state(card, { behind: ['card'] })).toBe('behind')
+  })
+
+  it('leaves one empty when it is behind the last save point', () => {
+    expect(envelopeOf(old, base)).toEqual({
+      state: 'behind',
+      reason: 'Not up to date with the last save'
+    })
+    expect(state(github, { sync: { ...SYNCED, pendingSync: true } })).toBe('behind')
+    const fresh = saveLocations(PROJECT, null, null, null)[0]
+    expect(envelopeOf(fresh, base)).toEqual({
+      state: 'behind',
+      reason: 'Not saved here yet'
+    })
+  })
+
+  it('shows a write in progress above everything else', () => {
+    expect(state(old, { savingTo: ['old'] })).toBe('saving')
+    expect(state(card, { savingTo: ['card'], unreachable: ['card'] })).toBe('saving')
+    expect(state(github, { savingTo: ['github'], syncProblem: 'GitHub unreachable' })).toBe(
+      'saving'
+    )
+  })
+
+  it('dashes a drive that is not connected, quietly', () => {
+    expect(envelopeOf(card, { ...base, unreachable: ['card'] })).toEqual({
+      state: 'missing',
+      reason: 'Drive not connected'
+    })
+  })
+
+  it('marks GitHub when it cannot be reached or passages are waiting', () => {
+    expect(envelopeOf(github, { ...base, syncProblem: 'GitHub unreachable' })).toEqual({
+      state: 'attention',
+      reason: 'GitHub unreachable'
+    })
+    expect(envelopeOf(github, { ...base, syncNeedsAttention: true })).toEqual({
+      state: 'attention',
+      reason: 'Some passages need your eye'
+    })
+    expect(state(github, { sync: { ...SYNCED, remoteUrl: null } })).toBe('attention')
+    expect(state(github, { sync: { ...SYNCED, login: null } })).toBe('attention')
+  })
+
+  it('never marks the project folder', () => {
+    expect(
+      state(folder, { syncProblem: 'x', syncNeedsAttention: true, unreachable: ['folder'] })
+    ).toBe('saved')
   })
 })
 

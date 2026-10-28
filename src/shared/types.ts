@@ -916,6 +916,17 @@ export interface BackupSettings {
   order?: string[]
 }
 
+/**
+ * F-50: the state of a project's save locations, from the repositories
+ * themselves. `unreachable` are backup targets whose drive is not there;
+ * `behind` are location ids (target ids, or `github`) that do not hold the
+ * latest save point.
+ */
+export interface SaveCheck {
+  unreachable: string[]
+  behind: string[]
+}
+
 /** What happened at one target during a backup run. */
 export type TargetResult =
   | { targetId: string; status: 'ok'; outcome: BackupOutcome }
@@ -1133,8 +1144,8 @@ export interface WyrmApi {
   removeBackupTarget(path: string, targetId: string): Promise<BackupSettings>
   /** F-50: store the Save to drawer's card order (location ids, default first). */
   setSaveOrder(path: string, order: string[]): Promise<BackupSettings>
-  /** F-50: which backup targets cannot be reached right now (a drive not connected). */
-  unreachableTargets(path: string): Promise<string[]>
+  /** F-50: which locations cannot be reached, and which lack the latest save point. */
+  checkSaveLocations(path: string): Promise<SaveCheck>
   /** Checkpoint, then mirror this project into every reachable target (F-40). */
   backupNow(path: string): Promise<BackupRun>
   /** Pick a backup and a destination, then open the restored project. Null if cancelled. */

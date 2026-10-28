@@ -198,6 +198,9 @@ export const SLICE_KEYS = [
   'syncConflicts',
   'syncNeedsAttention',
   'syncProblem',
+  'unreachable',
+  'behind',
+  'savingTo',
   'stale'
 ] as const
 
@@ -425,6 +428,27 @@ interface WyrmState {
    * than throwing, so the flag alone never saw it.
    */
   syncProblem: string | null
+  /**
+   * F-50: the backup targets that could not be reached when last checked —
+   * a card not plugged in. Checked as the project loads, after every backup,
+   * and every so often by the status line, since a card comes and goes
+   * without the app being told.
+   */
+  unreachable: string[]
+  /**
+   * F-50: the locations (target ids, or `github`) that do not hold the
+   * latest save point, as the repositories themselves answer it — never from
+   * timestamps, which miss the main process's own commits and pulled ones.
+   */
+  behind: string[]
+  /** F-50: the locations being written right now, by id, so their envelopes fill in as each finishes. */
+  savingTo: string[]
+  /**
+   * F-50: ask the main process which locations are reachable and which hold
+   * the latest save point, and re-read the project's backup and sync status,
+   * for the project at `path` (the focused one by default) wherever it is.
+   */
+  checkLocations(path?: string): Promise<void>
   /**
    * F-41: this project's files changed on disk under a background sync, so
    * the state held for it no longer matches them.
@@ -975,6 +999,9 @@ function emptySlice(): ProjectSlice {
     syncConflicts: null,
     syncNeedsAttention: false,
     syncProblem: null,
+    unreachable: [],
+    behind: [],
+    savingTo: [],
     stale: false
   }
 }
@@ -1056,6 +1083,29 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({
         parked: { ...now.parked, [path]: { ...now.parked[path], ...patch(now.parked[path]) } }
       })
+  }
+
+  /**
+   * F-50: runs `write` with `ids` marked as being written in the project at
+   * `path`, wherever that project is by the time it finishes — the envelope
+   * must not stay half-filled because the writer brought another novel
+   * forward meanwhile.
+   */
+  async function writingTo<T>(path: string, ids: string[], write: () => Promise<T>): Promise<T> {
+    patchSliceAt(path, (slice) => ({
+      savingTo: [...slice.savingTo, ...ids.filter((id) => !slice.savingTo.includes(id))]
+    }))
+    try {
+      return await write()
+    } finally {
+      patchSliceAt(path, (slice) => ({
+        savingTo: slice.savingTo.filter((id) => !ids.includes(id))
+      }))
+      // Whatever the write did or failed to do, the envelopes ask again.
+      void get()
+        .checkLocations(path)
+        .catch(() => {})
+    }
   }
 
   /**
@@ -1265,7 +1315,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
     // Both are fire-and-forget, exactly as they are for the focused project:
     // a missing drive or a dead network must never block a checkpoint.
     if (slice.backupSettings?.auto && slice.backupSettings.targets.length) {
-      void api.backupNow(path).catch(() => {})
+      const ids = slice.backupSettings.targets.map((t) => t.id)
+      void writingTo(path, ids, () => api.backupNow(path)).catch(() => {})
     }
     if (isConnected(slice.syncStatus)) {
       void syncParked(path)
@@ -1284,7 +1335,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
    * project comes forward.
    */
   async function syncParked(path: string): Promise<void> {
-    const outcome = await api.syncNow(path).catch(() => null)
+    const outcome = await writingTo(path, ['github'], () => api.syncNow(path)).catch(() => null)
     if (!outcome) return
     const parked = get().parked
     const slice = parked[path]
@@ -1337,6 +1388,9 @@ export const useWyrm = create<WyrmState>((set, get) => {
       syncConflicts: null,
       syncNeedsAttention: false,
       syncProblem: null,
+      unreachable: [],
+      behind: [],
+      savingTo: [],
       // A different project is a different undo, as it is a different view
       // history. Left out, the last project's record came along and lit the
       // button in a novel nothing had been applied to — and in a restored
@@ -1371,6 +1425,9 @@ export const useWyrm = create<WyrmState>((set, get) => {
     if (first) await get().selectDoc(first.id)
     await get().loadEntities()
     await get().loadBackupSettings()
+    void get()
+      .checkLocations()
+      .catch(() => {})
     await get().loadSyncStatus()
     void get().refreshStats()
     const log = await api.log(info.path)
@@ -1421,6 +1478,9 @@ export const useWyrm = create<WyrmState>((set, get) => {
     syncConflicts: null,
     syncNeedsAttention: false,
     syncProblem: null,
+    unreachable: [],
+    behind: [],
+    savingTo: [],
 
     async boot() {
       // Appearance first and independently of any project: the writer's
@@ -1733,7 +1793,9 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { project } = get()
       if (!project) return
       await get().flushSave()
-      const committed = await api.commit(project.path, message)
+      const committed = await writingTo(project.path, ['folder'], () =>
+        api.commit(project.path, message)
+      )
       clearDirty()
       if (committed) {
         set({ lastCommitAt: Date.now() })
@@ -1982,6 +2044,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { project } = get()
       if (!project) return
       set({ dailyStats: await api.getDailyStats(project.path).catch(() => []) })
+      // Reading the stats makes a save point in the main process (it commits
+      // first), which the renderer is not told about.
+      void get()
+        .checkLocations(project.path)
+        .catch(() => {})
     },
 
     /* ---------- GitHub sync (Phase 5) ---------- */
@@ -2032,7 +2099,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await get().flushSave()
       let outcome: SyncOutcome
       try {
-        outcome = await api.syncNow(project.path)
+        outcome = await writingTo(project.path, ['github'], () => api.syncNow(project.path))
       } catch (err) {
         // A sync that failed must never look like one that worked. Callers
         // fire this with `void` (the menu item, the post-checkpoint auto-sync,
@@ -2090,7 +2157,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { project } = get()
       if (!project) return
       const settings = await api.chooseBackupLocation(project.path)
-      if (settings) set({ backupSettings: settings })
+      if (settings) {
+        set({ backupSettings: settings })
+        void get()
+          .checkLocations()
+          .catch(() => {})
+      }
     },
 
     async setBackupAuto(auto) {
@@ -2108,10 +2180,35 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async backupNow() {
       const { project } = get()
       if (!project) throw new Error('No project is open')
+      const path = project.path
       await get().flushSave()
-      const run = await api.backupNow(project.path)
-      await get().loadBackupSettings()
+      const ids = (get().backupSettings?.targets ?? []).map((t) => t.id)
+      const run = await writingTo(path, ids, () => api.backupNow(path))
+      // Awaited, so a caller reads each drive's new time as soon as this
+      // resolves; re-reads the settings and which drives are there for this
+      // project, wherever it is by then.
+      await get()
+        .checkLocations(path)
+        .catch(() => {})
       return run
+    },
+
+    async checkLocations(path = get().project?.path) {
+      if (!path) return
+      const [check, backupSettings, syncStatus] = await Promise.all([
+        api.checkSaveLocations(path),
+        api.getBackupSettings(path),
+        api.getSyncStatus(path)
+      ])
+      // Unchanged is the usual answer; keep the same arrays and objects so
+      // nothing re-renders on a poll.
+      const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
+      patchSliceAt(path, (slice) => ({
+        ...(same(slice.unreachable, check.unreachable) ? {} : { unreachable: check.unreachable }),
+        ...(same(slice.behind, check.behind) ? {} : { behind: check.behind }),
+        ...(same(slice.backupSettings, backupSettings) ? {} : { backupSettings }),
+        ...(same(slice.syncStatus, syncStatus) ? {} : { syncStatus })
+      }))
     },
 
     async saveEverywhere() {
@@ -2119,7 +2216,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) throw new Error('No project is open')
       const path = project.path
       await get().flushSave()
-      const committed = await api.commit(path, 'Save point')
+      const committed = await writingTo(path, ['folder'], () => api.commit(path, 'Save point'))
       // The writer may have brought another project to the front during that
       // await; everything after acts on the focused project, so stop rather
       // than copy the wrong novel (the drawer closes on a focus change anyway).

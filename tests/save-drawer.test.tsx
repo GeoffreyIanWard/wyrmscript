@@ -77,7 +77,7 @@ describe('the cards', () => {
 
   it('says why a drive cannot be reached', async () => {
     const [, card] = await addDrives(2)
-    vi.spyOn(api, 'unreachableTargets').mockResolvedValue([card])
+    vi.spyOn(api, 'checkSaveLocations').mockResolvedValue({ unreachable: [card], behind: [] })
     renderDrawer()
     const broken = await screen.findByText(/Broken connection!/)
     expect(broken.closest('li')?.getAttribute('aria-label')).toBe('CARD')
@@ -311,6 +311,11 @@ describe('Save Now', () => {
         { targetId: card, status: 'failed', message: 'The drive is full.' },
         { targetId: archive, status: 'unreachable' }
       ]
+    })
+    // The main process agrees: the second drive is not there.
+    vi.spyOn(api, 'checkSaveLocations').mockResolvedValue({
+      unreachable: [archive],
+      behind: [card]
     })
     renderDrawer()
     await waitFor(() => expect(cardNames()).toHaveLength(3))

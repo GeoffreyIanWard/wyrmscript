@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act } from '@testing-library/react'
+import { act, waitFor } from '@testing-library/react'
 import type { SyncStatus } from '../src/shared/types'
 import { api } from '../src/renderer/src/lib/api'
 import { __disposeAll, __ensureRuntime, useWyrm } from '../src/renderer/src/store'
@@ -82,6 +82,80 @@ describe('Save Now when another novel comes to the front', () => {
     // Clearing it would make the other novel's Autosave and quit skip work
     // that has no save point yet.
     expect(__ensureRuntime(other).commitDirty).toBe(true)
+  })
+})
+
+describe('a project in a background window', () => {
+  it('has its drives re-read after a backup it made on its own', async () => {
+    const first = await openDemo()
+    await api.chooseBackupLocation(first)
+    await useWyrm.getState().loadBackupSettings()
+    const second = await api.createProject('Second Novel')
+    await act(async () => {
+      await useWyrm.getState().openAdditionalProject(second.path)
+    })
+    expect(useWyrm.getState().parked[first].backupSettings?.targets[0].lastBackupAt).toBeNull()
+    // The background project's own checkpoint backs it up, in main; its slice
+    // holds the settings from before.
+    await api.backupNow(first)
+    await act(async () => {
+      await useWyrm.getState().checkLocations(first)
+    })
+    const parked = useWyrm.getState().parked[first]
+    expect(parked.backupSettings?.targets[0].lastBackupAt).not.toBeNull()
+    expect(parked.behind).toEqual([])
+    // And the project in front is left alone.
+    expect(useWyrm.getState().project?.path).toBe(second.path)
+    expect(useWyrm.getState().backupSettings?.targets ?? []).toEqual([])
+  })
+})
+
+describe('a background checkpoint', () => {
+  it("re-reads that project's drives after its own backup", async () => {
+    // Only the interval is faked: the five-minute checkpoint is what runs here.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const first = await openDemo()
+      await api.chooseBackupLocation(first)
+      await api.setBackupAuto(first, true)
+      await useWyrm.getState().loadBackupSettings()
+      const second = await api.createProject('Second Novel')
+      await act(async () => {
+        await useWyrm.getState().openAdditionalProject(second.path)
+      })
+      // Work in the background project that has no save point yet.
+      const [doc] = await api.readAllDocs(first)
+      await api.writeDoc(first, { ...doc, body: `${doc.body}\nMore, in the background.` })
+      __ensureRuntime(first).commitDirty = true
+      expect(useWyrm.getState().parked[first].backupSettings?.targets[0].lastBackupAt).toBeNull()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+      })
+      await waitFor(() =>
+        expect(
+          useWyrm.getState().parked[first].backupSettings?.targets[0].lastBackupAt
+        ).not.toBeNull()
+      )
+      expect(useWyrm.getState().parked[first].behind).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('save points the main process makes on its own', () => {
+  it('asks again after reading the stats, which commits first', async () => {
+    const path = await openDemo()
+    const check = vi
+      .spyOn(api, 'checkSaveLocations')
+      .mockResolvedValue({ unreachable: [], behind: ['github'] })
+    check.mockClear()
+    await act(async () => {
+      await useWyrm.getState().refreshStats()
+    })
+    await waitFor(() => expect(check).toHaveBeenCalledWith(path))
+    await waitFor(() => expect(useWyrm.getState().behind).toEqual(['github']))
   })
 })
 
