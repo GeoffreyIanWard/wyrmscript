@@ -96,7 +96,7 @@ describe('the Corkboard menu', () => {
     for (const view of ['Timeline', 'Plot Graph', 'Plotlines', 'Character Graph', 'World Map']) {
       expect(items).not.toContain(view)
     }
-    expect(items).toContain('Backup')
+    expect(items).toContain('Sync Now')
   })
 
   it('names the place it would take you, not the place you are', async () => {

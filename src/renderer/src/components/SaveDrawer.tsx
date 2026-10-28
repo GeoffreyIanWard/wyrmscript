@@ -9,6 +9,7 @@ import { errorMessage } from '../lib/errors'
 import {
   brokenReason,
   describeLocation,
+  DIVERGED,
   isRemovable,
   MAX_LOCATIONS,
   moveLocation,
@@ -20,12 +21,18 @@ import {
 } from '../lib/saveLocations'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { useWyrm } from '../store'
+import { BringDownPanel } from './BringDownPanel'
+import { SaveDrawerGitHub } from './SaveDrawerGitHub'
+import { SaveDrawerSettings } from './SaveDrawerSettings'
 
-type Tab = 'save' | 'restore'
+export type SaveDrawerTab = 'save' | 'restore' | 'settings' | 'github'
+type Tab = SaveDrawerTab
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'save', label: 'Save to' },
-  { id: 'restore', label: 'Restore from' }
+  { id: 'restore', label: 'Restore from' },
+  { id: 'settings', label: 'Settings' },
+  { id: 'github', label: 'GitHub' }
 ]
 
 /** How far a press must travel before it is a drag rather than a click. */
@@ -116,17 +123,14 @@ interface Drag {
 
 export function SaveDrawer({
   focusId,
-  onClose,
-  onAddGithub,
-  onBringDown
+  initialTab = 'save',
+  onClose
 }: {
   /** The card to put focus on as the drawer opens — an envelope's location. */
   focusId?: string
+  /** The tab to open on — a palette item may ask for GitHub or Restore from. */
+  initialTab?: Tab
   onClose: () => void
-  /** Opens the GitHub set-up, since connecting is not on this screen yet. */
-  onAddGithub: () => void
-  /** Opens Bring Down from GitHub. */
-  onBringDown: () => void
 }): JSX.Element {
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const project = useWyrm((s) => s.project)
@@ -138,8 +142,10 @@ export function SaveDrawer({
   // Which drives are missing lives in the store, so the status line's
   // envelopes and these cards always agree (F-50 step 2).
   const unreachable = useWyrm((s) => s.unreachable)
+  const diverged = useWyrm((s) => s.diverged)
 
-  const [tab, setTab] = useState<Tab>('save')
+  const [tab, setTab] = useState<Tab>(initialTab)
+  const [bringDownOpen, setBringDownOpen] = useState(false)
   const [busy, setBusy] = useState<'save' | 'add' | 'remove' | 'restore' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
@@ -497,6 +503,9 @@ export function SaveDrawer({
                             {detail}
                           </div>
                           {problem != null && <div className="error-text">{problem}</div>}
+                          {diverged.includes(location.id) && (
+                            <div className="error-text">{DIVERGED}</div>
+                          )}
                         </div>
                         <div className="save-card-side">
                           {reason != null ? (
@@ -560,6 +569,22 @@ export function SaveDrawer({
                 <div className="drawer-hint drawer-paper">
                   Drag a card to the top, or press ⌥↑, to make it the default.
                 </div>
+                {/* Said plainly and once, never as a nag: keeping only this
+                    computer is a real choice (F-01), and GitHub is never
+                    offered as the remedy. */}
+                {locations.length === 1 && (
+                  <div className="drawer-hint drawer-paper">
+                    This computer holds the only copy. Every version is kept, but all of it lives on
+                    one disk, and a disk that dies takes it with it. Another location is what
+                    protects against that.
+                  </div>
+                )}
+                {locations.some((l) => l.kind === 'disk') && (
+                  <div className="drawer-hint drawer-paper">
+                    A drive or card protects against this disk dying. A folder on this same disk
+                    does not — nothing here can tell which, so it is worth knowing yourself.
+                  </div>
+                )}
 
                 {confirm?.kind === 'single' && (
                   <div
@@ -613,8 +638,9 @@ export function SaveDrawer({
                             role="menuitem"
                             className="btn"
                             onClick={() => {
+                              // Linking a project to GitHub is the GitHub tab's.
                               setAddOpen(false)
-                              onAddGithub()
+                              setTab('github')
                             }}
                           >
                             GitHub…
@@ -685,8 +711,9 @@ export function SaveDrawer({
                     <button
                       type="button"
                       className="btn"
+                      aria-expanded={bringDownOpen}
                       disabled={busy != null}
-                      onClick={onBringDown}
+                      onClick={() => setBringDownOpen((open) => !open)}
                     >
                       Choose…
                     </button>
@@ -694,6 +721,17 @@ export function SaveDrawer({
                 </li>
               </ol>
             )}
+            {tab === 'restore' && bringDownOpen && (
+              <div className="drawer-paper drawer-wide drawer-bring-down">
+                <BringDownPanel
+                  onBroughtDown={onClose}
+                  onBusy={(on) => setBusy(on ? 'restore' : null)}
+                />
+              </div>
+            )}
+
+            {tab === 'settings' && <SaveDrawerSettings />}
+            {tab === 'github' && <SaveDrawerGitHub locationCount={stored.length} />}
           </div>
         </div>
       </div>

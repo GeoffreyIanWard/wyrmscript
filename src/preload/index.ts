@@ -101,6 +101,7 @@ const api: WyrmApi = {
   setBackupAuto: (path, auto) => ipcRenderer.invoke('backup:auto', path, auto),
   removeBackupTarget: (path, targetId) => ipcRenderer.invoke('backup:remove', path, targetId),
   setSaveOrder: (path, order) => ipcRenderer.invoke('backup:order', path, order),
+  setSaveSettings: (path, patch) => ipcRenderer.invoke('save:settings', path, patch),
   checkSaveLocations: (path) => ipcRenderer.invoke('save:check', path),
   backupNow: (path) => ipcRenderer.invoke('backup:now', path),
   restoreFromBackup: () => ipcRenderer.invoke('backup:restore'),

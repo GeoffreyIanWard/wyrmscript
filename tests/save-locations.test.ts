@@ -6,6 +6,7 @@ import type { BackupSettings, SyncStatus } from '../src/shared/types'
 import {
   brokenReason,
   describeLocation,
+  DIVERGED,
   driveName,
   envelopeOf,
   isRemovable,
@@ -163,7 +164,8 @@ describe('the envelopes in the status line', () => {
     syncNeedsAttention: false,
     savingTo: [] as string[],
     // What the main process says does not hold the latest save point.
-    behind: ['old']
+    behind: ['old'],
+    diverged: [] as string[]
   }
   const list = saveLocations(
     PROJECT,
@@ -240,6 +242,14 @@ describe('the envelopes in the status line', () => {
     expect(state(github, { sync: { ...SYNCED, login: null } })).toBe('attention')
   })
 
+  it('marks a drive another computer backed up to, and says what to do', () => {
+    expect(envelopeOf(old, { ...base, diverged: ['old'] })).toEqual({
+      state: 'attention',
+      reason: DIVERGED
+    })
+    expect(DIVERGED).toMatch(/left untouched.*Restore it to a new project/)
+  })
+
   it('never marks the project folder', () => {
     expect(
       state(folder, { syncProblem: 'x', syncNeedsAttention: true, unreachable: ['folder'] })
@@ -313,6 +323,39 @@ describe('the stored order', () => {
     await addBackupTarget(PROJECT, '/Volumes/CARD/Winter.wyrm.git')
     await writeBackupSettings(PROJECT, { auto: true })
     expect((await readBackupSettings(PROJECT)).order).toEqual(['github', 'folder'])
+  })
+
+  it('keeps the saving settings through a later change', async () => {
+    const { readBackupSettings, writeSaveSettings, addBackupTarget } =
+      await import('../src/main/wyrm/settings')
+    await writeSaveSettings(PROJECT, { everyMinutes: 15, sendToGithub: false })
+    await addBackupTarget(PROJECT, '/Volumes/CARD/Winter.wyrm.git')
+    const read = await readBackupSettings(PROJECT)
+    expect(read.everyMinutes).toBe(15)
+    expect(read.sendToGithub).toBe(false)
+  })
+
+  it('refuses an interval that is not one of the choices', async () => {
+    const { readBackupSettings, writeSaveSettings } = await import('../src/main/wyrm/settings')
+    // Over IPC anything can arrive; a 0 would make the autosave timer spin.
+    for (const bad of [0, 7, 0.5, -5, '5' as unknown as number]) {
+      await expect(writeSaveSettings(PROJECT, { everyMinutes: bad })).rejects.toThrow(
+        /not a choice/
+      )
+    }
+    expect((await readBackupSettings(PROJECT)).everyMinutes).toBeUndefined()
+  })
+
+  it('ignores fields it does not know, and values of the wrong kind', async () => {
+    const { readBackupSettings, writeSaveSettings } = await import('../src/main/wyrm/settings')
+    await writeSaveSettings(PROJECT, {
+      auto: 'yes',
+      sendToGithub: 1,
+      targets: []
+    } as never)
+    const read = await readBackupSettings(PROJECT)
+    expect(read.auto).toBe(false)
+    expect(read.sendToGithub).toBeUndefined()
   })
 
   it('is absent until the writer reorders', async () => {

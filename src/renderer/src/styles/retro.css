@@ -3636,6 +3636,43 @@ button.map-place-name {
   margin-top: 10px;
 }
 
+/* F-50 step 3: a whole panel of controls on the folder — the Settings and
+   GitHub tabs, and Bring Down — sits on one sheet of paper the folder's
+   width, rather than each line on its own scrap. */
+.drawer-paper.drawer-wide {
+  width: auto;
+  padding: 8px 12px 10px;
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.drawer-paper.drawer-wide + .drawer-paper.drawer-wide,
+.account-line + .drawer-wide {
+  margin-top: 12px;
+}
+
+.drawer-github .account-line {
+  width: auto;
+  border: 2px solid var(--ink);
+  padding: 4px 8px;
+}
+
+.drawer-github .text-field {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 2px 0 6px;
+}
+
+.drawer-select {
+  width: auto;
+  margin: 0 6px;
+}
+
+.drawer-bring-down {
+  margin-top: 14px;
+}
+
 .drawer-actions {
   display: flex;
   flex-wrap: wrap;

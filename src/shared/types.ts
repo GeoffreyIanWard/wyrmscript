@@ -914,7 +914,24 @@ export interface BackupSettings {
    * location is ignored, and a location missing from it goes after the rest.
    */
   order?: string[]
+  /**
+   * F-50 step 3: how often a save point is made on its own while the writer
+   * works, in minutes (one of `SAVE_EVERY_CHOICES`). Absent means the
+   * default, `DEFAULT_SAVE_EVERY`.
+   */
+  everyMinutes?: number
+  /** F-50 step 3: send every save point to GitHub as it is made. Absent means yes. */
+  sendToGithub?: boolean
 }
+
+/** F-50 step 3: the choices for how often a save point is made on its own. */
+export const SAVE_EVERY_CHOICES = [1, 2, 5, 10, 15, 30] as const
+export const DEFAULT_SAVE_EVERY = 5
+
+/** F-50 step 3: the Settings tab's choices, as one patch. */
+export type SaveSettingsPatch = Partial<
+  Pick<BackupSettings, 'auto' | 'everyMinutes' | 'sendToGithub'>
+>
 
 /**
  * F-50: the state of a project's save locations, from the repositories
@@ -925,6 +942,13 @@ export interface BackupSettings {
 export interface SaveCheck {
   unreachable: string[]
   behind: string[]
+  /**
+   * Drives holding work this project does not have — another computer
+   * backed up to the same card. A backup leaves such a drive untouched
+   * (F-01), so it can never catch up on its own: the writer has to restore
+   * it to a new project and compare. A diverged drive is also in `behind`.
+   */
+  diverged: string[]
 }
 
 /** What happened at one target during a backup run. */
@@ -1142,6 +1166,8 @@ export interface WyrmApi {
   chooseBackupLocation(path: string): Promise<BackupSettings | null>
   setBackupAuto(path: string, auto: boolean): Promise<BackupSettings>
   removeBackupTarget(path: string, targetId: string): Promise<BackupSettings>
+  /** F-50 step 3: change how often save points are made and where they go on their own. */
+  setSaveSettings(path: string, patch: SaveSettingsPatch): Promise<BackupSettings>
   /** F-50: store the Save to drawer's card order (location ids, default first). */
   setSaveOrder(path: string, order: string[]): Promise<BackupSettings>
   /** F-50: which locations cannot be reached, and which lack the latest save point. */

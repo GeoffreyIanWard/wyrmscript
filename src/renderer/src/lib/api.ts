@@ -4,6 +4,7 @@ import type {
   WindowGeometry,
   BackupSettings,
   SaveCheck,
+  SaveSettingsPatch,
   BinderNode,
   BoardString,
   BoardSticker,
@@ -826,6 +827,11 @@ export function createMockApi(): WyrmApi {
       backups.set(path, settings)
       return { ...settings }
     },
+    async setSaveSettings(path: string, patch: SaveSettingsPatch): Promise<BackupSettings> {
+      const settings = { ...(backups.get(path) ?? demoBackup()), ...patch }
+      backups.set(path, settings)
+      return { ...settings }
+    },
     async setSaveOrder(path: string, order: string[]): Promise<BackupSettings> {
       const settings = { ...(backups.get(path) ?? demoBackup()), order: [...order] }
       backups.set(path, settings)
@@ -840,7 +846,7 @@ export function createMockApi(): WyrmApi {
       const unreachable = targets
         .filter((t) => t.path.startsWith('/Volumes/Archive'))
         .map((t) => t.id)
-      if (head == null) return { unreachable, behind: [] }
+      if (head == null) return { unreachable, behind: [], diverged: [] }
       const behind = targets
         .filter((t) => !unreachable.includes(t.id))
         .filter((t) => t.lastBackupAt == null || t.lastBackupAt < head)
@@ -849,7 +855,7 @@ export function createMockApi(): WyrmApi {
       if (linked?.mode === 'github' && (linked.lastSyncAt == null || linked.lastSyncAt < head)) {
         behind.push('github')
       }
-      return { unreachable, behind }
+      return { unreachable, behind, diverged: [] }
     },
     async backupNow(path: string): Promise<BackupRun> {
       const settings = backups.get(path)

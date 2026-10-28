@@ -30,7 +30,7 @@ async function openDemo(): Promise<void> {
 }
 
 function renderDrawer(props: Partial<Parameters<typeof SaveDrawer>[0]> = {}): void {
-  render(<SaveDrawer onClose={() => {}} onAddGithub={() => {}} onBringDown={() => {}} {...props} />)
+  render(<SaveDrawer onClose={() => {}} {...props} />)
 }
 
 const cardNames = (): string[] =>
@@ -77,7 +77,11 @@ describe('the cards', () => {
 
   it('says why a drive cannot be reached', async () => {
     const [, card] = await addDrives(2)
-    vi.spyOn(api, 'checkSaveLocations').mockResolvedValue({ unreachable: [card], behind: [] })
+    vi.spyOn(api, 'checkSaveLocations').mockResolvedValue({
+      unreachable: [card],
+      behind: [],
+      diverged: []
+    })
     renderDrawer()
     const broken = await screen.findByText(/Broken connection!/)
     expect(broken.closest('li')?.getAttribute('aria-label')).toBe('CARD')
@@ -218,12 +222,13 @@ describe('adding and removing', () => {
   })
 
   it('offers a drive or GitHub, and only a drive once GitHub is there', async () => {
-    const onAddGithub = vi.fn()
-    renderDrawer({ onAddGithub })
+    renderDrawer()
     await waitFor(() => expect(cardNames()).toHaveLength(1))
     fireEvent.click(screen.getByRole('button', { name: 'Add Location…' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'GitHub…' }))
-    expect(onAddGithub).toHaveBeenCalled()
+    // Linking to GitHub is the GitHub tab's, so the drawer turns to it.
+    expect(screen.getByRole('tab', { name: 'GitHub' }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(screen.getByRole('tab', { name: 'Save to' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Location…' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'A Drive or Card…' }))
@@ -315,7 +320,8 @@ describe('Save Now', () => {
     // The main process agrees: the second drive is not there.
     vi.spyOn(api, 'checkSaveLocations').mockResolvedValue({
       unreachable: [archive],
-      behind: [card]
+      behind: [card],
+      diverged: []
     })
     renderDrawer()
     await waitFor(() => expect(cardNames()).toHaveLength(3))
@@ -357,12 +363,13 @@ describe('Save Now', () => {
 
 describe('Restore from', () => {
   it('offers a backup and GitHub', async () => {
-    const onBringDown = vi.fn()
-    renderDrawer({ onBringDown })
+    renderDrawer()
     fireEvent.click(screen.getByRole('tab', { name: 'Restore from' }))
     expect(screen.getByText('From a backup')).toBeTruthy()
+    // Bringing one down happens here, in the drawer, not in another dialog.
     fireEvent.click(screen.getAllByRole('button', { name: 'Choose…' })[1])
-    expect(onBringDown).toHaveBeenCalled()
+    expect(await screen.findByText('Or an address')).toBeTruthy()
+    expect(screen.getByPlaceholderText('https://github.com/someone/their-novel.git')).toBeTruthy()
   })
 
   it('moves between tabs with the arrow keys', () => {

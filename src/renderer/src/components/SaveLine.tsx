@@ -96,6 +96,7 @@ export function SaveLine({
   const syncNeedsAttention = useWyrm((s) => s.syncNeedsAttention)
   const savingTo = useWyrm((s) => s.savingTo)
   const behind = useWyrm((s) => s.behind)
+  const diverged = useWyrm((s) => s.diverged)
 
   // A card comes and goes without the app being told, so ask as the line
   // appears (a project brought forward may hold an old answer), now and
@@ -118,7 +119,15 @@ export function SaveLine({
 
   if (!project) return null
   const locations = saveLocations(project.path, lastCommitAt, backupSettings, syncStatus)
-  const ctx = { sync: syncStatus, unreachable, behind, syncProblem, syncNeedsAttention, savingTo }
+  const ctx = {
+    sync: syncStatus,
+    unreachable,
+    behind,
+    syncProblem,
+    syncNeedsAttention,
+    savingTo,
+    diverged
+  }
   const envelopes = locations.map((location) => ({ location, ...envelopeOf(location, ctx) }))
   const attention = envelopes.some((e) => e.state === 'attention')
   const last = locations[0]?.lastSavedAt ?? null

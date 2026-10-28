@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { api } from '../src/renderer/src/lib/api'
 import { useWyrm } from '../src/renderer/src/store'
-import { SyncDialog } from '../src/renderer/src/components/SyncDialog'
+import { SaveDrawer } from '../src/renderer/src/components/SaveDrawer'
 
 /**
  * Regression tests for I-06 and I-07: the sign-in code could not be selected
@@ -19,9 +19,16 @@ async function openProject(): Promise<void> {
 
 async function openSignIn(): Promise<void> {
   await openProject()
-  render(<SyncDialog onClose={() => {}} />)
-  await waitFor(() => expect(screen.getByText('Sync with GitHub')).toBeTruthy())
-  fireEvent.click(screen.getByText('Sync with GitHub'))
+  // F-50 step 3: signing in lives on the Save To drawer's GitHub tab, which
+  // replaced the Sync dialog; there is no "keep it local or GitHub" screen
+  // in front of it any more.
+  render(<SaveDrawer initialTab="github" onClose={() => {}} />)
+  await waitFor(() =>
+    expect(
+      screen.queryByPlaceholderText('Paste the Client ID here') ??
+        screen.queryByText('Sign in with GitHub')
+    ).toBeTruthy()
+  )
   // The client id is app-level and survives between projects, so this step
   // only appears the first time it is needed.
   const clientIdField = screen.queryByPlaceholderText('Paste the Client ID here')
@@ -43,7 +50,7 @@ async function openAlreadySignedIn(): Promise<void> {
     pendingSync: false
   })
   await openProject()
-  render(<SyncDialog onClose={() => {}} />)
+  render(<SaveDrawer initialTab="github" onClose={() => {}} />)
 }
 
 beforeEach(() => {
@@ -127,7 +134,7 @@ describe('acknowledging a successful sign-in', () => {
   })
 })
 
-describe('reopening the dialog when already signed in', () => {
+describe('opening the GitHub tab when already signed in', () => {
   it('states the account without making the writer sign in again', async () => {
     await openAlreadySignedIn()
 

@@ -15,12 +15,12 @@ async function resolve(gitdir: string, ref: string): Promise<string | null> {
   }
 }
 
-/** True when `oid` is HEAD or a descendant of it, i.e. it holds HEAD's work. */
-async function holds(gitdir: string, oid: string | null, head: string): Promise<boolean> {
+/** True when `oid` is `ancestor` or a descendant of it, i.e. it holds that work. */
+async function holds(gitdir: string, oid: string | null, ancestor: string): Promise<boolean> {
   if (oid == null) return false
-  if (oid === head) return true
+  if (oid === ancestor) return true
   try {
-    return await git.isDescendent({ fs, gitdir, oid, ancestor: head, depth: -1 })
+    return await git.isDescendent({ fs, gitdir, oid, ancestor, depth: -1 })
   } catch {
     // An object this repository does not have: it cannot be holding HEAD.
     return false
@@ -52,19 +52,25 @@ export async function checkSaveLocations(
   const gitdir = join(projectPath, '.git')
   const head = await resolve(gitdir, 'HEAD')
   // No save point yet: nothing holds one, and the renderer says so already.
-  if (head == null) return { unreachable, behind: [] }
+  if (head == null) return { unreachable, behind: [], diverged: [] }
   const branch = (await git.currentBranch({ fs, gitdir, fullname: true }).catch(() => null)) ?? null
   const behind: string[] = []
+  const diverged: string[] = []
   for (const target of targets) {
     if (unreachable.includes(target.id)) continue
     const theirs = branch ? await resolve(target.path, branch) : null
     // Their commit may not be in this repository (a backup ahead of it is
     // "diverged" and was left alone), so ask the backup, which has both if
     // it holds HEAD at all.
-    if (!(await holds(target.path, theirs, head))) behind.push(target.id)
+    if (await holds(target.path, theirs, head)) continue
+    behind.push(target.id)
+    // Behind is the ordinary case: the drive's work is all in this project,
+    // and the next backup catches it up. Anything else is work only the
+    // drive has, and a backup will never write over it.
+    if (theirs != null && !(await holds(gitdir, head, theirs))) diverged.push(target.id)
   }
   if (hasGithub && !(await holds(gitdir, await resolve(gitdir, REMOTE_REF), head))) {
     behind.push('github')
   }
-  return { unreachable, behind }
+  return { unreachable, behind, diverged }
 }
