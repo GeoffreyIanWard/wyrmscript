@@ -923,6 +923,7 @@ Requested 2026-10-26, for outline mode. Two things to mark a board up with: **st
 **Found in the browser preview:** the board is only as tall as its cards, so a click on the cork below them did nothing. The cork click now belongs to the whole board view, and a place in the margin is kept on the board. The sticker in hand used to widen the Sticker button and slide the swatches out from under the pointer: picking orange, then a sticker, then clicking "green" chose yellow. The sticker now takes the pin's slot, which never changes size.
 
 **The adversarial review confirmed eight findings, all fixed with tests and mutation-checked.**
+
 - With a sticker in hand, every click inside Add Card or the back of a card stuck a stray sticker on the cork under it, because both dialogs are children of the board. The cork click now counts only on the cork itself.
 - Dragging a sticker from one card onto a card later in the stack had two faults. The sticker passed under that card for the whole drag, because each card is its own stacking context; its card now comes up while it is carried. And the drop's click landed on the board and, with a sticker in hand, stuck a second one there. The click a drag ends with is now swallowed.
 - Recolouring a string or a relationship wrote into, and marked dirty, whichever project was in front when the write came back. Both writes now go to the project written, and so does the relationship save the Character Graph shares.
@@ -1010,6 +1011,33 @@ Requested 2026-10-14, while setting a second computer up.
 The test that matters most is the last one: after cloning, **the sync engine runs against the same remote and finds nothing to do**. That is the proof the clone is a peer rather than a lookalike — history and all — rather than a folder of files that would conflict with everything on its first sync.
 
 **Today's workaround, and why it is not good enough:** clone by hand and use Open Project. It works, but the app sees `mode: 'unset'` with a `remoteUrl` present, so the writer is asked to choose a sync path for a project that already has one, then walked through connect-project to re-attach a remote that is already in `.git/config`.
+
+### F-50 · One "Save to…" for saving and syncing 📋
+
+Replace today's scattered save, backup and sync controls with one place to keep the work safe, built around a single **Save to…** button.
+
+Requested 2026-10-27: "it's a bit of a frankenstein at the moment."
+
+**What's there today**, spread across two menus and the status bar:
+
+- File: Commit Checkpoint… (⌘S), History, Variants…, and Bring Down from GitHub…
+- Project: Backup…, Sync Now, and Sync Settings…
+- The status bar: the needs-attention flag when a sync fails.
+
+Each one arrived with its own feature (F-01, F-40, Phase 5, F-43), so each has its own dialog, its own wording and its own idea of "saved".
+
+**The shape asked for:** one central element for saving and syncing. Its **Save to…** button offers:
+
+- **Disk.** The writer then picks where: the local drive or an SD card (any removable drive). This is today's backup (F-40) under a plainer name.
+- **GitHub.** This opens the GitHub menu: sign in, connect, sync now, and sync settings.
+
+**Open questions:**
+
+- Where the central element lives. It could be a menu entry, a button in the status bar, or both. The status bar already shows sync trouble, so it's the natural place for a single "your work is safe" indicator.
+- Whether ⌘S stays Commit Checkpoint, or becomes Save to… with the last-used destination.
+- What happens to History and Variants. They are about looking back, not keeping safe, and probably stay where they are.
+- Whether Bring Down from GitHub and Restore from Backup join as the reverse direction ("Open from…"), or stay with New and Open Project.
+- How an SD card is told apart from a fixed drive, and what happens when it is ejected between saves. F-40 already handles a backup location that is missing.
 
 ## Known issues
 
