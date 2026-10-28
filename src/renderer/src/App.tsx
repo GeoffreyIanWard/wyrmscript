@@ -64,7 +64,11 @@ function useNow(intervalMs: number): number {
   return now
 }
 
-function StatusBar({ onOpenSaveTo }: { onOpenSaveTo: (locationId?: string) => void }): JSX.Element {
+function StatusBar({
+  onOpenSaveTo
+}: {
+  onOpenSaveTo: (locationId?: string, tab?: SaveDrawerTab) => void
+}): JSX.Element {
   const wordCount = useWyrm((s) => s.wordCount)
   const helpMode = useWyrm((s) => s.helpMode)
   const saveState = useWyrm((s) => s.saveState)
@@ -561,6 +565,16 @@ function App(): JSX.Element {
   // reaching into its DOM (F-07).
   const focusMenusRef = useRef<(() => void) | null>(null)
   const syncConflicts = useWyrm((s) => s.syncConflicts)
+  // The resolution screen and the drawer are both app-modal; when conflicts
+  // come up (Resolve…, Save Now, Sync Now), the drawer steps aside rather
+  // than leave two dialogs, and two focus traps, stacked (F-50 step 5).
+  useEffect(
+    () =>
+      useWyrm.subscribe((state, prev) => {
+        if (state.syncConflicts != null && prev.syncConflicts == null) setSaveTo(null)
+      }),
+    []
+  )
 
   const project = useWyrm((s) => s.project)
   const booted = useWyrm((s) => s.booted)
@@ -917,7 +931,7 @@ function App(): JSX.Element {
                       {!focusMode && <EntityPanel />}
                     </div>
                     {!focusMode && (
-                      <StatusBar onOpenSaveTo={(focus) => openSaveTo('save', focus)} />
+                      <StatusBar onOpenSaveTo={(focus, tab) => openSaveTo(tab ?? 'save', focus)} />
                     )}
                   </FocusedProjectWindow>
                 )
@@ -1100,6 +1114,12 @@ function App(): JSX.Element {
                   title: 'GitHub (Save To)',
                   subtitle: 'File',
                   run: () => openSaveTo('github')
+                },
+                {
+                  id: 'conflicts',
+                  title: 'Conflicts (Save To)',
+                  subtitle: 'File',
+                  run: () => openSaveTo('conflicts')
                 },
                 {
                   id: 'prefs',

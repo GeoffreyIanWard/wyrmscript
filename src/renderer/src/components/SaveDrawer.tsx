@@ -8,6 +8,7 @@ import type { SyncOutcome } from '../../../shared/types'
 import { errorMessage } from '../lib/errors'
 import {
   brokenReason,
+  conflictsWaiting,
   describeLocation,
   DIVERGED,
   driveName,
@@ -25,17 +26,19 @@ import { useFocusTrap } from '../lib/useFocusTrap'
 import { guessRemovable } from '../../../shared/removable'
 import { useWyrm } from '../store'
 import { BringDownPanel } from './BringDownPanel'
+import { SaveDrawerConflicts } from './SaveDrawerConflicts'
 import { SaveDrawerGitHub } from './SaveDrawerGitHub'
 import { SaveDrawerSettings } from './SaveDrawerSettings'
 
-export type SaveDrawerTab = 'save' | 'restore' | 'settings' | 'github'
+export type SaveDrawerTab = 'save' | 'restore' | 'settings' | 'github' | 'conflicts'
 type Tab = SaveDrawerTab
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'save', label: 'Save to' },
   { id: 'restore', label: 'Restore from' },
   { id: 'settings', label: 'Settings' },
-  { id: 'github', label: 'GitHub' }
+  { id: 'github', label: 'GitHub' },
+  { id: 'conflicts', label: 'Conflicts' }
 ]
 
 /** How far a press must travel before it is a drag rather than a click. */
@@ -141,6 +144,7 @@ export function SaveDrawer({
   const syncStatus = useWyrm((s) => s.syncStatus)
   const syncNeedsAttention = useWyrm((s) => s.syncNeedsAttention)
   const lastSyncProblem = useWyrm((s) => s.syncProblem)
+  const waitingConflicts = useWyrm((s) => s.waitingConflicts)
   const lastCommitAt = useWyrm((s) => s.lastCommitAt)
   // Which drives are missing lives in the store, so the status line's
   // envelopes and these cards always agree (F-50 step 2).
@@ -165,6 +169,7 @@ export function SaveDrawer({
   const drag = useRef<Drag | null>(null)
   const listRef = useRef<HTMLOListElement>(null)
 
+  const conflictsHere = conflictsWaiting(syncNeedsAttention, lastSyncProblem, waitingConflicts)
   const path = project?.path ?? ''
   const stored = project ? saveLocations(path, lastCommitAt, backupSettings, syncStatus) : []
   const locations = pending
@@ -472,7 +477,15 @@ export function SaveDrawer({
                 onClick={() => setTab(t.id)}
                 onKeyDown={onTabKey}
               >
-                <span>{t.label}</span>
+                <span>
+                  {t.label}
+                  {/* Waiting passages mark their tab, as they mark the line. */}
+                  {t.id === 'conflicts' && conflictsHere && (
+                    <span className="drawer-tab-bang" aria-label=", waiting">
+                      !
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
@@ -550,7 +563,13 @@ export function SaveDrawer({
                           ) : location.kind === 'github' && syncNeedsAttention ? (
                             // Reached, but passages are waiting: not a broken
                             // connection, and not "saved" either.
-                            <span className="save-card-when">Needs your eye</span>
+                            <button
+                              type="button"
+                              className="btn small"
+                              onClick={() => setTab('conflicts')}
+                            >
+                              Needs your eye
+                            </button>
                           ) : (
                             <span className="save-card-when">
                               {location.lastSavedAt != null
@@ -769,6 +788,7 @@ export function SaveDrawer({
 
             {tab === 'settings' && <SaveDrawerSettings />}
             {tab === 'github' && <SaveDrawerGitHub locationCount={stored.length} />}
+            {tab === 'conflicts' && <SaveDrawerConflicts onShowGitHub={() => setTab('github')} />}
           </div>
         </div>
       </div>

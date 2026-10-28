@@ -1,6 +1,7 @@
 import { useEffect, useId } from 'react'
 import type { JSX } from 'react'
 import {
+  conflictsWaiting,
   describeLocation,
   envelopeOf,
   saveLocations,
@@ -85,7 +86,8 @@ export function SaveLine({
 }: {
   /** The status bar's clock, so "2 MIN AGO" ticks with the rest of it. */
   now: number
-  onOpen: (locationId?: string) => void
+  /** Open the drawer on a card; on the Conflicts tab when passages are waiting. */
+  onOpen: (locationId?: string, tab?: 'conflicts') => void
 }): JSX.Element | null {
   const project = useWyrm((s) => s.project)
   const backupSettings = useWyrm((s) => s.backupSettings)
@@ -95,6 +97,7 @@ export function SaveLine({
   const syncProblem = useWyrm((s) => s.syncProblem)
   const syncNeedsAttention = useWyrm((s) => s.syncNeedsAttention)
   const savingTo = useWyrm((s) => s.savingTo)
+  const waitingConflicts = useWyrm((s) => s.waitingConflicts)
   const behind = useWyrm((s) => s.behind)
   const diverged = useWyrm((s) => s.diverged)
 
@@ -142,7 +145,15 @@ export function SaveLine({
             type="button"
             className="save-envelope"
             aria-label={`${name}: ${STATE_WORDS[state]}${reason && state !== 'saving' ? `. ${reason}` : ''}`}
-            onClick={() => onOpen(location.id)}
+            // A GitHub envelope marked for waiting passages goes where they
+            // are resolved, not to the card that only says so.
+            onClick={() =>
+              location.kind === 'github' &&
+              state === 'attention' &&
+              conflictsWaiting(syncNeedsAttention, syncProblem, waitingConflicts)
+                ? onOpen(location.id, 'conflicts')
+                : onOpen(location.id)
+            }
           >
             <Envelope state={state} />
             {reason != null && (

@@ -199,6 +199,7 @@ export const SLICE_KEYS = [
   'syncStatus',
   'syncConflicts',
   'syncNeedsAttention',
+  'waitingConflicts',
   'syncProblem',
   'unreachable',
   'behind',
@@ -423,6 +424,13 @@ interface WyrmState {
   syncConflicts: SyncConflict[] | null
   /** A background sync found conflicts; surfaced quietly, never as a popup. */
   syncNeedsAttention: boolean
+  /**
+   * F-50 step 5: the conflicts a background sync found, kept so the drawer's
+   * Conflicts tab can name the passages waiting. Only a list to show:
+   * resolving always syncs again for a fresh one, since the other computer
+   * may have moved on since. Null when nothing is known to be waiting.
+   */
+  waitingConflicts: SyncConflict[] | null
   /**
    * F-50: why the last sync could not reach GitHub, in the writer's words, or
    * null after one that did. Separate from `syncNeedsAttention`, which also
@@ -1020,6 +1028,7 @@ function emptySlice(): ProjectSlice {
     syncStatus: null,
     syncConflicts: null,
     syncNeedsAttention: false,
+    waitingConflicts: null,
     syncProblem: null,
     unreachable: [],
     behind: [],
@@ -1392,7 +1401,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       outcome.status === 'conflicts'
         ? // The page is sacred: a background sync never puts a dialog on
           // screen. The quiet flag shows in the status bar once focused.
-          { syncNeedsAttention: true }
+          { syncNeedsAttention: true, waitingConflicts: outcome.conflicts }
         : outcome.status === 'pulled' || outcome.status === 'merged'
           ? { stale: true }
           : {}
@@ -1432,6 +1441,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       syncStatus: null,
       syncConflicts: null,
       syncNeedsAttention: false,
+      waitingConflicts: null,
       syncProblem: null,
       unreachable: [],
       behind: [],
@@ -1516,6 +1526,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     syncStatus: null,
     syncConflicts: null,
     syncNeedsAttention: false,
+    waitingConflicts: null,
     syncProblem: null,
     unreachable: [],
     behind: [],
@@ -2127,6 +2138,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({
         syncStatus: await api.disconnectSync(project.path),
         syncNeedsAttention: false,
+        waitingConflicts: null,
         syncProblem: null
       })
     },
@@ -2160,10 +2172,15 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (outcome.status === 'conflicts') {
         // The page is sacred: only a sync the writer asked for may put a
         // dialog on screen. A background one leaves a quiet flag instead.
-        if (interactive) set({ syncConflicts: outcome.conflicts, syncNeedsAttention: false })
-        else set({ syncNeedsAttention: true })
+        if (interactive)
+          set({
+            syncConflicts: outcome.conflicts,
+            syncNeedsAttention: false,
+            waitingConflicts: null
+          })
+        else set({ syncNeedsAttention: true, waitingConflicts: outcome.conflicts })
       } else {
-        set({ syncNeedsAttention: false })
+        set({ syncNeedsAttention: false, waitingConflicts: null })
         if (outcome.status === 'pulled' || outcome.status === 'merged') {
           // The manuscript on disk changed underneath the UI — reload.
           await reloadAfterRemoteChange()
@@ -2178,7 +2195,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) throw new Error('No project is open')
       const outcome = await api.resolveSyncConflicts(project.path, choices)
       if (outcome.status === 'merged') {
-        set({ syncConflicts: null, syncNeedsAttention: false })
+        set({ syncConflicts: null, syncNeedsAttention: false, waitingConflicts: null })
         await reloadAfterRemoteChange()
       }
       await get().loadSyncStatus()
@@ -2188,7 +2205,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     dismissConflicts() {
       // Declining to decide is allowed — nothing has been changed, and the
       // quiet flag keeps the door open for later.
-      set({ syncConflicts: null, syncNeedsAttention: true })
+      set({ syncConflicts: null, syncNeedsAttention: true, waitingConflicts: get().syncConflicts })
     },
 
     async loadBackupSettings() {
