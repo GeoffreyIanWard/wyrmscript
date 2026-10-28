@@ -85,6 +85,26 @@ describe('the cards', () => {
   })
 })
 
+describe('the GitHub card', () => {
+  it('says GitHub is unreachable after a sync that could not reach it', async () => {
+    vi.spyOn(api, 'getSyncStatus').mockResolvedValue(SYNCED)
+    useWyrm.setState({ syncProblem: 'GitHub unreachable' })
+    renderDrawer()
+    const broken = await screen.findByText(/Broken connection!/)
+    expect(broken.closest('li')?.getAttribute('aria-label')).toBe('GitHub')
+    expect(screen.getByRole('tooltip', { hidden: true }).textContent).toBe('GitHub unreachable')
+  })
+
+  it("asks for the writer's eye during conflicts, without calling the connection broken", async () => {
+    vi.spyOn(api, 'getSyncStatus').mockResolvedValue(SYNCED)
+    useWyrm.setState({ syncNeedsAttention: true, syncProblem: null })
+    renderDrawer()
+    const github = await screen.findByRole('listitem', { name: 'GitHub' })
+    expect(within(github).getByText('Needs your eye')).toBeTruthy()
+    expect(screen.queryByText(/Broken connection!/)).toBeNull()
+  })
+})
+
 describe('changing the default', () => {
   it('moves a card up with ⌥↑, and the clip follows it', async () => {
     const [drive] = await addDrives(1)
@@ -281,6 +301,36 @@ describe('Save Now', () => {
     const github = screen.getAllByRole('listitem')[2]
     await waitFor(() => expect(within(github).getByText('No connection.')).toBeTruthy())
     expect(backup).toHaveBeenCalled()
+  })
+
+  it('reports a drive that failed on its own card, and one that was missing as broken', async () => {
+    const [card, archive] = await addDrives(2)
+    vi.spyOn(api, 'backupNow').mockResolvedValue({
+      at: Date.now(),
+      results: [
+        { targetId: card, status: 'failed', message: 'The drive is full.' },
+        { targetId: archive, status: 'unreachable' }
+      ]
+    })
+    renderDrawer()
+    await waitFor(() => expect(cardNames()).toHaveLength(3))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Now' }))
+    const [, first, second] = screen.getAllByRole('listitem')
+    await waitFor(() => expect(within(first).getByText('The drive is full.')).toBeTruthy())
+    expect(within(second).getByText(/Broken connection!/)).toBeTruthy()
+    expect(within(first).queryByText(/Broken connection!/)).toBeNull()
+  })
+
+  it('reports a backup that could not run at all on every drive', async () => {
+    await addDrives(2)
+    vi.spyOn(api, 'backupNow').mockRejectedValue(new Error('Could not read the project.'))
+    renderDrawer()
+    await waitFor(() => expect(cardNames()).toHaveLength(3))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Now' }))
+    await waitFor(() => expect(screen.getAllByText('Could not read the project.')).toHaveLength(2))
+    expect(
+      within(screen.getAllByRole('listitem')[0]).queryByText('Could not read the project.')
+    ).toBeNull()
   })
 
   it('stops if another project comes to the front during the save', async () => {

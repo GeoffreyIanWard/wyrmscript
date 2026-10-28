@@ -166,6 +166,12 @@ export async function isReachable(backupPath: string): Promise<boolean> {
   }
 }
 
+/** F-50: the ids of the targets that cannot be reached right now, in order. */
+export async function unreachableTargets(targets: BackupTarget[]): Promise<string[]> {
+  const reachable = await Promise.all(targets.map((t) => isReachable(t.path)))
+  return targets.filter((_t, i) => !reachable[i]).map((t) => t.id)
+}
+
 /**
  * Mirrors a project to every configured target (F-40).
  *

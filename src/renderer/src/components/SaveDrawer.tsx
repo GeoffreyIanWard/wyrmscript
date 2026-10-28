@@ -131,6 +131,7 @@ export function SaveDrawer({
   const backupSettings = useWyrm((s) => s.backupSettings)
   const syncStatus = useWyrm((s) => s.syncStatus)
   const syncNeedsAttention = useWyrm((s) => s.syncNeedsAttention)
+  const lastSyncProblem = useWyrm((s) => s.syncProblem)
   const lastCommitAt = useWyrm((s) => s.lastCommitAt)
 
   const [tab, setTab] = useState<Tab>('save')
@@ -452,12 +453,7 @@ export function SaveDrawer({
                 <ol className="save-cards" ref={listRef} aria-label="Save locations, default first">
                   {locations.map((location, index) => {
                     const { name, detail } = describeLocation(location)
-                    const reason = brokenReason(
-                      location,
-                      syncStatus,
-                      unreachable,
-                      syncNeedsAttention
-                    )
+                    const reason = brokenReason(location, syncStatus, unreachable, lastSyncProblem)
                     const problem = problems[location.id]
                     const lifted = dragId === location.id
                     const isDefault = index === 0
@@ -491,6 +487,10 @@ export function SaveDrawer({
                         <div className="save-card-side">
                           {reason != null ? (
                             <Broken reason={reason} />
+                          ) : location.kind === 'github' && syncNeedsAttention ? (
+                            // Reached, but passages are waiting: not a broken
+                            // connection, and not "saved" either.
+                            <span className="save-card-when">Needs your eye</span>
                           ) : (
                             <span className="save-card-when">
                               {location.lastSavedAt != null

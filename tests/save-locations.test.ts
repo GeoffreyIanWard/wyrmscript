@@ -135,21 +135,21 @@ describe('a location that cannot be reached', () => {
   const [folder, card, , github] = list
 
   it('names a drive that is not connected', () => {
-    expect(brokenReason(card, SYNCED, ['t1'], false)).toBe('Drive not connected')
-    expect(brokenReason(card, SYNCED, ['t2'], false)).toBeNull()
+    expect(brokenReason(card, SYNCED, ['t1'], null)).toBe('Drive not connected')
+    expect(brokenReason(card, SYNCED, ['t2'], null)).toBeNull()
   })
 
   it('says why GitHub cannot be reached', () => {
-    expect(brokenReason(github, SYNCED, [], false)).toBeNull()
-    expect(brokenReason(github, SYNCED, [], true)).toBe('GitHub unreachable')
-    expect(brokenReason(github, { ...SYNCED, login: null }, [], false)).toBe('Signed out of GitHub')
-    expect(brokenReason(github, { ...SYNCED, remoteUrl: null }, [], false)).toBe(
+    expect(brokenReason(github, SYNCED, [], null)).toBeNull()
+    expect(brokenReason(github, SYNCED, [], 'GitHub unreachable')).toBe('GitHub unreachable')
+    expect(brokenReason(github, { ...SYNCED, login: null }, [], null)).toBe('Signed out of GitHub')
+    expect(brokenReason(github, { ...SYNCED, remoteUrl: null }, [], null)).toBe(
       'This project lost its link to GitHub'
     )
   })
 
   it('never calls the project folder broken', () => {
-    expect(brokenReason(folder, SYNCED, ['folder'], true)).toBeNull()
+    expect(brokenReason(folder, SYNCED, ['folder'], 'GitHub unreachable')).toBeNull()
   })
 })
 
@@ -176,6 +176,30 @@ describe('the words on a card', () => {
     expect(timeAgo(now - 3 * 3_600_000, now)).toBe('3 h ago')
     expect(timeAgo(now - 30 * 3_600_000, now)).toBe('yesterday')
     expect(timeAgo(now - 4 * 24 * 3_600_000, now)).toBe('4 days ago')
+  })
+})
+
+describe('which drives can be reached', () => {
+  let root = ''
+  beforeEach(async () => {
+    root = await fsp.mkdtemp(join(os.tmpdir(), 'wyrm-reach-'))
+  })
+  afterEach(async () => {
+    await fsp.rm(root, { recursive: true, force: true })
+  })
+
+  it('names only the targets whose drive is not there, in order', async () => {
+    const { unreachableTargets } = await import('../src/main/wyrm/backup')
+    await fsp.mkdir(join(root, 'made.wyrm.git'))
+    const ids = await unreachableTargets([
+      { id: 'made', path: join(root, 'made.wyrm.git'), lastBackupAt: null },
+      // Not written yet, but its folder exists: reachable, the next backup makes it.
+      { id: 'fresh', path: join(root, 'fresh.wyrm.git'), lastBackupAt: null },
+      // Neither it nor its parent exists, as when a card's volume is unmounted.
+      { id: 'card', path: join(root, 'NO_CARD', 'Winter.wyrm.git'), lastBackupAt: null },
+      { id: 'other', path: join(root, 'GONE', 'x', 'Winter.wyrm.git'), lastBackupAt: null }
+    ])
+    expect(ids).toEqual(['card', 'other'])
   })
 })
 

@@ -104,12 +104,15 @@ export function savesToMultiple(locations: SaveLocation[]): boolean {
  *
  * `unreachable` is the set of target ids the main process could not reach
  * (an unmounted volume answers no for both the path and its parent).
+ * `syncProblem` is the store's account of the last sync that could not reach
+ * GitHub. Conflicts are deliberately not a reason: GitHub was reached, and
+ * the writer has passages to resolve, not a connection to fix.
  */
 export function brokenReason(
   location: SaveLocation,
   sync: SyncStatus | null,
   unreachable: readonly string[],
-  syncFailed: boolean
+  syncProblem: string | null
 ): string | null {
   if (location.kind === 'disk') {
     return unreachable.includes(location.id) ? 'Drive not connected' : null
@@ -117,7 +120,7 @@ export function brokenReason(
   if (location.kind === 'github') {
     if (isRemoteMissing(sync)) return 'This project lost its link to GitHub'
     if (sync?.login == null) return 'Signed out of GitHub'
-    if (isConnected(sync) && syncFailed) return 'GitHub unreachable'
+    if (isConnected(sync) && syncProblem != null) return syncProblem
   }
   return null
 }
