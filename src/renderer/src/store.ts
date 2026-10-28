@@ -344,6 +344,9 @@ interface WyrmState {
   boardStickers: BoardSticker[]
   /** F-51: the scratch pad — every scrap, unordered. */
   scraps: Scrap[]
+  /** F-51: the pad sheet the writer last wrote in, while the pad is up, so
+   *  Edit's Undo and formatting act on it as they act on the page. */
+  padEditor: Editor | null
 
   boot(): Promise<void>
   newProject(title: string): Promise<void>
@@ -885,6 +888,8 @@ interface WyrmState {
 
   /** F-51: read the scratch pad of the project at `path` (the one in front if none). */
   loadScraps(path?: string): Promise<void>
+  /** F-51: the sheet Edit's commands act on while the pad is up. */
+  setPadEditor(editor: Editor | null): void
   /** F-51: the scratch pad, in place of the page. A detour: Esc goes back.
    *  `focus` is a scrap to bring into view, as a search hit does. */
   showScratchPad(focus?: string): void
@@ -909,9 +914,10 @@ interface WyrmState {
    * F-51: Move to Scratch Pad — the selection on the page, onto the pad and
    * off the page. `empty` when nothing is selected; `moved` once it is on the
    * pad and gone from the page; `kept` when it reached the pad but the page
-   * changed under it first, so the passage was left on the page as well.
+   * changed under it first, so the passage was left on the page as well;
+   * `busy` while an earlier move is still being written.
    */
-  moveToScratchPad(): Promise<'moved' | 'kept' | 'empty'>
+  moveToScratchPad(): Promise<'moved' | 'kept' | 'empty' | 'busy'>
 }
 
 /** F-14: how many doc↔entity hops Esc can unwind. */
@@ -961,6 +967,22 @@ const runtimes = new Map<string, ProjectRuntime>()
 const settingsWrites = new Map<string, number>()
 function wroteSettings(path: string): void {
   settingsWrites.set(path, (settingsWrites.get(path) ?? 0) + 1)
+}
+
+/** F-51: a Move to Scratch Pad is being written; see `moveToScratchPad`. */
+let moving = false
+
+/**
+ * F-51: each pad sheet's "write what is waiting now", while it is on screen.
+ * `flushSave` runs them, so everything that flushes the page flushes the pad.
+ * Returns the unregister.
+ */
+const padFlushers = new Set<() => Promise<unknown>>()
+export function registerPadFlush(flush: () => Promise<unknown>): () => void {
+  padFlushers.add(flush)
+  return () => {
+    padFlushers.delete(flush)
+  }
 }
 
 /** A Markdown body as stored: ending in one newline, so two bodies that differ
@@ -1546,6 +1568,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
   return {
     project: null,
     booted: false,
+    padEditor: null,
     parked: {},
     openPaths: [],
     minimized: [],
@@ -1892,13 +1915,25 @@ export const useWyrm = create<WyrmState>((set, get) => {
           runtime.saveTimer = null
         }
       }
-      if (!project || !activeDoc || !editor || saveState === 'saved') return
+      // The pad's sheets too (F-51): whatever flushes the page — a save
+      // point, a sync, quitting, another novel coming forward — must find
+      // the pad's typing on disk as well, or a sync fast-forwards over it and
+      // the late save writes it back over the other computer's version.
+      // Started here and awaited last: the page's text below must be read
+      // before this function's first await, because the editor's unmount
+      // calls this and lets the editor go straight after (I-15).
+      const pad = Promise.all([...padFlushers].map((flush) => flush()))
+      if (!project || !activeDoc || !editor || saveState === 'saved') {
+        await pad
+        return
+      }
       set({ saveState: 'saving' })
       const body = docToMarkdown(editor.getJSON())
       const doc: DocFile = { ...activeDoc, body }
       await api.writeDoc(project.path, doc)
       markDirty()
       set({ saveState: 'saved', activeDoc: doc })
+      await pad
     },
 
     async commitNow(message) {
@@ -3625,6 +3660,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
       patchSliceAt(at, () => ({ scraps }))
     },
 
+    setPadEditor(editor) {
+      set({ padEditor: editor })
+    },
+
     showScratchPad(focus) {
       // A detour, like stats and the map: the usual reason to open the pad
       // mid-draft is to copy something back into the page, so Esc must go
@@ -3665,19 +3704,20 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async updateScrapAt(path, id, body) {
-      const now = get()
-      const slice = now.project?.path === path ? now : now.parked[path]
-      const found = slice?.scraps.find((s) => s.id === id)
-      // Gone already (thrown away, or the project closed): writing would
-      // bring it back.
-      if (!found || withNewline(found.body) === withNewline(body)) return
-      const next: Scrap = { ...found, body, modified: new Date().toISOString() }
       // In order with this scrap's other writes, so a slow save can never
-      // land after a newer one, or after it was thrown away.
+      // land after a newer one, or after it was thrown away. Everything is
+      // judged inside the turn, against the scrap as the writes before it
+      // left it: judged before, a save going back to the stored text was
+      // dropped as "unchanged" while an older, different write was still on
+      // its way, and that older write landed last.
       await serializeRecord(path, `scrap:${id}`, async () => {
         const at = get()
         const holder = at.project?.path === path ? at : at.parked[path]
-        if (!holder?.scraps.some((s) => s.id === id)) return
+        const found = holder?.scraps.find((s) => s.id === id)
+        // Gone (thrown away, or the project closed): writing would bring it
+        // back. Unchanged: nothing to write.
+        if (!found || withNewline(found.body) === withNewline(body)) return
+        const next: Scrap = { ...found, body, modified: new Date().toISOString() }
         await api.writeScrap(path, next)
         patchSliceAt(path, (s) => ({ scraps: s.scraps.map((x) => (x.id === id ? next : x)) }))
         if (runtimes.has(path)) runtimeFor(path).commitDirty = true
@@ -3707,6 +3747,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async moveToScratchPad() {
+      // One at a time: the passage stays selected until its write lands, so
+      // a second press (or the menu, or a held key) meanwhile would put the
+      // same passage on the pad twice.
+      if (moving) return 'busy'
       const { project, editor, activeDoc } = get()
       if (!project || !activeDoc || !editor || editor.isDestroyed) return 'empty'
       const { from, to, empty } = editor.state.selection
@@ -3730,6 +3774,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
         mapping.appendMapping(transaction.mapping)
       }
       editor.on('transaction', follow)
+      moving = true
       try {
         await get().addScrapAt(project.path, {
           body,
@@ -3738,6 +3783,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
           fromTitle: activeDoc.meta.title
         })
       } finally {
+        moving = false
         editor.off('transaction', follow)
       }
       // Another document or project came forward, or the passage itself was

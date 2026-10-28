@@ -715,10 +715,15 @@ function App(): JSX.Element {
       } else if (e.shiftKey && !e.altKey && e.key.toLowerCase() === 'x' && state.activeDoc) {
         // ⇧⌘X — Move to Scratch Pad (F-51). Shift must really be held, never
         // inferred from an uppercase key: with Caps Lock on, ⌘X reports "X",
-        // and an ordinary cut must never become a move. Only from the page,
-        // and not over a dialog, whose own fields the writer is typing in.
-        if (state.mainView.kind !== 'doc' || document.querySelector('.dialog-overlay')) return
+        // and an ordinary cut must never become a move. Only with focus in
+        // the page itself: in a tag or rename field (or a dialog) the page
+        // keeps its selection but nobody can see it, and moving text the
+        // writer cannot see is not a cut they chose. Once per press: a held
+        // key repeats.
+        const page = state.editor?.view.dom
+        if (!page || !page.contains(document.activeElement)) return
         e.preventDefault()
+        if (e.repeat) return
         void state.moveToScratchPad()
       } else if (e.key === 'q' && !e.shiftKey && !e.altKey) {
         // ⌘Q (Ctrl+Q off the Mac). On the Mac the app menu's own ⌘Q usually

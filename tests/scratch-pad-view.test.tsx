@@ -241,6 +241,104 @@ describe('the pad', () => {
     expect(await api.listScraps(path)).toHaveLength(1)
   })
 
+  it('lets New Note make another once the last one has words in it', async () => {
+    const path = await openDemo()
+    render(<ScratchPad />)
+    await act(async () => fireEvent.click(screen.getByText('New Note')))
+    const [first] = sheetIds()
+    act(() => {
+      sheetEditor(first).commands.setContent('<p>A thought.</p>')
+    })
+    await act(async () => fireEvent.click(screen.getByText('New Note')))
+    await waitFor(() => expect(sheetIds()).toHaveLength(2))
+    expect(sheetIds()[1]).toBe(first)
+    await waitFor(async () => expect(await api.listScraps(path)).toHaveLength(2))
+  })
+
+  it('takes the other computer’s version of a scrap even with the caret in it, and the blur never writes the old one back', async () => {
+    const path = await openDemo()
+    const scrap = await keep({ body: 'Old words.\n' })
+    render(<ScratchPad />)
+    act(() => {
+      sheetEditor(scrap.id).commands.focus()
+    })
+    await waitFor(() => expect(sheetEditor(scrap.id).isFocused).toBe(true))
+    // A sync brings the laptop's version in.
+    await api.writeScrap(path, { ...scrap, body: 'Laptop words.\n' })
+    await act(() => state().loadScraps())
+    expect(sheetEditor(scrap.id).getText()).toBe('Laptop words.')
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    await act(async () => {
+      sheetEditor(scrap.id).commands.blur()
+    })
+    await waitFor(() => expect(sheetEditor(scrap.id).isFocused).toBe(false))
+    await act(() => new Promise((r) => setTimeout(r, 30)))
+    expect((await api.listScraps(path))[0].body).toBe('Laptop words.\n')
+  })
+
+  it('never shows its own older write as it lands under newer typing', async () => {
+    const path = await openDemo()
+    const scrap = await keep({ body: 'Start.\n' })
+    render(<ScratchPad />)
+    const gates: (() => void)[] = []
+    const real = api.writeScrap.bind(api)
+    vi.spyOn(api, 'writeScrap').mockImplementation(async (p, s) => {
+      await new Promise<void>((r) => gates.push(r))
+      await real(p, s)
+    })
+    act(() => {
+      sheetEditor(scrap.id).commands.setContent('<p>First.</p>')
+    })
+    const one = state().flushSave()
+    act(() => {
+      sheetEditor(scrap.id).commands.setContent('<p>First. Second.</p>')
+    })
+    const two = state().flushSave()
+    await waitFor(() => expect(gates).toHaveLength(1))
+    // The first write lands while the second still waits its turn.
+    await act(async () => {
+      gates[0]()
+      await one
+    })
+    expect(sheetEditor(scrap.id).getText()).toBe('First. Second.')
+    await waitFor(() => expect(gates).toHaveLength(2))
+    await act(async () => {
+      gates[1]()
+      await two
+    })
+    expect(sheetEditor(scrap.id).getText()).toBe('First. Second.')
+    expect((await api.listScraps(path))[0].body).toBe('First. Second.\n')
+  })
+
+  it('writes waiting typing whenever the page is flushed, so a sync never runs ahead of it', async () => {
+    const path = await openDemo()
+    const scrap = await keep({ body: 'Before.\n' })
+    render(<ScratchPad />)
+    act(() => {
+      sheetEditor(scrap.id).commands.setContent('<p>Typed just now.</p>')
+    })
+    await act(() => state().flushSave())
+    expect((await api.listScraps(path))[0].body).toBe('Typed just now.\n')
+  })
+
+  it('keeps a scrap whose newest text failed to write, rather than throwing it away', async () => {
+    const path = await openDemo()
+    const scrap = await keep({ body: 'On disk.\n' })
+    render(<ScratchPad />)
+    act(() => {
+      sheetEditor(scrap.id).commands.setContent('<p>Only on screen.</p>')
+    })
+    vi.spyOn(api, 'writeScrap').mockRejectedValue(new Error('disk full'))
+    const commits = vi.spyOn(api, 'commit')
+    fireEvent.click(screen.getByText('Throw Away…'))
+    await act(async () => fireEvent.click(screen.getByText('Throw Away')))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/disk full/))
+    expect(sheetIds()).toEqual([scrap.id])
+    expect(commits).not.toHaveBeenCalled()
+    expect(await api.listScraps(path)).toHaveLength(1)
+    expect(sheetEditor(scrap.id).getText()).toBe('Only on screen.')
+  })
+
   it('throws a scrap away only after asking, and Keep keeps it', async () => {
     const path = await openDemo()
     const scrap = await keep({ body: 'Maybe.\n' })
@@ -324,6 +422,8 @@ describe('from the page', () => {
     await act(() => new Promise((r) => setTimeout(r, 50)))
   }
 
+  const pageText = (): string => state().editor!.state.doc.textContent
+
   /** Select the page's first `n` characters. */
   function selectStart(n: number): string {
     const editor = state().editor!
@@ -374,5 +474,64 @@ describe('from the page', () => {
     })
     await waitFor(async () => expect(await api.listScraps(path)).toHaveLength(1))
     expect((await api.listScraps(path))[0].how).toBe('cut')
+  })
+
+  it('does nothing from a tag field, where the page keeps a selection nobody can see', async () => {
+    const path = await openDemo()
+    await renderApp()
+    const before = pageText()
+    selectStart(5)
+    const tag = document.querySelector('.tag-input') as HTMLInputElement
+    act(() => tag.focus())
+    await act(async () => {
+      fireEvent.keyDown(tag, { key: 'x', metaKey: true, shiftKey: true })
+    })
+    expect(await api.listScraps(path)).toHaveLength(0)
+    expect(pageText()).toBe(before)
+    expect(document.activeElement).toBe(tag)
+    // Nor from the menu: with the selection hidden, the item is off.
+    await openEdit()
+    expect(editItem()?.disabled).toBe(true)
+  })
+
+  it('moves once for a held key, not once per repeat', async () => {
+    const path = await openDemo()
+    await renderApp()
+    selectStart(5)
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'x', metaKey: true, shiftKey: true, repeat: true })
+    })
+    expect(await api.listScraps(path)).toHaveLength(0)
+  })
+
+  it('Edit → Bold, Undo and the rest act on the pad’s sheet while the pad is up, and are off elsewhere', async () => {
+    await openDemo()
+    const scrap = await keep({ body: 'Make me bold.\n' })
+    await renderApp()
+    act(() => state().showCorkboard())
+    await openEdit()
+    const item = (label: string): HTMLButtonElement | undefined =>
+      [...document.querySelectorAll<HTMLButtonElement>('.menu-drop .menu-item')].find((i) =>
+        i.textContent?.startsWith(label)
+      )
+    // Nothing to act on here, and the menu says so.
+    expect(item('Bold')?.disabled).toBe(true)
+    expect(item('Undo')?.disabled).toBe(true)
+
+    act(() => state().showScratchPad())
+    await waitFor(() => expect(document.querySelector(`[data-scrap="${scrap.id}"]`)).not.toBeNull())
+    const sheet = sheetEditor(scrap.id)
+    act(() => {
+      sheet.commands.focus()
+      sheet.commands.setTextSelection({ from: 1, to: 5 })
+    })
+    // TipTap focuses a frame later; the sheet becomes Edit's when it does.
+    await waitFor(() => expect(state().padEditor).toBe(sheet))
+    await openEdit()
+    expect(item('Bold')?.disabled).toBe(false)
+    await act(async () => fireEvent.mouseDown(item('Bold')!))
+    expect(
+      document.querySelector(`[data-scrap="${scrap.id}"] .scrap-text strong`)?.textContent
+    ).toBe('Make')
   })
 })

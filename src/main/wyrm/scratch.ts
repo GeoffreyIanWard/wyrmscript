@@ -39,9 +39,12 @@ interface ScrapFrontmatter {
 }
 
 /** A time as written. YAML reads an unquoted ISO stamp (a hand edit) as a
- *  date, which would not survive the trip back over IPC as one. */
+ *  date, which would not survive the trip back over IPC as one; a missing or
+ *  empty one is no time at all, never the word "undefined" (which would sort
+ *  the scrap above every real one, and be written back on its first edit). */
 function stamp(v: unknown): string {
-  return v instanceof Date ? v.toISOString() : String(v)
+  if (v instanceof Date) return v.toISOString()
+  return typeof v === 'string' ? v : ''
 }
 
 const isHow = (v: unknown): v is ScrapHow => SCRAP_HOWS.includes(v as ScrapHow)

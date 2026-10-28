@@ -6,7 +6,7 @@ import { docToMarkdown, markdownToDoc } from '../lib/markdown'
 import { proseExtensions } from '../lib/proseKit'
 import { padOrder, scrapOrigin, scrapSource, scrapWhen } from '../lib/scratchPad'
 import { errorMessage } from '../lib/errors'
-import { useWyrm } from '../store'
+import { registerPadFlush, useWyrm } from '../store'
 
 /** Typing settles this long before a scrap is written. */
 const SCRAP_SAVE_MS = 600
@@ -105,8 +105,11 @@ export function ScratchPad(): JSX.Element | null {
                 onFocused={() => {
                   if (scrap.id === searched) useWyrm.getState().settleScratchFocus()
                 }}
+                // Functional updates: the sheet's editor keeps the callbacks
+                // of the render it was made in, before New Note set \`fresh\`.
+                onWords={() => setFresh((f) => (f === scrap.id ? null : f))}
                 onGone={(holdsFocus) => {
-                  if (scrap.id === fresh) setFresh(null)
+                  setFresh((f) => (f === scrap.id ? null : f))
                   if (holdsFocus) newNoteRef.current?.focus()
                 }}
               />
@@ -125,6 +128,7 @@ function ScrapSheet({
   fresh,
   focusNow,
   onFocused,
+  onWords,
   onGone
 }: {
   scrap: Scrap
@@ -135,6 +139,8 @@ function ScrapSheet({
   /** Put the caret here on mount: a new note, or a search hit. */
   focusNow: boolean
   onFocused: () => void
+  /** A New Note has its first words: it is kept, and New Note is free again. */
+  onWords: () => void
   /** It is about to leave the pad. `holdsFocus` when focus is inside it and
    *  would go with it (Throw Away); a blur already has somewhere to go. */
   onGone: (holdsFocus: boolean) => void
@@ -143,8 +149,13 @@ function ScrapSheet({
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // The editor's text as Markdown, kept on every keystroke so a save never
-  // needs the editor (which may already be destroyed on unmount).
+  // needs the editor (which may already be destroyed on unmount)...
   const latest = useRef(scrap.body)
+  // ...and the text this sheet last knew to be stored: what it opened with,
+  // wrote, or took from a sync. Typing is whatever differs from it.
+  const stored = useRef(scrap.body)
+  /** This sheet's writes still on their way. */
+  const writing = useRef(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const freshRef = useRef(fresh)
   const sheetRef = useRef<HTMLDivElement>(null)
@@ -155,13 +166,28 @@ function ScrapSheet({
 
   // The sheet is keyed by project and scrap, so `path` and `scrap.id` never
   // change under it: the editor's callbacks, made once, can keep this one.
-  const save = (): Promise<void> => {
+  /** Writes the typing that is waiting; false when the write failed. */
+  const save = async (): Promise<boolean> => {
     if (timer.current != null) clearTimeout(timer.current)
     timer.current = null
-    return useWyrm
-      .getState()
-      .updateScrapAt(path, scrap.id, latest.current)
-      .catch((e: unknown) => setError(errorMessage(e)))
+    // Nothing typed since the text was stored: writing this sheet's copy
+    // would put it back over a newer one a sync brought in.
+    if (same(latest.current, stored.current)) return true
+    const before = stored.current
+    const body = latest.current
+    stored.current = body
+    writing.current++
+    try {
+      await useWyrm.getState().updateScrapAt(path, scrap.id, body)
+      return true
+    } catch (e) {
+      // Still waiting, so the next save tries it again.
+      if (stored.current === body) stored.current = before
+      setError(errorMessage(e))
+      return false
+    } finally {
+      writing.current--
+    }
   }
 
   const editor = useEditor(
@@ -173,7 +199,10 @@ function ScrapSheet({
       },
       onUpdate: ({ editor }) => {
         latest.current = docToMarkdown(editor.getJSON())
-        if (latest.current.trim() !== '') freshRef.current = false
+        if (freshRef.current && latest.current.trim() !== '') {
+          freshRef.current = false
+          onWords()
+        }
         if (timer.current != null) clearTimeout(timer.current)
         timer.current = setTimeout(() => void save(), SCRAP_SAVE_MS)
       },
@@ -187,26 +216,43 @@ function ScrapSheet({
           return
         }
         void save()
-      }
+      },
+      // Edit's Undo and formatting act on the sheet last written in.
+      onFocus: ({ editor }) => useWyrm.getState().setPadEditor(editor)
     },
     [scrap.id]
   )
 
-  // Whatever is still waiting is written as the sheet goes — leaving the
-  // pad, or another novel coming forward — to the project it was typed in.
-  useEffect(
-    () => () => {
-      if (timer.current != null) void save()
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- on unmount only
-    []
-  )
-
-  // A scrap changed under the pad (a sync brought the other computer's
-  // version) shows that version, unless the writer is typing in it.
   useEffect(() => {
-    if (!editor || editor.isDestroyed || editor.isFocused) return
-    if (same(latest.current, scrap.body)) return
+    if (!editor) return
+    return () => {
+      if (useWyrm.getState().padEditor === editor) useWyrm.getState().setPadEditor(null)
+    }
+  }, [editor])
+
+  // Whatever is still waiting is written as the sheet goes — leaving the
+  // pad, or another novel coming forward — to the project it was typed in;
+  // and whenever the page is flushed (a save point, a sync, quitting), so a
+  // sync never runs with this sheet's typing still only on screen.
+  useEffect(() => {
+    const unregister = registerPadFlush(save)
+    return () => {
+      unregister()
+      void save()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on mount and unmount only
+  }, [])
+
+  // A scrap changed under the pad — a sync brought the other computer's
+  // version — shows that version, caret or no caret, as the page does.
+  // Not while this sheet's own writes are landing (those are its own text),
+  // and not over typing still waiting to be written: that is saved over it,
+  // and the other version stays in the history.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || writing.current > 0) return
+    if (same(scrap.body, stored.current)) return
+    if (!same(latest.current, stored.current)) return
+    stored.current = scrap.body
     latest.current = scrap.body
     editor.commands.setContent(markdownToDoc(scrap.body), { emitUpdate: false })
   }, [editor, scrap.body])
@@ -223,7 +269,11 @@ function ScrapSheet({
   const throwAway = (): void => {
     setError(null)
     void save()
-      .then(() => {
+      .then((saved) => {
+        // The newest text failed to write, so it is on screen only: the save
+        // point would keep the older text and this would be lost. The error
+        // says why; the scrap stays.
+        if (!saved) return
         onGone(true)
         return useWyrm.getState().throwAwayScrapAt(path, scrap.id)
       })

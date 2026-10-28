@@ -3977,6 +3977,25 @@ button.map-place-name {
   white-space: pre-wrap;
 }
 
+/* The page's highlight and selection, in the sheet's own two inks: without
+   these the browser's yellow mark and blue selection show through, outside
+   every palette. The phosphor palettes' inverse video follows below. */
+.scrap-text mark {
+  background: var(--highlight-bg);
+  color: inherit;
+  box-shadow: 0 0 0 1px var(--ink);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 1px 2px;
+  margin: 0 -2px;
+}
+
+.scrap-text ::selection,
+.scrap-text.ProseMirror::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+
 .scrap-text p {
   margin: 0;
 }
@@ -4503,7 +4522,11 @@ button.map-place-name {
 [data-palette='green'] .page mark,
 [data-palette='amber'] .page mark,
 [data-palette='vaporwave'] .page mark,
-[data-palette='virtualwyrm'] .page mark {
+[data-palette='virtualwyrm'] .page mark,
+[data-palette='green'] .scrap-text mark,
+[data-palette='amber'] .scrap-text mark,
+[data-palette='vaporwave'] .scrap-text mark,
+[data-palette='virtualwyrm'] .scrap-text mark {
   background: var(--ink);
   color: var(--paper);
   text-shadow: none;

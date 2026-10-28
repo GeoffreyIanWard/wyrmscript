@@ -209,6 +209,31 @@ describe('scraps on the pad', () => {
     expect(await api.listScraps(path)).toEqual([])
   })
 
+  it('writes a save that goes back to the stored text, even while an older, different write is on its way', async () => {
+    const path = await openDemo()
+    const scrap = await act(() => state().addScrapAt(path, { body: 'Hello.\n' }))
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    const real = api.writeScrap.bind(api)
+    let first = true
+    vi.spyOn(api, 'writeScrap').mockImplementation(async (p, s) => {
+      if (first) {
+        first = false
+        await held
+      }
+      await real(p, s)
+    })
+    const typed = state().updateScrapAt(path, scrap.id, 'Hello.x')
+    // The writer deletes the x again before that write lands.
+    const undone = state().updateScrapAt(path, scrap.id, 'Hello.')
+    await act(async () => {
+      release()
+      await Promise.all([typed, undone])
+    })
+    expect((await api.listScraps(path))[0].body).toBe('Hello.\n')
+    expect(state().scraps[0].body).toBe('Hello.')
+  })
+
   it('makes a save point before throwing a scrap away, so it stays in the history', async () => {
     const path = await openDemo()
     const scrap = await act(() => state().addScrapAt(path, { body: 'Keep me in history.\n' }))
@@ -268,6 +293,27 @@ describe('the pad as a view', () => {
 })
 
 describe('Move to Scratch Pad', () => {
+  it('moves once while a move is still being written: a second press makes no second scrap', async () => {
+    const path = await openDemo()
+    const ed = mountPage('Keep this. Cut this. Keep that.')
+    select(ed, 'Cut this.')
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    const real = api.writeScrap.bind(api)
+    vi.spyOn(api, 'writeScrap').mockImplementation(async (p, s) => {
+      await held
+      await real(p, s)
+    })
+    const first = state().moveToScratchPad()
+    const second = await state().moveToScratchPad()
+    expect(second).toBe('busy')
+    await act(async () => {
+      release()
+      expect(await first).toBe('moved')
+    })
+    expect(await api.listScraps(path)).toHaveLength(1)
+  })
+
   it('does nothing without a selection', async () => {
     const path = await openDemo()
     const ed = mountPage('One two three.')

@@ -151,6 +151,18 @@ describe('writeScrap / listScraps', () => {
     expect(typeof found.modified).toBe('string')
   })
 
+  it('reads a missing or empty time as no time, never the word "undefined"', async () => {
+    const dir = await makeProject()
+    await fsp.mkdir(join(dir, 'scratch'), { recursive: true })
+    await fsp.writeFile(join(dir, 'scratch', 'bare.md'), '---\nid: bare\n---\nHello\n')
+    await fsp.writeFile(join(dir, 'scratch', 'blank.md'), '---\nid: blank\ncreated:\n---\nHi\n')
+    const found = await listScraps(dir)
+    for (const s of found) {
+      expect(s.created).toBe('')
+      expect(s.modified).toBe('')
+    }
+  })
+
   it('skips a file with an id that is not plain, and anything that is not a scrap', async () => {
     const dir = await makeProject()
     await fsp.mkdir(join(dir, 'scratch'), { recursive: true })
@@ -173,5 +185,17 @@ describe('deleteScrap', () => {
     await deleteScrap(dir, s.id)
     expect(await listScraps(dir)).toEqual([])
     await expect(deleteScrap(dir, s.id)).resolves.toBeUndefined()
+  })
+})
+
+describe('the pad in every palette', () => {
+  it('draws highlight and selection in the palette’s inks, as the page does', async () => {
+    const css = await fsp.readFile(join(__dirname, '../src/renderer/src/styles/retro.css'), 'utf8')
+    expect(css).toMatch(/^\.scrap-text mark \{/m)
+    expect(css).toMatch(/\.scrap-text ::selection/)
+    // Every palette that redraws the page's highlight redraws the pad's.
+    const palettes = [...css.matchAll(/\[data-palette='([a-z-]+)'\] \.page mark/g)].map((m) => m[1])
+    expect(palettes.length).toBeGreaterThan(0)
+    for (const name of palettes) expect(css).toContain(`[data-palette='${name}'] .scrap-text mark`)
   })
 })
