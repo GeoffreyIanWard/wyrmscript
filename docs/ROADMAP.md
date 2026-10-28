@@ -1030,7 +1030,7 @@ The test that matters most is the last one: after cloning, **the sync engine run
 
 **Today's workaround, and why it is not good enough:** clone by hand and use Open Project. It works, but the app sees `mode: 'unset'` with a `remoteUrl` present, so the writer is asked to choose a sync path for a project that already has one, then walked through connect-project to re-attach a remote that is already in `.git/config`.
 
-### F-50 · One "Save to…" for saving and syncing 🔨 in progress
+### F-50 · One "Save to…" for saving and syncing ✅ shipped
 
 Replace today's scattered save, backup and sync controls with one place to keep the work safe, built around a single **Save to…** button.
 
@@ -1066,7 +1066,7 @@ Each one arrived with its own feature (F-01, F-40, Phase 5, F-43), so each has i
   - Later: views that track commits.
 - **Conflicts.** At least a way into a dedicated place for resolving sync conflicts.
 
-**Resolving conflicts, visually** (to brainstorm further). The idea is a skeuomorphic merge: each side's changed text is broken into separate text-block cards, and the writer drags the blocks they want to keep into the document where they belong. It's a resolution the writer can see and touch, not a choice between two versions of a file.
+**Resolving conflicts, visually** — moved to F-51. The idea is a skeuomorphic merge: each side's changed text is broken into separate text-block cards, and the writer drags the blocks they want to keep into the document where they belong. It's a resolution the writer can see and touch, not a choice between two versions of a file.
 
 **The status line: one envelope per location** (chosen 2026-10-27 from two mock-ups). At the right of the status bar sits a small envelope for each location, in drawer order, default first, followed by the time since the last save. Clicking it opens the drawer, and clicking an envelope opens that location's card.
 
@@ -1107,7 +1107,7 @@ The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places")
 2. **The envelope status line** ✅. It replaces the old place label (◆ LOCAL, ◆ SYNCED…) and the checkpoint age at the right of the status bar. One envelope per location in the drawer's order, then how long since the **default** was saved. **Filled**: holds the latest save. **Empty**: behind, meaning it doesn't hold the latest save point. That is asked of the repositories themselves (a drive's branch, and where the last fetch or push left GitHub's), never worked out from times: the main process makes save points the page never hears of (before a sync, before reading stats) and a pull brings in commits with another device's times, so a time comparison drew copies filled that did not have the work. **Dithered**: being written right now, filling in as each place finishes. **Dashed**: a drive that isn't connected, quietly, with no "!". **Marked "!"**: GitHub unreachable, signed out, its link lost, or passages waiting; the line then ends in "!". Hovering an envelope says why. Clicking an envelope opens the drawer on that card; clicking the time opens the drawer. Both questions (is the drive there, does each place hold the latest save point) are asked again as a project loads, after every write to any location (a background window's too), after reading stats, when a drive is added, when the drawer opens, every 30 seconds and whenever the window comes back to the front, since a card comes and goes without the app being told.
 3. **The Restore from, GitHub and Settings tabs in full** ✅. Backup…, Sync Settings… and Bring Down from GitHub… are gone from the menus, and the Backup and Sync dialogs with them; File has **Save To…** and **Restore From…** beside **Create Save Point…**. **Restore from** restores a backup or brings a project down from GitHub inside the drawer, each opening beside what is open; with nothing open, the home screen still offers both. **Settings**: a save point every 1, 2, 5, 10, 15 or 30 minutes while writing (per project, 5 by default), whether each one is copied to the drives and cards, and whether it is sent to GitHub. Save Now always goes everywhere. **GitHub**: the account (signed in as…, Switch Account…, Sign Out), this project's link (where the work goes, when it was last sent, why the last try failed, passages waiting), Sync Now, and Disconnect… (asks, and never deletes the copy); connecting to a new private space or an existing address; reconnecting a project whose link was lost; and signing in again when signed out. GitHub can't be added past three locations, and the tab says so. A drive another computer has backed up to holds work this project doesn't have, and a backup leaves it untouched; its card and envelope now say so and say to restore it to a new project to compare (the Backup dialog used to be the only place that did). Turning sending off holds back every automatic send, including the one when the network comes back. The old first screen, choosing between "keep everything on this machine" and GitHub, is gone: that choice is now just whether there is a GitHub card. The Save to tab says plainly when this computer holds the only copy, and that a folder on the same disk is no protection, without nagging or pointing at GitHub.
 4. **The removable-drive toggle and warning** ✅. Each drive's card has a **Removable drive** switch. As a drive is added it is set from a guess from its path (`shared/removable.ts`): under `/Volumes/` on a Mac, any letter but the system drive on Windows, `/media`, `/mnt` or `/run/media` on Linux; a folder on the startup disk or a network share is fixed. The writer's answer is stored and never guessed over; drives added before this are guessed when read. Adding a removable drive, or switching one to removable, says once, by its name, that saves skip it whenever it isn't plugged in. The switch also decides what missing means: a removable drive that isn't there is a quiet dashed envelope, as F-40 always treated an unplugged card, while a **fixed** drive that isn't there is "Drive not found" and an envelope marked "!", since it should always be there.
-5. **The Conflicts tab**, opening today's conflict screen. The visual merge waits for more design.
+5. **The Conflicts tab** ✅. It names the passages waiting — the list a background sync found, kept in the store (`waitingConflicts`) where it used to be dropped for a bare flag — says nothing is lost while they wait, and **Resolve…** syncs again for a fresh list and opens the existing resolution screen. If nothing is waiting any more by then, it says so. The tab carries a "!" while passages wait. The GitHub card's **Needs your eye** goes to it, and so does the GitHub envelope when waiting passages are what is wrong (a connection problem goes to the card instead). The drawer steps aside when the resolution screen comes up, from here or from Save Now or Sync Now, so two dialogs are never stacked. The visual merge is its own item now, F-51.
 
 **Settled questions:**
 
@@ -1117,6 +1117,14 @@ The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places")
 - History and Variants stay where they are. They are about looking back, not keeping safe.
 - ⌘S runs Create Save Point.
 - The writer says whether a drive is removable, and the app only guesses.
+
+### F-51 · Resolving conflicts, visually 💭
+
+Split out of F-50 (2026-10-28), whose Conflicts tab opens today's resolution screen: one passage at a time, keep mine, keep theirs, or keep both as a variant.
+
+**The idea** (Geoffrey, 2026-10-27, to brainstorm further): a skeuomorphic merge. Each side's changed text is broken into separate text-block cards, and the writer drags the blocks they want to keep into the document where they belong. A resolution the writer can see and touch, not a choice between two versions of a file. It would live in the drawer's Conflicts tab, or open from it, in the drawer's 1-bit paper-and-ink look.
+
+**Still to design:** how a passage is broken into blocks (sentences, paragraphs, the changed runs only?); what the document being built looks like while blocks are dragged in; how a block the writer leaves out is kept (a variant, as "keep both" does today — nothing is ever lost); and the keyboard way through it.
 
 ## Known issues
 

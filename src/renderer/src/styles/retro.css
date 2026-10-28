@@ -3466,6 +3466,19 @@ button.map-place-name {
   z-index: 1;
 }
 
+.drawer-tab-bang {
+  margin-left: 4px;
+  padding: 0 3px;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.conflict-waiting {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 11px;
+}
+
 .drawer-tab:focus-visible > span {
   outline: 1px dotted var(--ink);
 }

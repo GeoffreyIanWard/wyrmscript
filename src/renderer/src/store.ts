@@ -199,6 +199,7 @@ export const SLICE_KEYS = [
   'syncStatus',
   'syncConflicts',
   'syncNeedsAttention',
+  'waitingConflicts',
   'syncProblem',
   'unreachable',
   'behind',
@@ -423,6 +424,13 @@ interface WyrmState {
   syncConflicts: SyncConflict[] | null
   /** A background sync found conflicts; surfaced quietly, never as a popup. */
   syncNeedsAttention: boolean
+  /**
+   * F-50 step 5: the conflicts a background sync found, kept so the drawer's
+   * Conflicts tab can name the passages waiting. Only a list to show:
+   * resolving always syncs again for a fresh one, since the other computer
+   * may have moved on since. Null when nothing is known to be waiting.
+   */
+  waitingConflicts: SyncConflict[] | null
   /**
    * F-50: why the last sync could not reach GitHub, in the writer's words, or
    * null after one that did. Separate from `syncNeedsAttention`, which also
@@ -1020,6 +1028,7 @@ function emptySlice(): ProjectSlice {
     syncStatus: null,
     syncConflicts: null,
     syncNeedsAttention: false,
+    waitingConflicts: null,
     syncProblem: null,
     unreachable: [],
     behind: [],
@@ -1392,7 +1401,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       outcome.status === 'conflicts'
         ? // The page is sacred: a background sync never puts a dialog on
           // screen. The quiet flag shows in the status bar once focused.
-          { syncNeedsAttention: true }
+          { syncNeedsAttention: true, waitingConflicts: outcome.conflicts }
         : outcome.status === 'pulled' || outcome.status === 'merged'
           ? { stale: true }
           : {}
@@ -1432,6 +1441,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       syncStatus: null,
       syncConflicts: null,
       syncNeedsAttention: false,
+      waitingConflicts: null,
       syncProblem: null,
       unreachable: [],
       behind: [],
@@ -1516,6 +1526,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     syncStatus: null,
     syncConflicts: null,
     syncNeedsAttention: false,
+    waitingConflicts: null,
     syncProblem: null,
     unreachable: [],
     behind: [],
@@ -2127,6 +2138,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       set({
         syncStatus: await api.disconnectSync(project.path),
         syncNeedsAttention: false,
+        waitingConflicts: null,
         syncProblem: null
       })
     },
@@ -2140,10 +2152,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async syncNow(interactive = true) {
       const { project } = get()
       if (!project) throw new Error('No project is open')
+      const path = project.path
       await get().flushSave()
       let outcome: SyncOutcome
       try {
-        outcome = await writingTo(project.path, ['github'], () => api.syncNow(project.path))
+        outcome = await writingTo(path, ['github'], () => api.syncNow(path))
       } catch (err) {
         // A sync that failed must never look like one that worked. Callers
         // fire this with `void` (the menu item, the post-checkpoint auto-sync,
@@ -2152,24 +2165,44 @@ export const useWyrm = create<WyrmState>((set, get) => {
         // was left believing their work had reached GitHub. Raising the quiet
         // flag puts `◆ SYNC — NEEDS YOUR EYE` in the status bar — the existing
         // non-nagging channel — and we still rethrow so an interactive caller
-        // can surface the actual error (F-01).
-        set({ syncNeedsAttention: true, syncProblem: errorMessage(err) })
+        // can surface the actual error (F-01). Recorded on the project that
+        // synced, wherever it is now.
+        patchSliceAt(path, () => ({ syncNeedsAttention: true, syncProblem: errorMessage(err) }))
         throw err
       }
-      set({ syncProblem: syncProblemOf(outcome) })
-      if (outcome.status === 'conflicts') {
-        // The page is sacred: only a sync the writer asked for may put a
-        // dialog on screen. A background one leaves a quiet flag instead.
-        if (interactive) set({ syncConflicts: outcome.conflicts, syncNeedsAttention: false })
-        else set({ syncNeedsAttention: true })
-      } else {
-        set({ syncNeedsAttention: false })
-        if (outcome.status === 'pulled' || outcome.status === 'merged') {
-          // The manuscript on disk changed underneath the UI — reload.
-          await reloadAfterRemoteChange()
-        }
-      }
-      await get().loadSyncStatus()
+      // Another project may have come to the front while this one synced (a
+      // fetch can take a while). Everything below is this project's, so it is
+      // recorded on its own slice; a result landing on whichever novel is in
+      // front put one novel's conflicts in another's Conflicts tab (F-50).
+      const here = get().project?.path === path
+      // Offline and error are returned, not thrown, and they say nothing new
+      // about what is waiting: keep the list rather than call it resolved.
+      const reached = outcome.status !== 'offline' && outcome.status !== 'error'
+      const pulled = outcome.status === 'pulled' || outcome.status === 'merged'
+      patchSliceAt(path, () => ({
+        syncProblem: syncProblemOf(outcome),
+        ...(outcome.status === 'conflicts'
+          ? // The page is sacred: only a sync the writer asked for, on the
+            // novel in front, may put a dialog on screen. Anything else
+            // leaves the quiet flag and the list for the Conflicts tab.
+            interactive && here
+            ? {
+                syncConflicts: outcome.conflicts,
+                syncNeedsAttention: false,
+                waitingConflicts: null
+              }
+            : { syncNeedsAttention: true, waitingConflicts: outcome.conflicts }
+          : reached
+            ? { syncNeedsAttention: false, waitingConflicts: null }
+            : {}),
+        // Pulled into a novel no longer in front: re-read it when it comes
+        // back, as a background sync does.
+        ...(pulled && !here ? { stale: true } : {})
+      }))
+      if (!here) return outcome
+      // The manuscript on disk changed underneath the UI — reload.
+      if (pulled) await reloadAfterRemoteChange()
+      if (get().project?.path === path) await get().loadSyncStatus()
       return outcome
     },
 
@@ -2178,7 +2211,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) throw new Error('No project is open')
       const outcome = await api.resolveSyncConflicts(project.path, choices)
       if (outcome.status === 'merged') {
-        set({ syncConflicts: null, syncNeedsAttention: false })
+        set({ syncConflicts: null, syncNeedsAttention: false, waitingConflicts: null })
         await reloadAfterRemoteChange()
       }
       await get().loadSyncStatus()
@@ -2188,7 +2221,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     dismissConflicts() {
       // Declining to decide is allowed — nothing has been changed, and the
       // quiet flag keeps the door open for later.
-      set({ syncConflicts: null, syncNeedsAttention: true })
+      set({ syncConflicts: null, syncNeedsAttention: true, waitingConflicts: get().syncConflicts })
     },
 
     async loadBackupSettings() {

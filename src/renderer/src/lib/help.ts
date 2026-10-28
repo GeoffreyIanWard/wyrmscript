@@ -30,6 +30,10 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
     title: 'A place your work is kept',
     body: 'The top card is the default. Drag a card, or press ⌥↑ and ⌥↓ on it, to change the order. This computer is always here; the others can be removed, and removing one never deletes the copy.'
   },
+  'resolve-conflicts': {
+    title: 'Resolve',
+    body: 'Looks again for passages changed one way here and another way on your other computer, and opens them side by side so you can choose. Nothing is lost while they wait: both versions are kept.'
+  },
   'save-removable': {
     title: 'Removable drive',
     body: 'A card or a stick that is not always plugged in. Saves skip it while it is out, and its envelope is dashed, not an alarm. A drive that is not removable should always be there, so if it goes missing its envelope is marked !.'

@@ -200,6 +200,19 @@ export function removableWarning(name: string): string {
 export const DIVERGED =
   'Holds work this project does not have, so it was left untouched. Restore it to a new project to compare.'
 
+/**
+ * F-50 step 5: whether sync conflicts are waiting for the writer. The store's
+ * `syncNeedsAttention` also goes up when a sync throws, and that is a
+ * connection problem (`syncProblem`), not passages to choose between.
+ */
+export function conflictsWaiting(
+  syncNeedsAttention: boolean,
+  syncProblem: string | null,
+  waitingConflicts: readonly unknown[] | null
+): boolean {
+  return (waitingConflicts?.length ?? 0) > 0 || (syncNeedsAttention && syncProblem == null)
+}
+
 /** "just now", "5 min ago", "3 h ago", "yesterday", "4 days ago". */
 export function timeAgo(timestamp: number, now: number = Date.now()): string {
   const mins = Math.floor((now - timestamp) / 60000)
