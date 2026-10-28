@@ -3,13 +3,15 @@ import { promises as fsp } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 import type { BackupSettings, SyncStatus } from '../src/shared/types'
+import { guessRemovable } from '../src/shared/removable'
 import {
   brokenReason,
   describeLocation,
   DIVERGED,
   driveName,
   envelopeOf,
-  isRemovable,
+  removableWarning,
+  canBeRemoved,
   moveLocation,
   removedBySingle,
   saveLocations,
@@ -94,7 +96,7 @@ describe('the list of locations', () => {
 describe('removing and reordering', () => {
   it('never offers to remove the project folder', () => {
     const list = saveLocations(PROJECT, null, backup(), SYNCED)
-    expect(list.map(isRemovable)).toEqual([false, true, true, true])
+    expect(list.map(canBeRemoved)).toEqual([false, true, true, true])
   })
 
   it('moves a card, clamping at either end', () => {
@@ -257,6 +259,77 @@ describe('the envelopes in the status line', () => {
   })
 })
 
+describe('removable drives (F-50 step 4)', () => {
+  it('guesses from the path, the same way on every platform', () => {
+    expect(guessRemovable('/Volumes/CARD/Winter.wyrm.git')).toBe(true)
+    expect(guessRemovable('/media/geoff/STICK/Winter.wyrm.git')).toBe(true)
+    expect(guessRemovable('/run/media/geoff/STICK/W.wyrm.git')).toBe(true)
+    expect(guessRemovable('/mnt/usb/W.wyrm.git')).toBe(true)
+    expect(guessRemovable('E:\\Backups\\W.wyrm.git')).toBe(true)
+    expect(guessRemovable('e:/Backups/W.wyrm.git')).toBe(true)
+    // The startup disk and the system drive are not.
+    expect(guessRemovable('/Users/geoff/Backups/W.wyrm.git')).toBe(false)
+    expect(guessRemovable('C:\\Users\\geoff\\W.wyrm.git')).toBe(false)
+    expect(guessRemovable('c:\\Backups\\W.wyrm.git')).toBe(false)
+    // Nor a network share, which is meant to be there.
+    expect(guessRemovable('\\\\server\\share\\W.wyrm.git')).toBe(false)
+  })
+
+  it('knows the system drive is not always C:', () => {
+    expect(guessRemovable('D:\\Novels\\W.wyrm.git', 'D:')).toBe(false)
+    expect(guessRemovable('C:\\Novels\\W.wyrm.git', 'D:')).toBe(true)
+  })
+
+  it("takes the writer's answer over the guess, and guesses only when there is none", () => {
+    const list = saveLocations(
+      PROJECT,
+      null,
+      {
+        targets: [
+          { id: 'said-fixed', path: '/Volumes/BIG/W.wyrm.git', lastBackupAt: 1, removable: false },
+          { id: 'said-card', path: '/Users/me/W.wyrm.git', lastBackupAt: 1, removable: true },
+          { id: 'old-card', path: '/Volumes/CARD/W.wyrm.git', lastBackupAt: 1 }
+        ],
+        auto: true
+      },
+      null
+    )
+    expect(list.slice(1).map((l) => l.kind === 'disk' && l.removable)).toEqual([false, true, true])
+  })
+
+  it('treats a missing card quietly, and a missing fixed drive as needing the writer', () => {
+    const [, fixed, card] = saveLocations(
+      PROJECT,
+      null,
+      {
+        targets: [
+          { id: 'fixed', path: '/Volumes/BIG/W.wyrm.git', lastBackupAt: 1, removable: false },
+          { id: 'card', path: '/Volumes/CARD/W.wyrm.git', lastBackupAt: 1, removable: true }
+        ],
+        auto: true
+      },
+      null
+    )
+    const ctx = {
+      sync: null,
+      unreachable: ['fixed', 'card'],
+      behind: [],
+      diverged: [],
+      syncProblem: null,
+      syncNeedsAttention: false,
+      savingTo: []
+    }
+    expect(envelopeOf(card, ctx)).toEqual({ state: 'missing', reason: 'Drive not connected' })
+    expect(envelopeOf(fixed, ctx)).toEqual({ state: 'attention', reason: 'Drive not found' })
+  })
+
+  it("warns as it happens, by the drive's own name", () => {
+    expect(removableWarning('CARD')).toMatch(
+      /^CARD is removable: saves skip it whenever it is not plugged in/
+    )
+  })
+})
+
 describe('the words on a card', () => {
   it('names drives the way the writer sees them', () => {
     expect(driveName('/Volumes/CARD/Winter.wyrm.git')).toBe('CARD')
@@ -356,6 +429,20 @@ describe('the stored order', () => {
     const read = await readBackupSettings(PROJECT)
     expect(read.auto).toBe(false)
     expect(read.sendToGithub).toBeUndefined()
+  })
+
+  it("stores the guess for a drive as it is added, and keeps the writer's answer", async () => {
+    const { readBackupSettings, addBackupTarget, updateBackupTarget, writeSaveSettings } =
+      await import('../src/main/wyrm/settings')
+    await addBackupTarget(PROJECT, '/Volumes/CARD/Winter.wyrm.git')
+    await addBackupTarget(PROJECT, '/Users/me/Backups/Winter.wyrm.git')
+    const [card, folder] = (await readBackupSettings(PROJECT)).targets
+    expect(card.removable).toBe(true)
+    expect(folder.removable).toBe(false)
+    await updateBackupTarget(PROJECT, card.id, { removable: false })
+    await writeSaveSettings(PROJECT, { auto: true })
+    const [after] = (await readBackupSettings(PROJECT)).targets
+    expect(after.removable).toBe(false)
   })
 
   it('is absent until the writer reorders', async () => {

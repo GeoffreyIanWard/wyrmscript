@@ -493,6 +493,8 @@ interface WyrmState {
   saveEverywhere(): Promise<SaveEverywhere>
   /** F-50: store the drawer's card order (location ids, default first). */
   setSaveOrder(order: string[]): Promise<void>
+  /** F-50 step 4: say whether a backup's drive is removable. */
+  setTargetRemovable(targetId: string, removable: boolean): Promise<void>
   /** F-50 step 3: the Settings tab — how often save points are made, and where they go. */
   setSaveSettings(patch: SaveSettingsPatch): Promise<void>
   /** Restore a backup into a new project and open it. True if one was opened. */
@@ -896,6 +898,19 @@ interface ProjectRuntime {
 }
 
 const runtimes = new Map<string, ProjectRuntime>()
+
+/**
+ * F-50: how many times each project's backup settings have been written from
+ * here. `checkLocations` reads the settings alongside a check that can take
+ * seconds (walking a drive's history), so a writer's change can land while it
+ * runs; it notes the count as it starts and leaves the settings alone if a
+ * write has happened since, or it would put the old ones back — the Removable
+ * switch flicking off again, a reorder snapping back.
+ */
+const settingsWrites = new Map<string, number>()
+function wroteSettings(path: string): void {
+  settingsWrites.set(path, (settingsWrites.get(path) ?? 0) + 1)
+}
 
 function runtimeFor(path: string): ProjectRuntime {
   let runtime = runtimes.get(path)
@@ -2187,6 +2202,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (!project) return
       const settings = await api.chooseBackupLocation(project.path)
       if (settings) {
+        wroteSettings(project.path)
         set({ backupSettings: settings })
         void get()
           .checkLocations()
@@ -2197,13 +2213,17 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async setBackupAuto(auto) {
       const { project } = get()
       if (!project) return
-      set({ backupSettings: await api.setBackupAuto(project.path, auto) })
+      const settings = await api.setBackupAuto(project.path, auto)
+      wroteSettings(project.path)
+      set({ backupSettings: settings })
     },
 
     async removeBackupTarget(targetId) {
       const { project } = get()
       if (!project) return
-      set({ backupSettings: await api.removeBackupTarget(project.path, targetId) })
+      const settings = await api.removeBackupTarget(project.path, targetId)
+      wroteSettings(project.path)
+      set({ backupSettings: settings })
     },
 
     async backupNow() {
@@ -2224,6 +2244,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
 
     async checkLocations(path = get().project?.path) {
       if (!path) return
+      const writes = settingsWrites.get(path) ?? 0
       const [check, backupSettings, syncStatus] = await Promise.all([
         api.checkSaveLocations(path),
         api.getBackupSettings(path),
@@ -2236,7 +2257,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
         ...(same(slice.unreachable, check.unreachable) ? {} : { unreachable: check.unreachable }),
         ...(same(slice.behind, check.behind) ? {} : { behind: check.behind }),
         ...(same(slice.diverged, check.diverged) ? {} : { diverged: check.diverged }),
-        ...(same(slice.backupSettings, backupSettings) ? {} : { backupSettings }),
+        // Read before a write that has since landed: the slice is newer.
+        ...(same(slice.backupSettings, backupSettings) || (settingsWrites.get(path) ?? 0) !== writes
+          ? {}
+          : { backupSettings }),
         ...(same(slice.syncStatus, syncStatus) ? {} : { syncStatus })
       }))
     },
@@ -2271,11 +2295,21 @@ export const useWyrm = create<WyrmState>((set, get) => {
       return result
     },
 
+    async setTargetRemovable(targetId, removable) {
+      const { project } = get()
+      if (!project) return
+      const path = project.path
+      const settings = await api.setTargetRemovable(path, targetId, removable)
+      wroteSettings(path)
+      patchSliceAt(path, () => ({ backupSettings: settings }))
+    },
+
     async setSaveSettings(patch) {
       const { project } = get()
       if (!project) return
       const path = project.path
       const settings = await api.setSaveSettings(path, patch)
+      wroteSettings(path)
       patchSliceAt(path, () => ({ backupSettings: settings }))
       if (patch.everyMinutes !== undefined && runtimes.has(path)) {
         armAutosave(path, settings.everyMinutes ?? DEFAULT_SAVE_EVERY)
@@ -2285,7 +2319,9 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async setSaveOrder(order) {
       const { project } = get()
       if (!project) return
-      set({ backupSettings: await api.setSaveOrder(project.path, order) })
+      const settings = await api.setSaveOrder(project.path, order)
+      wroteSettings(project.path)
+      set({ backupSettings: settings })
     },
 
     async restoreFromBackup() {

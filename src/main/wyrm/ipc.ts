@@ -324,6 +324,11 @@ export function registerIpc(): void {
     writeSaveSettings(path, patch ?? {})
   )
 
+  ipcMain.handle('backup:removable', (_e, path: string, targetId: string, removable: unknown) => {
+    if (typeof removable !== 'boolean') throw new Error('Removable is yes or no.')
+    return updateBackupTarget(path, targetId, { removable })
+  })
+
   ipcMain.handle('backup:order', (_e, path: string, order: unknown) =>
     writeBackupSettings(path, {
       order: Array.isArray(order) ? order.filter((id) => typeof id === 'string') : []

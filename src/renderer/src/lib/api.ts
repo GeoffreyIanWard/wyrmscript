@@ -33,6 +33,7 @@ import type {
   VariantInfo,
   WyrmApi
 } from '../../../shared/types'
+import { guessRemovable } from '../../../shared/removable'
 import {
   DEFAULT_APPEARANCE,
   DEFAULT_PRINT,
@@ -810,7 +811,12 @@ export function createMockApi(): WyrmApi {
         ...current,
         targets: [
           ...current.targets,
-          { id: `target-${++demoTargetSeq}`, path: `${next}/${name}.wyrm.git`, lastBackupAt: null }
+          {
+            id: `target-${++demoTargetSeq}`,
+            path: `${next}/${name}.wyrm.git`,
+            lastBackupAt: null,
+            removable: guessRemovable(`${next}/${name}.wyrm.git`)
+          }
         ]
       }
       backups.set(path, settings)
@@ -824,6 +830,19 @@ export function createMockApi(): WyrmApi {
     async removeBackupTarget(path: string, targetId: string): Promise<BackupSettings> {
       const current = backups.get(path) ?? demoBackup()
       const settings = { ...current, targets: current.targets.filter((t) => t.id !== targetId) }
+      backups.set(path, settings)
+      return { ...settings }
+    },
+    async setTargetRemovable(
+      path: string,
+      targetId: string,
+      removable: boolean
+    ): Promise<BackupSettings> {
+      const current = backups.get(path) ?? demoBackup()
+      const settings = {
+        ...current,
+        targets: current.targets.map((t) => (t.id === targetId ? { ...t, removable } : t))
+      }
       backups.set(path, settings)
       return { ...settings }
     },

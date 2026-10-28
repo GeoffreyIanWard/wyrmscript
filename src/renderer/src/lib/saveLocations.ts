@@ -1,4 +1,5 @@
 import type { BackupSettings, SyncStatus } from '../../../shared/types'
+import { guessRemovable } from '../../../shared/removable'
 import { isConnected, isRemoteMissing } from './syncState'
 
 /**
@@ -12,7 +13,7 @@ import { isConnected, isRemoteMissing } from './syncState'
  */
 export type SaveLocation =
   | { id: 'folder'; kind: 'folder'; path: string; lastSavedAt: number | null }
-  | { id: string; kind: 'disk'; path: string; lastSavedAt: number | null }
+  | { id: string; kind: 'disk'; path: string; lastSavedAt: number | null; removable: boolean }
   | { id: 'github'; kind: 'github'; remoteUrl: string | null; lastSavedAt: number | null }
 
 /** Including the project's own folder. Kept small so the drawer stays readable. */
@@ -41,7 +42,14 @@ export function saveLocations(
     { id: FOLDER_ID, kind: 'folder', path: projectPath, lastSavedAt: lastCheckpointAt }
   ]
   for (const target of backup?.targets ?? []) {
-    all.push({ id: target.id, kind: 'disk', path: target.path, lastSavedAt: target.lastBackupAt })
+    all.push({
+      id: target.id,
+      kind: 'disk',
+      path: target.path,
+      lastSavedAt: target.lastBackupAt,
+      // Targets added before F-50 step 4 have no answer stored: guess.
+      removable: target.removable ?? guessRemovable(target.path)
+    })
   }
   if (sync?.mode === 'github') {
     all.push({
@@ -63,8 +71,11 @@ export function saveLocations(
     .map(({ location }) => location)
 }
 
-/** The project's own folder is never removed; every other card can be. */
-export function isRemovable(location: SaveLocation): boolean {
+/**
+ * The project's own folder is never removed; every other card can be. (Not
+ * to be confused with a *removable drive*: that is `removable` on a disk.)
+ */
+export function canBeRemoved(location: SaveLocation): boolean {
   return location.kind !== 'folder'
 }
 
@@ -85,7 +96,7 @@ export function moveLocation(locations: SaveLocation[], id: string, to: number):
  * GitHub as the default, the folder stays beside it.
  */
 export function removedBySingle(locations: SaveLocation[]): SaveLocation[] {
-  return locations.slice(1).filter(isRemovable)
+  return locations.slice(1).filter(canBeRemoved)
 }
 
 /**
@@ -115,7 +126,10 @@ export function brokenReason(
   syncProblem: string | null
 ): string | null {
   if (location.kind === 'disk') {
-    return unreachable.includes(location.id) ? 'Drive not connected' : null
+    if (!unreachable.includes(location.id)) return null
+    // A card out of its slot is ordinary; a drive that should always be
+    // there and is not is something to look into.
+    return location.removable ? 'Drive not connected' : 'Drive not found'
   }
   if (location.kind === 'github') {
     if (isRemoteMissing(sync)) return 'This project lost its link to GitHub'
@@ -156,7 +170,10 @@ export function envelopeOf(
 ): { state: EnvelopeState; reason: string | null } {
   if (ctx.savingTo.includes(location.id)) return { state: 'saving', reason: 'Saving…' }
   const broken = brokenReason(location, ctx.sync, ctx.unreachable, ctx.syncProblem)
-  if (location.kind === 'disk' && broken) return { state: 'missing', reason: broken }
+  // Quiet for a removable drive, as F-40 always treated an unplugged card;
+  // a fixed drive gone missing needs the writer.
+  if (location.kind === 'disk' && broken && location.removable)
+    return { state: 'missing', reason: broken }
   if (broken) return { state: 'attention', reason: broken }
   if (location.kind === 'github' && ctx.syncNeedsAttention)
     return { state: 'attention', reason: 'Some passages need your eye' }
@@ -169,6 +186,14 @@ export function envelopeOf(
   if (ctx.behind.includes(location.id) || (location.kind === 'github' && ctx.sync?.pendingSync))
     return { state: 'behind', reason: 'Not up to date with the last save' }
   return { state: 'saved', reason: null }
+}
+
+/**
+ * F-50 step 4: said as a removable drive is added, or a drive is marked
+ * removable — once, as it happens, rather than on the card for good.
+ */
+export function removableWarning(name: string): string {
+  return `${name} is removable: saves skip it whenever it is not plugged in, and its card shows when it was last written.`
 }
 
 /** Why a diverged drive is left alone, and what to do about it. */
