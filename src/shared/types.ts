@@ -963,7 +963,10 @@ export interface DeviceCodeInfo {
 }
 
 export type SignInPoll =
-  { state: 'pending' } | { state: 'ok'; login: string } | { state: 'error'; detail: string }
+  /** `held`: answered without asking GitHub, because it is too soon to ask again. */
+  | { state: 'pending'; held?: boolean }
+  | { state: 'ok'; login: string }
+  | { state: 'error'; detail: string }
 
 /** One file that changed on both devices in ways that cannot both be kept. */
 export interface SyncConflict {

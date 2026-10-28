@@ -36,8 +36,12 @@ export function GitHubSignIn({
   /** Rises while waiting so the panel is visibly alive, not frozen. */
   const [checks, setChecks] = useState(0)
 
-  // Device-flow polling: every 5s until the code is approved, rejected, or
-  // its own clock runs out. Always cleaned up (unmount, or a fresh code
+  // Device-flow polling until the code is approved, rejected, or its own
+  // clock runs out. It ticks every second and the main process decides when
+  // a tick actually reaches GitHub (on GitHub's interval, which can grow), so
+  // only those count as checks. One tick at a time: a tick landing while the
+  // last is still answering would find the sign-in already finished and
+  // report "No sign-in is running" over a sign-in that worked. Always cleaned up (unmount, or a fresh code
   // replacing this one) so a closed dialog never keeps polling in the
   // background — `active` guards state updates from a tick already in
   // flight when that cleanup runs.
@@ -46,6 +50,7 @@ export function GitHubSignIn({
     const deadline = Date.now() + deviceInfo.expiresIn * 1000
     let active = true
     let timer: ReturnType<typeof setInterval> | null = null
+    let inFlight = false
 
     const stop = (): void => {
       active = false
@@ -60,11 +65,13 @@ export function GitHubSignIn({
         setDeviceInfo(null)
         return
       }
-      setChecks((n) => n + 1)
+      if (inFlight) return
+      inFlight = true
       void api
         .signInPoll()
         .then((result) => {
           if (!active) return
+          if (result.state !== 'pending' || !result.held) setChecks((n) => n + 1)
           if (result.state === 'ok') {
             stop()
             setDeviceInfo(null)
@@ -83,12 +90,15 @@ export function GitHubSignIn({
           setDeviceInfo(null)
           setError(errorMessage(e))
         })
+        .finally(() => {
+          inFlight = false
+        })
     }
 
     // Check straight away rather than after a first blind 5s: approval is
     // often already done by the time the writer looks back at the app.
     check()
-    timer = setInterval(check, 5000)
+    timer = setInterval(check, 1000)
     return stop
     // onSignedIn is the caller's and may be a fresh function each render;
     // restarting the poll for that would reset the waiting count.

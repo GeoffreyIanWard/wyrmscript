@@ -85,15 +85,7 @@ import {
   setRemoteUrl,
   syncProject
 } from './sync'
-import {
-  clientIdOf,
-  createPrivateRepo,
-  fetchGithubLogin,
-  listUserRepos,
-  pollDeviceFlow,
-  startDeviceFlow,
-  type DeviceFlowSession
-} from './github-auth'
+import { clientIdOf, createDeviceSignIn, createPrivateRepo, listUserRepos } from './github-auth'
 
 function focusedWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
@@ -464,7 +456,9 @@ export function registerIpc(): void {
     return outcome
   }
 
-  let deviceSession: DeviceFlowSession | null = null
+  const signIn = createDeviceSignIn((token, login) =>
+    writeSettings({ githubToken: encodeToken(token), githubLogin: login })
+  )
 
   ipcMain.handle('sync:status', (_e, path: string) => syncStatusOf(path))
 
@@ -490,7 +484,7 @@ export function registerIpc(): void {
 
   ipcMain.handle('sync:signInStart', async () => {
     const { syncClientId } = await readSettings()
-    deviceSession = await startDeviceFlow(clientIdOf(syncClientId))
+    const deviceSession = await signIn.start(clientIdOf(syncClientId))
     return {
       userCode: deviceSession.userCode,
       verificationUri: deviceSession.verificationUri,
@@ -500,16 +494,7 @@ export function registerIpc(): void {
 
   ipcMain.handle('sync:signInPoll', async () => {
     const { syncClientId } = await readSettings()
-    if (!deviceSession) return { state: 'error', detail: 'No sign-in is running.' }
-    const result = await pollDeviceFlow(clientIdOf(syncClientId), deviceSession)
-    if (result.state !== 'ok') {
-      if (result.state === 'error') deviceSession = null
-      return result
-    }
-    deviceSession = null
-    const login = await fetchGithubLogin(result.token)
-    await writeSettings({ githubToken: encodeToken(result.token), githubLogin: login })
-    return { state: 'ok', login }
+    return signIn.poll(clientIdOf(syncClientId))
   })
 
   ipcMain.handle('sync:signOut', async (_e, path: string) => {
