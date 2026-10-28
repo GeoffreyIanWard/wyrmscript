@@ -24,6 +24,8 @@ function kindLabel(kind: SyncConflict['kind']): string {
       return 'DOCUMENT'
     case 'entity':
       return 'STORY BIBLE'
+    case 'scrap':
+      return 'SCRATCH PAD'
     case 'project':
       return 'BINDER'
     default:

@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
+import type { Transaction } from '@tiptap/pm/state'
+import { Mapping } from '@tiptap/pm/transform'
 import type {
   ProjectData,
   BoardSticker,
@@ -40,7 +42,9 @@ import type {
   Relationship,
   StatsSettings,
   PrintSettings,
-  CompileBlock
+  CompileBlock,
+  Scrap,
+  ScrapHow
 } from '../../shared/types'
 import {
   DEFAULT_SAVE_EVERY,
@@ -108,6 +112,12 @@ export type MainView =
   | { kind: 'folder'; id: string }
   | { kind: 'stats' }
   | { kind: 'tags' }
+  | {
+      /** F-51: the scratch pad, in place of the page. A detour, like stats.
+       *  `focus` is a scrap to bring into view (a search hit), used once. */
+      kind: 'scratch'
+      focus?: string
+    }
   | {
       /** F-12: the world map, full-window. Scroll and zoom are carried only
        *  on the copy remembered in `viewHistory`, so coming back from a place
@@ -193,6 +203,7 @@ export const SLICE_KEYS = [
   'mapId',
   'boardStrings',
   'boardStickers',
+  'scraps',
   'boardUndo',
   'backupSettings',
   'dailyStats',
@@ -331,6 +342,8 @@ interface WyrmState {
   boardStrings: BoardString[]
   /** The corkboard's stickers (F-45), on the cork or on cards. */
   boardStickers: BoardSticker[]
+  /** F-51: the scratch pad — every scrap, unordered. */
+  scraps: Scrap[]
 
   boot(): Promise<void>
   newProject(title: string): Promise<void>
@@ -869,6 +882,36 @@ interface WyrmState {
   /** Give a string a label, or take it away with an empty one. */
   labelBoardString(id: string, label: string): Promise<void>
   deleteBoardString(id: string): Promise<void>
+
+  /** F-51: read the scratch pad of the project at `path` (the one in front if none). */
+  loadScraps(path?: string): Promise<void>
+  /** F-51: the scratch pad, in place of the page. A detour: Esc goes back.
+   *  `focus` is a scrap to bring into view, as a search hit does. */
+  showScratchPad(focus?: string): void
+  /** The pad has brought its scrap into view; drop it. */
+  settleScratchFocus(): void
+  /** F-51: a new scrap on the pad of the project at `path`. */
+  addScrapAt(
+    path: string,
+    fields: { body: string; how?: ScrapHow; fromDoc?: string; fromTitle?: string }
+  ): Promise<Scrap>
+  /** F-51: a scrap's text, rewritten on the pad. Writes nothing when it is
+   *  unchanged, or when the scrap is no longer on the pad. */
+  updateScrapAt(path: string, id: string, body: string): Promise<void>
+  /** F-51: take a scrap off the pad, after a save point, so it is still in
+   *  the history. */
+  throwAwayScrapAt(path: string, id: string): Promise<void>
+  /** F-51: drop a scrap with no words in it — a New Note left blank — with
+   *  no save point, since there is nothing to keep. A scrap with any text is
+   *  left alone: that is `throwAwayScrapAt`'s, after a save point. */
+  discardEmptyScrapAt(path: string, id: string): Promise<void>
+  /**
+   * F-51: Move to Scratch Pad — the selection on the page, onto the pad and
+   * off the page. `empty` when nothing is selected; `moved` once it is on the
+   * pad and gone from the page; `kept` when it reached the pad but the page
+   * changed under it first, so the passage was left on the page as well.
+   */
+  moveToScratchPad(): Promise<'moved' | 'kept' | 'empty'>
 }
 
 /** F-14: how many doc↔entity hops Esc can unwind. */
@@ -918,6 +961,12 @@ const runtimes = new Map<string, ProjectRuntime>()
 const settingsWrites = new Map<string, number>()
 function wroteSettings(path: string): void {
   settingsWrites.set(path, (settingsWrites.get(path) ?? 0) + 1)
+}
+
+/** A Markdown body as stored: ending in one newline, so two bodies that differ
+ *  only by that compare equal. */
+function withNewline(body: string): string {
+  return body.endsWith('\n') ? body : body + '\n'
 }
 
 function runtimeFor(path: string): ProjectRuntime {
@@ -1022,6 +1071,7 @@ function emptySlice(): ProjectSlice {
     mapId: WORLD_MAP,
     boardStrings: [],
     boardStickers: [],
+    scraps: [],
     boardUndo: null,
     backupSettings: null,
     dailyStats: [],
@@ -1311,13 +1361,16 @@ export const useWyrm = create<WyrmState>((set, get) => {
     const layers = await Promise.allSettled([
       api.listMapPins(path),
       api.listMapShapes(path),
-      api.listMapMarks(path)
+      api.listMapMarks(path),
+      // The pad too: a scrap kept on the other computer arrives as a file.
+      api.listScraps(path)
     ])
     if (get().project?.path === path) {
-      const [pins, shapes, marks] = layers
+      const [pins, shapes, marks, scraps] = layers
       if (pins.status === 'fulfilled') set({ mapPins: pins.value })
       if (shapes.status === 'fulfilled') set({ mapShapes: shapes.value })
       if (marks.status === 'fulfilled') set({ mapMarks: marks.value })
+      if (scraps.status === 'fulfilled') set({ scraps: scraps.value })
     }
     if (!activeId) return
     const doc = await api.readDoc(project.path, activeId).catch(() => null)
@@ -1456,7 +1509,9 @@ export const useWyrm = create<WyrmState>((set, get) => {
       addCardFor: null,
       // A different project's maps: the last project's map id names nothing
       // here, and drawing stamped with it would vanish onto a map that is not.
-      mapId: WORLD_MAP
+      mapId: WORLD_MAP,
+      // Read below; the last project's pad must never show in the meantime.
+      scraps: []
     })
     armAutosave(info.path, DEFAULT_SAVE_EVERY)
     // A remembered position, if this project has one. Windows with none are
@@ -1467,6 +1522,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
     const first = firstDoc(info.data.binder)
     if (first) await get().selectDoc(first.id)
     await get().loadEntities()
+    // The binder counts the pad and search reads it, so it is read as the
+    // project opens rather than when the pad is first looked at.
+    await get()
+      .loadScraps(info.path)
+      .catch(() => {})
     await get().loadBackupSettings()
     // The project's own interval (F-50), read for this path rather than from
     // whichever project is in front after all those awaits, and only if it is
@@ -1517,6 +1577,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     mapId: WORLD_MAP,
     boardStrings: [],
     boardStickers: [],
+    scraps: [],
     boardUndo: null,
     backupSettings: null,
     appearance: null,
@@ -3553,6 +3614,141 @@ export const useWyrm = create<WyrmState>((set, get) => {
       }))
       // The path written, which may no longer be the one in front.
       runtimeFor(project.path).commitDirty = true
+    },
+
+    /* ---------- the scratch pad (F-51) ---------- */
+
+    async loadScraps(path) {
+      const at = path ?? get().project?.path
+      if (!at) return
+      const scraps = await api.listScraps(at)
+      patchSliceAt(at, () => ({ scraps }))
+    },
+
+    showScratchPad(focus) {
+      // A detour, like stats and the map: the usual reason to open the pad
+      // mid-draft is to copy something back into the page, so Esc must go
+      // back to exactly what was there.
+      const { mainView, viewHistory } = get()
+      if (mainView.kind === 'scratch') {
+        if (focus) set({ mainView: { kind: 'scratch', focus } })
+        return
+      }
+      set({
+        mainView: focus ? { kind: 'scratch', focus } : { kind: 'scratch' },
+        viewHistory: [...viewHistory, mainView].slice(-VIEW_HISTORY_LIMIT)
+      })
+    },
+
+    settleScratchFocus() {
+      const { mainView } = get()
+      if (mainView.kind === 'scratch' && mainView.focus) set({ mainView: { kind: 'scratch' } })
+    },
+
+    async addScrapAt(path, fields) {
+      const now = new Date().toISOString()
+      const scrap: Scrap = {
+        id: newId(),
+        body: fields.body,
+        created: now,
+        modified: now,
+        ...(fields.how ? { how: fields.how } : {}),
+        ...(fields.fromDoc ? { fromDoc: fields.fromDoc } : {}),
+        ...(fields.fromTitle ? { fromTitle: fields.fromTitle } : {})
+      }
+      await api.writeScrap(path, scrap)
+      patchSliceAt(path, (slice) => ({ scraps: [...slice.scraps, scrap] }))
+      // The path written, which may no longer be the one in front — and only
+      // while it is open, or this would bring back a runtime its close disposed.
+      if (runtimes.has(path)) runtimeFor(path).commitDirty = true
+      return scrap
+    },
+
+    async updateScrapAt(path, id, body) {
+      const now = get()
+      const slice = now.project?.path === path ? now : now.parked[path]
+      const found = slice?.scraps.find((s) => s.id === id)
+      // Gone already (thrown away, or the project closed): writing would
+      // bring it back.
+      if (!found || withNewline(found.body) === withNewline(body)) return
+      const next: Scrap = { ...found, body, modified: new Date().toISOString() }
+      // In order with this scrap's other writes, so a slow save can never
+      // land after a newer one, or after it was thrown away.
+      await serializeRecord(path, `scrap:${id}`, async () => {
+        const at = get()
+        const holder = at.project?.path === path ? at : at.parked[path]
+        if (!holder?.scraps.some((s) => s.id === id)) return
+        await api.writeScrap(path, next)
+        patchSliceAt(path, (s) => ({ scraps: s.scraps.map((x) => (x.id === id ? next : x)) }))
+        if (runtimes.has(path)) runtimeFor(path).commitDirty = true
+      })
+    },
+
+    async throwAwayScrapAt(path, id) {
+      // A save point first, so the scrap is still in the history: thrown
+      // away from the pad, never lost.
+      await checkpointAt(path, 'Auto: before throwing away a scratch pad note')
+      await serializeRecord(path, `scrap:${id}`, async () => {
+        await api.deleteScrap(path, id)
+        patchSliceAt(path, (s) => ({ scraps: s.scraps.filter((x) => x.id !== id) }))
+        if (runtimes.has(path)) runtimeFor(path).commitDirty = true
+      })
+    },
+
+    async discardEmptyScrapAt(path, id) {
+      await serializeRecord(path, `scrap:${id}`, async () => {
+        const at = get()
+        const holder = at.project?.path === path ? at : at.parked[path]
+        const found = holder?.scraps.find((s) => s.id === id)
+        if (!found || found.body.trim() !== '') return
+        await api.deleteScrap(path, id)
+        patchSliceAt(path, (s) => ({ scraps: s.scraps.filter((x) => x.id !== id) }))
+      })
+    },
+
+    async moveToScratchPad() {
+      const { project, editor, activeDoc } = get()
+      if (!project || !activeDoc || !editor || editor.isDestroyed) return 'empty'
+      const { from, to, empty } = editor.state.selection
+      if (empty) return 'empty'
+      // Within one paragraph the slice is bare text; across paragraphs it is
+      // the paragraphs. Either way the pad stores a document body.
+      const taken = editor.state.doc.slice(from, to).content
+      const json = taken.toJSON() ?? []
+      const body = docToMarkdown({
+        type: 'doc',
+        content: taken.firstChild?.isInline ? [{ type: 'paragraph', content: json }] : json
+      })
+      if (body.trim() === '') return 'empty'
+      const text = editor.state.doc.textBetween(from, to, '\n')
+      // The page keeps the passage until it is safely on the pad, so a write
+      // that fails leaves it where it was, never nowhere. Typing during the
+      // write is followed, so what comes off the page is still the passage
+      // that went onto the pad.
+      const mapping = new Mapping()
+      const follow = ({ transaction }: { transaction: Transaction }): void => {
+        mapping.appendMapping(transaction.mapping)
+      }
+      editor.on('transaction', follow)
+      try {
+        await get().addScrapAt(project.path, {
+          body,
+          how: 'cut',
+          fromDoc: activeDoc.meta.id,
+          fromTitle: activeDoc.meta.title
+        })
+      } finally {
+        editor.off('transaction', follow)
+      }
+      // Another document or project came forward, or the passage itself was
+      // edited meanwhile: it is on the pad, and stays on the page too —
+      // twice is recoverable, a wrong cut is not.
+      if (editor.isDestroyed || get().editor !== editor) return 'kept'
+      const a = mapping.map(from, 1)
+      const b = mapping.map(to, -1)
+      if (b <= a || editor.state.doc.textBetween(a, b, '\n') !== text) return 'kept'
+      editor.chain().focus().deleteRange({ from: a, to: b }).run()
+      return 'moved'
     }
   }
 })

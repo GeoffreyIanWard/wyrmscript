@@ -1,5 +1,6 @@
-import type { BinderNode, DocFile, Entity } from '../../../shared/types'
+import type { BinderNode, DocFile, Entity, Scrap } from '../../../shared/types'
 import { markdownToDoc } from './markdown'
+import { scrapOrigin } from './scratchPad'
 import { walk } from './tree'
 
 /**
@@ -10,6 +11,10 @@ import { walk } from './tree'
  *
  * Trash is excluded from both by construction: the binder walk never enters
  * `trash`, matching how compile treats it.
+ *
+ * The scratch pad (F-51) is in full-project search but not in quick open: a
+ * scrap has no title to jump to by, and the reason to search the pad is to
+ * find a line cut from the book. It is never compiled, but it is findable.
  */
 
 export type HitKind = 'doc' | 'entity'
@@ -22,7 +27,7 @@ export interface SearchSnippet {
 }
 
 export interface SearchHit {
-  kind: HitKind
+  kind: HitKind | 'scrap'
   id: string
   title: string
   /** Where it lives: folder path for documents, type for bible entries. */
@@ -127,7 +132,8 @@ export function searchProject(
   query: string,
   docs: DocFile[],
   entities: Entity[],
-  binder: BinderNode[]
+  binder: BinderNode[],
+  scraps: Scrap[] = []
 ): SearchHit[] {
   const needle = query.trim().toLowerCase()
   if (needle.length < 2) return []
@@ -165,6 +171,18 @@ export function searchProject(
       subtitle: entityTypeLabel(entity.type),
       snippets: found.snippets,
       total: found.total
+    })
+  }
+
+  for (const scrap of scraps) {
+    const found = snippetsFor(plainTextOf(scrap.body), needle)
+    if (found.total === 0) continue
+    hits.push({
+      kind: 'scrap',
+      id: scrap.id,
+      title: scrapOrigin(scrap),
+      subtitle: 'Scratch Pad',
+      ...found
     })
   }
 

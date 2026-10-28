@@ -19,6 +19,7 @@ import type {
   ProjectData,
   Relationship,
   SaveSettingsPatch,
+  Scrap,
   PrintSettings,
   StatsSettings,
   SyncOutcome,
@@ -42,6 +43,7 @@ import { deleteMapMark, listMapMarks, writeMapMark } from './mapMarks'
 import { deleteMapShape, listMapShapes, writeMapShape } from './mapShapes'
 import { deleteBoardString, listBoardStrings, writeBoardString } from './boardStrings'
 import { deleteBoardSticker, listBoardStickers, writeBoardSticker } from './boardStickers'
+import { deleteScrap, listScraps, writeScrap } from './scratch'
 import {
   createProject,
   docRepoPath,
@@ -260,6 +262,9 @@ export function registerIpc(): void {
   ipcMain.handle('boardSticker:delete', (_e, path: string, id: string) =>
     deleteBoardSticker(path, id)
   )
+  ipcMain.handle('scrap:list', (_e, path: string) => listScraps(path))
+  ipcMain.handle('scrap:write', (_e, path: string, scrap: Scrap) => writeScrap(path, scrap))
+  ipcMain.handle('scrap:delete', (_e, path: string, id: string) => deleteScrap(path, id))
 
   /* ---------- appearance & page geometry (F-05, F-06) ---------- */
 

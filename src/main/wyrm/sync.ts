@@ -179,17 +179,25 @@ async function describeConflict(
     : // Entries only: a portrait sits in the same folder and is not one.
       /^(glossary|characters|world)\/[^/]+\.md$/.test(filepath)
       ? 'entity'
-      : filepath === 'project.json'
-        ? 'project'
-        : 'file'
+      : SCRAP.test(filepath)
+        ? 'scrap'
+        : filepath === 'project.json'
+          ? 'project'
+          : 'file'
 
   let title = filepath
   let localBody = localRaw
   let remoteBody = remoteRaw
-  if (kind === 'doc' || kind === 'entity') {
+  if (kind === 'doc' || kind === 'entity' || kind === 'scrap') {
     const parsed = [localRaw, remoteRaw].map((raw) => (raw == null ? null : matter(raw)))
-    const meta = (parsed[0] ?? parsed[1])?.data as { title?: string; name?: string } | undefined
-    title = meta?.title ?? meta?.name ?? filepath
+    const meta = (parsed[0] ?? parsed[1])?.data as
+      { title?: string; name?: string; fromTitle?: string } | undefined
+    title =
+      kind === 'scrap'
+        ? meta?.fromTitle
+          ? `Scratch pad: from “${meta.fromTitle}”`
+          : 'Scratch pad note'
+        : (meta?.title ?? meta?.name ?? filepath)
     // The writer compares prose, not frontmatter — timestamps differing is
     // noise, the body differing is the decision.
     localBody = parsed[0] == null ? null : parsed[0].content.replace(/^\n/, '')
@@ -225,13 +233,25 @@ export function isRecord(filepath: string): boolean {
 }
 
 /**
+ * F-51: a scrap on the scratch pad. Prose, like a document: its text is
+ * protected the same way (two devices editing one scrap's words is the
+ * writer's to decide), and two devices each adding a scrap are two files,
+ * which merge without asking — the reason the pad is not one file.
+ */
+const SCRAP = /^scratch\/[^/]+\.md$/
+
+/**
  * Every one-file-per-record collection: documents and story-bible entries,
  * and the records above. One device moving a stamp while the other renames
  * it is two changes to two fields, not a conflict; the records used to be
  * left out, so it reached the writer as a "file" conflict of raw YAML.
  */
 export function isFrontmattered(filepath: string): boolean {
-  return /^(documents|glossary|characters|world)\/[^/]+\.md$/.test(filepath) || isRecord(filepath)
+  return (
+    /^(documents|glossary|characters|world)\/[^/]+\.md$/.test(filepath) ||
+    SCRAP.test(filepath) ||
+    isRecord(filepath)
+  )
 }
 
 /** Fields that are one value in two keys: a position. Merged as a pair, so

@@ -6,7 +6,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import git from 'isomorphic-git'
 import matter from 'gray-matter'
-import type { Entity, SyncOutcome } from '../src/shared/types'
+import type { Entity, Scrap, SyncOutcome } from '../src/shared/types'
 import {
   PushRejectedError,
   isFrontmattered,
@@ -32,6 +32,7 @@ import { listBoardStrings, writeBoardString } from '../src/main/wyrm/boardString
 import { listBoardStickers, writeBoardSticker } from '../src/main/wyrm/boardStickers'
 import { listRelationships, writeRelationship } from '../src/main/wyrm/relationships'
 import { listPlotlines, writePlotline } from '../src/main/wyrm/plotlines'
+import { listScraps, writeScrap } from '../src/main/wyrm/scratch'
 import { findNode, firstDoc } from '../src/renderer/src/lib/tree'
 
 /**
@@ -1432,5 +1433,82 @@ describe('the hard cases', () => {
     expect(outcome.status).toBe('merged')
     expect((await readDoc(w.a, w.docId)).body).toContain('Landed during the race.')
     expect((await readDoc(w.a, 'racedoc1')).body).toContain('Written on A')
+  })
+})
+
+describe('the scratch pad (F-51)', () => {
+  const scrap = (id: string, body: string, extra: Partial<Scrap> = {}): Scrap => ({
+    id,
+    body,
+    created: '2026-10-28T10:00:00.000Z',
+    modified: '2026-10-28T10:00:00.000Z',
+    ...extra
+  })
+
+  it('is prose the engine knows: frontmattered like a document, not a strict record', () => {
+    expect(isFrontmattered('scratch/abc.md')).toBe(true)
+    expect(isRecord('scratch/abc.md')).toBe(false)
+    expect(isFrontmattered('scratch/deeper/abc.md')).toBe(false)
+  })
+
+  it('merges a scrap kept on each computer without asking — the reason it is a file each', async () => {
+    const w = await makeWorld()
+    const b = await cloneB(w)
+    await writeScrap(b, scrap('frommb', 'Cut on the laptop.\n', { how: 'cut' }))
+    await commitAll(b, 'B keeps a scrap')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+    await writeScrap(w.a, scrap('fromma', 'A note on the desktop.\n'))
+    await commitAll(w.a, 'A writes a note')
+
+    expectStatus(await syncProject(w.a, w.transport), 'merged')
+    expect((await listScraps(w.a)).map((s) => s.id).sort()).toEqual(['fromma', 'frommb'])
+    expectStatus(await syncProject(b, w.transport), 'pulled')
+    expect((await listScraps(b)).map((s) => s.id).sort()).toEqual(['fromma', 'frommb'])
+  })
+
+  it('brings one scrap rewritten differently on both computers to the writer, named as the pad', async () => {
+    const w = await makeWorld()
+    await writeScrap(
+      w.a,
+      scrap('kept', 'The first words.\n', { how: 'cut', fromTitle: 'The Ferry' })
+    )
+    await commitAll(w.a, 'A keeps a scrap')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+    const b = await cloneB(w)
+    const [onB] = await listScraps(b)
+    await writeScrap(b, { ...onB, body: 'Rewritten on the laptop.\n' })
+    await commitAll(b, 'B rewrites')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+    const [onA] = await listScraps(w.a)
+    await writeScrap(w.a, { ...onA, body: 'Rewritten on the desktop.\n' })
+    await commitAll(w.a, 'A rewrites')
+
+    const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    expect(outcome.conflicts).toHaveLength(1)
+    const [conflict] = outcome.conflicts
+    expect(conflict).toMatchObject({
+      path: 'scratch/kept.md',
+      kind: 'scrap',
+      title: 'Scratch pad: from “The Ferry”',
+      localBody: 'Rewritten on the desktop.\n',
+      remoteBody: 'Rewritten on the laptop.\n'
+    })
+  })
+
+  it('calls a conflicting note with no source a scratch pad note', async () => {
+    const w = await makeWorld()
+    await writeScrap(w.a, scrap('note', 'Original.\n'))
+    await commitAll(w.a, 'A note')
+    expectStatus(await syncProject(w.a, w.transport), 'pushed')
+    const b = await cloneB(w)
+    await writeScrap(b, scrap('note', 'Laptop.\n'))
+    await commitAll(b, 'B')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+    await writeScrap(w.a, scrap('note', 'Desktop.\n'))
+    await commitAll(w.a, 'A')
+
+    const [conflict] = expectStatus(await syncProject(w.a, w.transport), 'conflicts').conflicts
+    expect(conflict.kind).toBe('scrap')
+    expect(conflict.title).toBe('Scratch pad note')
   })
 })

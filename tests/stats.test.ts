@@ -5,6 +5,7 @@ import { join } from 'node:path'
 
 import { commitAll } from '../src/main/wyrm/git'
 import { createProject, readDoc, writeDoc } from '../src/main/wyrm/project'
+import { writeScrap } from '../src/main/wyrm/scratch'
 import { clearStatsCache, dailyStats } from '../src/main/wyrm/stats'
 import { firstDoc } from '../src/renderer/src/lib/tree'
 
@@ -45,6 +46,18 @@ describe('dailyStats', () => {
 
     expect(days).toHaveLength(1)
     expect(days[0].total).toBe(100)
+  })
+
+  it('never counts the scratch pad (F-51): it is not part of the book', async () => {
+    const { dir, docId } = await makeProject()
+    await write(dir, docId, words(100), 'First hundred')
+    const now = new Date().toISOString()
+    await writeScrap(dir, { id: 'cut1', body: words(500), created: now, modified: now, how: 'cut' })
+    await commitAll(dir, 'Five hundred onto the pad')
+
+    const days = await dailyStats(dir)
+
+    expect(days[days.length - 1].total).toBe(100)
   })
 
   it('counts only the body, never the YAML frontmatter', async () => {

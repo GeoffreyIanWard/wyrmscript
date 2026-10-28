@@ -85,6 +85,7 @@ export function MenuBar({
   // A boolean, not the view object: the label flips between the two places a
   // writer works, so the menu has to re-render when the board opens or closes.
   const onBoard = useWyrm((s) => s.mainView.kind === 'corkboard')
+  const mainViewKind = useWyrm((s) => s.mainView.kind)
   const helpMode = useWyrm((s) => s.helpMode)
   const editor = useWyrm((s) => s.editor)
   const newProjectAction = (): void => {
@@ -264,6 +265,16 @@ export function MenuBar({
           shortcut: '⇧⌘H',
           disabled: !hasDoc,
           action: () => editor?.chain().focus().toggleHighlight().run()
+        },
+        { kind: 'sep' },
+        {
+          kind: 'item',
+          label: 'Move to Scratch Pad',
+          shortcut: '⇧⌘X',
+          // Read as the menu opens, so it is live exactly when there is a
+          // selection on the page to move — which is on screen to see.
+          disabled: !hasDoc || mainViewKind !== 'doc' || !editor || editor.state.selection.empty,
+          action: () => void useWyrm.getState().moveToScratchPad()
         }
       ]
     },
@@ -390,6 +401,12 @@ export function MenuBar({
           label: 'Browse by Tag…',
           disabled: !hasProject,
           action: onBrowseTags
+        },
+        {
+          kind: 'item',
+          label: 'Scratch Pad',
+          disabled: !hasProject,
+          action: () => useWyrm.getState().showScratchPad()
         },
         { kind: 'sep' },
         {

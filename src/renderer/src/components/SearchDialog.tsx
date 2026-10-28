@@ -15,6 +15,7 @@ export function SearchDialog({ onClose }: { onClose: () => void }): JSX.Element 
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const project = useWyrm((s) => s.project)
   const entities = useWyrm((s) => s.entities)
+  const scraps = useWyrm((s) => s.scraps)
   const loadAllDocs = useWyrm((s) => s.loadAllDocs)
   const selectDoc = useWyrm((s) => s.selectDoc)
   const showEntity = useWyrm((s) => s.showEntity)
@@ -47,7 +48,7 @@ export function SearchDialog({ onClose }: { onClose: () => void }): JSX.Element 
     debounceRef.current = setTimeout(() => {
       const found =
         docs != null && project
-          ? searchProject(query, [...docs.values()], entities, project.data.binder)
+          ? searchProject(query, [...docs.values()], entities, project.data.binder, scraps)
           : []
       setHits(found)
       setSelected(0)
@@ -55,10 +56,11 @@ export function SearchDialog({ onClose }: { onClose: () => void }): JSX.Element 
     return () => {
       if (debounceRef.current != null) clearTimeout(debounceRef.current)
     }
-  }, [query, docs, entities, project])
+  }, [query, docs, entities, project, scraps])
 
   const open = (hit: SearchHit): void => {
     if (hit.kind === 'doc') void selectDoc(hit.id)
+    else if (hit.kind === 'scrap') useWyrm.getState().showScratchPad(hit.id)
     else showEntity(hit.id)
     onClose()
   }

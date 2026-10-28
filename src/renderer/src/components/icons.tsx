@@ -74,6 +74,17 @@ export function TrashIcon(props: IconProps): JSX.Element {
   )
 }
 
+/** F-51: the scratch pad — a legal pad, gummed along the top. */
+export function PadIcon(props: IconProps): JSX.Element {
+  return (
+    <Glyph {...props}>
+      <path d="M3 2h10v13H3z" fill="#fff" stroke="#000" strokeWidth="1" />
+      <path d="M3 3h10M3 4h10" stroke="#000" strokeWidth="1" />
+      <path d="M5 7h6M5 9h6M5 11h6M5 13h3" stroke="#000" strokeWidth="1" />
+    </Glyph>
+  )
+}
+
 export function WyrmIcon({ size = 15 }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" shapeRendering="crispEdges">
