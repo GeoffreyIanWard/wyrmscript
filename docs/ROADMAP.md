@@ -1079,9 +1079,20 @@ The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places")
 
 **When a location can't be reached** (decided 2026-10-27): its card says **Broken connection!** Hovering over that shows the particular cause, such as "SD card not connected" or "GitHub unreachable". The same tooltip shows on the location's envelope in the status line.
 
+**How the drawer looks** (decided 2026-10-28):
+
+- **Its own window.** It pops up in a window frame over whatever is open beneath, rather than taking over the page.
+- **Folder tabs along the top**, one for each screen, like the tabs on file folders.
+- **The envelope cards have a drop shadow** to give them depth.
+
+**Save points, not commits** (decided 2026-10-28). The GitHub side should not feel like a GitHub integration. Commit Checkpoint is coder's language, but a writer knows what an explicit save point is. So the command becomes **Create Save Point**, and ⌘S runs it. Tips or coaching in the app may come later, to introduce the patterns. The same rule applies to the GitHub tab's wording: say what happens to the writer's work, not which git operation runs.
+
+**Removable drives** (decided 2026-10-28). Any drive other than the main one (C: on Windows, the startup disk on a Mac) is a fair guess for a removable drive. Adding a Disk location asks with a toggle whether the drive is removable, and the guess sets its starting position. Choosing removable shows a warning that a save skips the location whenever the drive is missing. The rest is up to the writer. This is how F-40 already treats a card that isn't plugged in: skipped, not failed.
+
 **Still to design:**
 
-- **How the file drawer looks.** The tabs, the envelope cards, and how dragging a card into the default slot reads.
+- **What makes an envelope card read as a loose document tucked into the folder**, beyond the drop shadow.
+- **How dragging a card into the default slot reads.**
 
 **Settled questions:**
 
@@ -1089,11 +1100,8 @@ The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places")
 - Removing a GitHub location disconnects the project from the repository. It never deletes the repository.
 - The first location is the default, and reordering the cards changes it.
 - History and Variants stay where they are. They are about looking back, not keeping safe.
-
-**Open questions:**
-
-- Whether ⌘S stays Commit Checkpoint or becomes Save.
-- How an SD card is told apart from a fixed drive. F-40 already treats a card that isn't plugged in as skipped, not failed.
+- ⌘S runs Create Save Point.
+- The writer says whether a drive is removable, and the app only guesses.
 
 ## Known issues
 
