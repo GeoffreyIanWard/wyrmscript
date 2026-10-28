@@ -1050,14 +1050,25 @@ Each one arrived with its own feature (F-01, F-40, Phase 5, F-43), so each has i
 
 **Resolving conflicts, visually** (to brainstorm further). The idea is a skeuomorphic merge: each side's changed text is broken into separate text-block cards, and the writer drags the blocks they want to keep into the document where they belong. It's a resolution the writer can see and touch, not a choice between two versions of a file.
 
+**The status line: one envelope per location** (chosen 2026-10-27 from two mock-ups). At the right of the status bar sits a small envelope for each location, in drawer order, default first, followed by the time since the last save. Clicking it opens the drawer, and clicking an envelope opens that location's card.
+
+- **Saved:** every envelope filled.
+- **Saving:** envelopes fill in as each location is written.
+- **A location missing:** that envelope is drawn dashed.
+- **Needs attention:** that envelope is marked, and the line ends in "!".
+
+The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places"). It was clearer to read, but the envelopes match the drawer's cards.
+
+**When a location can't be reached** (decided 2026-10-27): its card says **Broken connection!** Hovering over that shows the particular cause, such as "SD card not connected" or "GitHub unreachable". The same tooltip shows on the location's envelope in the status line.
+
 **Still to design:**
 
-- **A status line** in the status bar that opens the drawer: saved, saving, a location missing, or sync needs attention. Needs a mock-up before it's built.
 - **How the file drawer looks.** The tabs, the envelope cards, and how dragging a card into the default slot reads.
 
 **Settled questions:**
 
 - GitHub counts as one of the three locations.
+- Removing a GitHub location disconnects the project from the repository. It never deletes the repository.
 - The first location is the default, and reordering the cards changes it.
 - History and Variants stay where they are. They are about looking back, not keeping safe.
 
@@ -1065,8 +1076,6 @@ Each one arrived with its own feature (F-01, F-40, Phase 5, F-43), so each has i
 
 - Whether ⌘S stays Commit Checkpoint or becomes Save.
 - How an SD card is told apart from a fixed drive. F-40 already treats a card that isn't plugged in as skipped, not failed.
-- What the drawer says when the default location is unreachable: an SD card left out, or GitHub offline.
-- How removing a GitHub location relates to the repository itself. Removing the card should disconnect, never delete the repository.
 
 ## Known issues
 
