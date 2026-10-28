@@ -9,6 +9,7 @@ import { errorMessage } from '../lib/errors'
 import {
   brokenReason,
   describeLocation,
+  DIVERGED,
   isRemovable,
   MAX_LOCATIONS,
   moveLocation,
@@ -141,6 +142,7 @@ export function SaveDrawer({
   // Which drives are missing lives in the store, so the status line's
   // envelopes and these cards always agree (F-50 step 2).
   const unreachable = useWyrm((s) => s.unreachable)
+  const diverged = useWyrm((s) => s.diverged)
 
   const [tab, setTab] = useState<Tab>(initialTab)
   const [bringDownOpen, setBringDownOpen] = useState(false)
@@ -501,6 +503,9 @@ export function SaveDrawer({
                             {detail}
                           </div>
                           {problem != null && <div className="error-text">{problem}</div>}
+                          {diverged.includes(location.id) && (
+                            <div className="error-text">{DIVERGED}</div>
+                          )}
                         </div>
                         <div className="save-card-side">
                           {reason != null ? (

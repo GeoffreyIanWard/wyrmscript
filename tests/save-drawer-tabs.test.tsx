@@ -123,6 +123,90 @@ describe('the Settings tab', () => {
   })
 })
 
+describe('the settings, as the project runs', () => {
+  it('opens with its own interval', async () => {
+    cleanup()
+    useWyrm.setState({ project: null, booted: false, parked: {}, openPaths: [] })
+    __disposeAll()
+    await api.setSaveSettings(path, { everyMinutes: 1 })
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    await openDemo()
+    const commit = vi.spyOn(api, 'commit').mockResolvedValue(false)
+    __ensureRuntime(path).commitDirty = true
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(commit).toHaveBeenCalledWith(path, 'Autosave')
+  })
+
+  it('does not send a background project when sending is off', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    // Linked, as main reports it — the store re-reads it after every write.
+    vi.spyOn(api, 'getSyncStatus').mockResolvedValue(LINKED)
+    useWyrm.setState({ syncStatus: LINKED })
+    // Setting the interval re-arms the timer, under the fake clock.
+    await act(async () => {
+      await useWyrm.getState().setSaveSettings({ sendToGithub: false, everyMinutes: 5 })
+    })
+    const second = await api.createProject('Second Novel')
+    await act(async () => {
+      await useWyrm.getState().openAdditionalProject(second.path)
+    })
+    expect(useWyrm.getState().parked[path].backupSettings?.sendToGithub).toBe(false)
+    const sync = vi.spyOn(api, 'syncNow').mockResolvedValue({ status: 'pushed', at: Date.now() })
+    const commit = vi.spyOn(api, 'commit').mockResolvedValue(true)
+    __ensureRuntime(path).commitDirty = true
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    // The background checkpoint ran; only the sending was held back.
+    expect(commit).toHaveBeenCalledWith(path, 'Autosave')
+    expect(sync).not.toHaveBeenCalledWith(path)
+  })
+
+  it('does not send when the network comes back if sending is off', async () => {
+    const sync = vi.spyOn(api, 'syncNow').mockResolvedValue({ status: 'pushed', at: Date.now() })
+    useWyrm.setState({ syncStatus: { ...LINKED, pendingSync: true } })
+    await act(async () => {
+      await useWyrm.getState().setSaveSettings({ sendToGithub: false })
+    })
+    useWyrm.setState({ syncStatus: { ...LINKED, pendingSync: true } })
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      // Long enough for a sync to have started: it begins after an await.
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(sync).not.toHaveBeenCalled()
+
+    // With sending on, the waiting work goes up as before.
+    await act(async () => {
+      await useWyrm.getState().setSaveSettings({ sendToGithub: true })
+    })
+    useWyrm.setState({ syncStatus: { ...LINKED, pendingSync: true } })
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+    await waitFor(() => expect(sync).toHaveBeenCalledWith(path))
+  })
+})
+
+describe('a drive another computer backed up to', () => {
+  it('says so on its card, with what to do', async () => {
+    await api.chooseBackupLocation(path)
+    const [target] = (await api.getBackupSettings(path)).targets
+    vi.spyOn(api, 'checkSaveLocations').mockResolvedValue({
+      unreachable: [],
+      behind: [target.id],
+      diverged: [target.id]
+    })
+    render(<SaveDrawer onClose={() => {}} />)
+    const card = await screen.findByRole('listitem', { name: 'Backup' })
+    await waitFor(() => expect(within(card).getByText(/left untouched/)).toBeTruthy())
+    expect(within(card).getByText(/Restore it to a new project to compare/)).toBeTruthy()
+  })
+})
+
 describe('the GitHub tab', () => {
   it('shows where the work goes, and sends it on Sync Now', async () => {
     vi.spyOn(api, 'getSyncStatus').mockResolvedValue(LINKED)

@@ -142,6 +142,8 @@ export interface EnvelopeContext {
   unreachable: readonly string[]
   /** Locations that do not hold the latest save point (the store's `behind`). */
   behind: readonly string[]
+  /** Drives holding work this project does not have (the store's `diverged`). */
+  diverged: readonly string[]
   syncProblem: string | null
   /** Conflicts waiting for the writer (the store's `syncNeedsAttention`). */
   syncNeedsAttention: boolean
@@ -158,6 +160,9 @@ export function envelopeOf(
   if (broken) return { state: 'attention', reason: broken }
   if (location.kind === 'github' && ctx.syncNeedsAttention)
     return { state: 'attention', reason: 'Some passages need your eye' }
+  // A drive another computer backed up to: a backup will never write over
+  // it, so it needs the writer, not time.
+  if (ctx.diverged.includes(location.id)) return { state: 'attention', reason: DIVERGED }
   if (location.lastSavedAt == null) return { state: 'behind', reason: 'Not saved here yet' }
   // Asked of the repositories, not worked out from times: the renderer does
   // not hear of every save point (see `checkSaveLocations`).
@@ -165,6 +170,10 @@ export function envelopeOf(
     return { state: 'behind', reason: 'Not up to date with the last save' }
   return { state: 'saved', reason: null }
 }
+
+/** Why a diverged drive is left alone, and what to do about it. */
+export const DIVERGED =
+  'Holds work this project does not have, so it was left untouched. Restore it to a new project to compare.'
 
 /** "just now", "5 min ago", "3 h ago", "yesterday", "4 days ago". */
 export function timeAgo(timestamp: number, now: number = Date.now()): string {

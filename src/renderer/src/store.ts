@@ -202,6 +202,7 @@ export const SLICE_KEYS = [
   'syncProblem',
   'unreachable',
   'behind',
+  'diverged',
   'savingTo',
   'stale'
 ] as const
@@ -443,6 +444,8 @@ interface WyrmState {
    * timestamps, which miss the main process's own commits and pulled ones.
    */
   behind: string[]
+  /** F-50: drives holding work this project does not have, which a backup will not overwrite. */
+  diverged: string[]
   /** F-50: the locations being written right now, by id, so their envelopes fill in as each finishes. */
   savingTo: string[]
   /**
@@ -1005,6 +1008,7 @@ function emptySlice(): ProjectSlice {
     syncProblem: null,
     unreachable: [],
     behind: [],
+    diverged: [],
     savingTo: [],
     stale: false
   }
@@ -1416,6 +1420,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       syncProblem: null,
       unreachable: [],
       behind: [],
+      diverged: [],
       savingTo: [],
       // A different project is a different undo, as it is a different view
       // history. Left out, the last project's record came along and lit the
@@ -1438,8 +1443,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
     if (first) await get().selectDoc(first.id)
     await get().loadEntities()
     await get().loadBackupSettings()
-    // The project's own interval, now that its settings are read (F-50).
-    armAutosave(info.path, get().backupSettings?.everyMinutes ?? DEFAULT_SAVE_EVERY)
+    // The project's own interval (F-50), read for this path rather than from
+    // whichever project is in front after all those awaits, and only if it is
+    // still open: arming a closed project's timer would bring back a runtime
+    // its close disposed.
+    const own = await api.getBackupSettings(info.path).catch(() => null)
+    if (runtimes.has(info.path)) armAutosave(info.path, own?.everyMinutes ?? DEFAULT_SAVE_EVERY)
     void get()
       .checkLocations()
       .catch(() => {})
@@ -1495,6 +1504,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     syncProblem: null,
     unreachable: [],
     behind: [],
+    diverged: [],
     savingTo: [],
 
     async boot() {
@@ -2225,6 +2235,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       patchSliceAt(path, (slice) => ({
         ...(same(slice.unreachable, check.unreachable) ? {} : { unreachable: check.unreachable }),
         ...(same(slice.behind, check.behind) ? {} : { behind: check.behind }),
+        ...(same(slice.diverged, check.diverged) ? {} : { diverged: check.diverged }),
         ...(same(slice.backupSettings, backupSettings) ? {} : { backupSettings }),
         ...(same(slice.syncStatus, syncStatus) ? {} : { syncStatus })
       }))
@@ -3492,7 +3503,13 @@ api.onQuitRequested(() => void useWyrm.getState().quit())
 // network returns, anything still waiting goes up quietly.
 window.addEventListener('online', () => {
   const state = useWyrm.getState()
-  if (state.syncStatus?.mode === 'github' && state.syncStatus.pendingSync) {
+  // Only when the writer still wants save points sent (F-50 step 3): with
+  // sending off, the work waits for Save Now, back online or not.
+  if (
+    state.syncStatus?.mode === 'github' &&
+    state.syncStatus.pendingSync &&
+    state.backupSettings?.sendToGithub !== false
+  ) {
     void state.syncNow(false).catch(() => {})
   }
 })

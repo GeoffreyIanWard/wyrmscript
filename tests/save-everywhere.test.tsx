@@ -149,7 +149,7 @@ describe('save points the main process makes on its own', () => {
     const path = await openDemo()
     const check = vi
       .spyOn(api, 'checkSaveLocations')
-      .mockResolvedValue({ unreachable: [], behind: ['github'] })
+      .mockResolvedValue({ unreachable: [], behind: ['github'], diverged: [] })
     check.mockClear()
     await act(async () => {
       await useWyrm.getState().refreshStats()

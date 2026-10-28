@@ -942,6 +942,13 @@ export type SaveSettingsPatch = Partial<
 export interface SaveCheck {
   unreachable: string[]
   behind: string[]
+  /**
+   * Drives holding work this project does not have — another computer
+   * backed up to the same card. A backup leaves such a drive untouched
+   * (F-01), so it can never catch up on its own: the writer has to restore
+   * it to a new project and compare. A diverged drive is also in `behind`.
+   */
+  diverged: string[]
 }
 
 /** What happened at one target during a backup run. */

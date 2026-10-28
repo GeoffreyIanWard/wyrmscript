@@ -166,7 +166,7 @@ describe('keeping up with drives that come and go', () => {
     vi.useFakeTimers()
     const ask = vi
       .spyOn(api, 'checkSaveLocations')
-      .mockResolvedValue({ unreachable: [], behind: [] })
+      .mockResolvedValue({ unreachable: [], behind: [], diverged: [] })
     renderLine()
     expect(ask).toHaveBeenCalledTimes(1)
     await act(async () => {
@@ -193,7 +193,8 @@ describe('filling in as each place is written', () => {
     let pulled = false
     vi.spyOn(api, 'checkSaveLocations').mockImplementation(async () => ({
       unreachable: pulled ? [useWyrm.getState().backupSettings!.targets[0].id] : [],
-      behind: []
+      behind: [],
+      diverged: []
     }))
     renderLine()
     let running: Promise<unknown> = Promise.resolve()

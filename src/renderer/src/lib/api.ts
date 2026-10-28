@@ -846,7 +846,7 @@ export function createMockApi(): WyrmApi {
       const unreachable = targets
         .filter((t) => t.path.startsWith('/Volumes/Archive'))
         .map((t) => t.id)
-      if (head == null) return { unreachable, behind: [] }
+      if (head == null) return { unreachable, behind: [], diverged: [] }
       const behind = targets
         .filter((t) => !unreachable.includes(t.id))
         .filter((t) => t.lastBackupAt == null || t.lastBackupAt < head)
@@ -855,7 +855,7 @@ export function createMockApi(): WyrmApi {
       if (linked?.mode === 'github' && (linked.lastSyncAt == null || linked.lastSyncAt < head)) {
         behind.push('github')
       }
-      return { unreachable, behind }
+      return { unreachable, behind, diverged: [] }
     },
     async backupNow(path: string): Promise<BackupRun> {
       const settings = backups.get(path)

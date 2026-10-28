@@ -6,6 +6,7 @@ import type { BackupSettings, SyncStatus } from '../src/shared/types'
 import {
   brokenReason,
   describeLocation,
+  DIVERGED,
   driveName,
   envelopeOf,
   isRemovable,
@@ -163,7 +164,8 @@ describe('the envelopes in the status line', () => {
     syncNeedsAttention: false,
     savingTo: [] as string[],
     // What the main process says does not hold the latest save point.
-    behind: ['old']
+    behind: ['old'],
+    diverged: [] as string[]
   }
   const list = saveLocations(
     PROJECT,
@@ -238,6 +240,14 @@ describe('the envelopes in the status line', () => {
     })
     expect(state(github, { sync: { ...SYNCED, remoteUrl: null } })).toBe('attention')
     expect(state(github, { sync: { ...SYNCED, login: null } })).toBe('attention')
+  })
+
+  it('marks a drive another computer backed up to, and says what to do', () => {
+    expect(envelopeOf(old, { ...base, diverged: ['old'] })).toEqual({
+      state: 'attention',
+      reason: DIVERGED
+    })
+    expect(DIVERGED).toMatch(/left untouched.*Restore it to a new project/)
   })
 
   it('never marks the project folder', () => {

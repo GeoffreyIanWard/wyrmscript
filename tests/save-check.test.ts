@@ -5,7 +5,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import git from 'isomorphic-git'
 import type { BackupTarget } from '../src/shared/types'
-import { backupNameFor, backupProject } from '../src/main/wyrm/backup'
+import { backupNameFor, backupProject, restoreBackup } from '../src/main/wyrm/backup'
 import { commitAll } from '../src/main/wyrm/git'
 import { createProject, readDoc, writeDoc } from '../src/main/wyrm/project'
 import { checkSaveLocations } from '../src/main/wyrm/saveCheck'
@@ -62,12 +62,17 @@ describe('a drive', () => {
     const { dir, docId } = await makeProject()
     const card = await target(dir, 'card')
     await backupProject(dir, card.path)
-    expect(await checkSaveLocations(dir, [card], false)).toEqual({ unreachable: [], behind: [] })
+    expect(await checkSaveLocations(dir, [card], false)).toEqual({
+      unreachable: [],
+      behind: [],
+      diverged: []
+    })
 
     await commitBehindTheRenderersBack(dir, docId, 'Three new paragraphs.\n')
     expect(await checkSaveLocations(dir, [card], false)).toEqual({
       unreachable: [],
-      behind: ['card']
+      behind: ['card'],
+      diverged: []
     })
   })
 
@@ -86,7 +91,8 @@ describe('a drive', () => {
     }
     expect(await checkSaveLocations(dir, [gone], false)).toEqual({
       unreachable: ['gone'],
-      behind: []
+      behind: [],
+      diverged: []
     })
   })
 
@@ -98,6 +104,37 @@ describe('a drive', () => {
     await commitBehindTheRenderersBack(dir, docId, 'More.\n')
     await backupProject(dir, drive.path)
     expect((await checkSaveLocations(dir, [card, drive], false)).behind).toEqual(['card'])
+  })
+})
+
+describe('a drive another computer backed up to', () => {
+  it('is diverged, not merely behind, and a backup leaves it alone', async () => {
+    const { dir, docId } = await makeProject()
+    const card = await target(dir, 'card')
+    await backupProject(dir, card.path)
+    // The other computer: restored from the same card, written on, backed up.
+    const other = join(await tmp('wyrm-check-other-'), 'Winter.wyrm')
+    await restoreBackup(card.path, other)
+    await commitBehindTheRenderersBack(other, docId, 'Written on the other computer.\n')
+    await backupProject(other, card.path)
+    // And this one writes too.
+    await commitBehindTheRenderersBack(dir, docId, 'Written here.\n')
+
+    expect(await checkSaveLocations(dir, [card], false)).toEqual({
+      unreachable: [],
+      behind: ['card'],
+      diverged: ['card']
+    })
+    const refused = await backupProject(dir, card.path)
+    expect(refused.status).toBe('diverged')
+  })
+
+  it('is only behind when all its work is already here', async () => {
+    const { dir, docId } = await makeProject()
+    const card = await target(dir, 'card')
+    await backupProject(dir, card.path)
+    await commitBehindTheRenderersBack(dir, docId, 'Only here.\n')
+    expect((await checkSaveLocations(dir, [card], false)).diverged).toEqual([])
   })
 })
 

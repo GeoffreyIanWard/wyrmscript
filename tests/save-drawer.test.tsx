@@ -77,7 +77,11 @@ describe('the cards', () => {
 
   it('says why a drive cannot be reached', async () => {
     const [, card] = await addDrives(2)
-    vi.spyOn(api, 'checkSaveLocations').mockResolvedValue({ unreachable: [card], behind: [] })
+    vi.spyOn(api, 'checkSaveLocations').mockResolvedValue({
+      unreachable: [card],
+      behind: [],
+      diverged: []
+    })
     renderDrawer()
     const broken = await screen.findByText(/Broken connection!/)
     expect(broken.closest('li')?.getAttribute('aria-label')).toBe('CARD')
@@ -316,7 +320,8 @@ describe('Save Now', () => {
     // The main process agrees: the second drive is not there.
     vi.spyOn(api, 'checkSaveLocations').mockResolvedValue({
       unreachable: [archive],
-      behind: [card]
+      behind: [card],
+      diverged: []
     })
     renderDrawer()
     await waitFor(() => expect(cardNames()).toHaveLength(3))
