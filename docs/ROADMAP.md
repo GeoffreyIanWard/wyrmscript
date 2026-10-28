@@ -1083,16 +1083,21 @@ The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places")
 
 - **Its own window.** It pops up in a window frame over whatever is open beneath, rather than taking over the page.
 - **Folder tabs along the top**, one for each screen, like the tabs on file folders.
-- **The envelope cards have a drop shadow** to give them depth.
+- **The envelope cards have a drop shadow** to give them depth. It is the app's hard-offset shadow in ink, never a soft or faded one, so the drawer stays inside the 1-bit look.
+- **Everything is drawn in the palette's ink and paper.** The folder is the paper with a light ink dither, not a brown, so the drawer works in every palette.
+
+**Making a card read as a loose sheet** (decided 2026-10-28, from a mock-up):
+
+- **A paper clip** holds the default card to the folder, drawn in pixels in ink. When another card is dragged to the top, the clip moves to it.
+- **A slight tilt**: each card sits a little off straight.
+- **Paper grain**: a sparse speckle of ink on the card.
+- **An envelope flap** drawn across each card in a dotted line.
+- **No pocket.** A pocket lip over the bottom of the stack was considered and dropped, because nothing the writer can click should be hidden.
+- **Dragging a card**: it lifts, its offset shadow grows, and the clip moves to whichever card lands on top.
 
 **Save points, not commits** (decided 2026-10-28). The GitHub side should not feel like a GitHub integration. Commit Checkpoint is coder's language, but a writer knows what an explicit save point is. So the command becomes **Create Save Point**, and ⌘S runs it. Tips or coaching in the app may come later, to introduce the patterns. The same rule applies to the GitHub tab's wording: say what happens to the writer's work, not which git operation runs.
 
 **Removable drives** (decided 2026-10-28). Any drive other than the main one (C: on Windows, the startup disk on a Mac) is a fair guess for a removable drive. Adding a Disk location asks with a toggle whether the drive is removable, and the guess sets its starting position. Choosing removable shows a warning that a save skips the location whenever the drive is missing. The rest is up to the writer. This is how F-40 already treats a card that isn't plugged in: skipped, not failed.
-
-**Still to design:**
-
-- **What makes an envelope card read as a loose document tucked into the folder**, beyond the drop shadow.
-- **How dragging a card into the default slot reads.**
 
 **Settled questions:**
 
