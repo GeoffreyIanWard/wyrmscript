@@ -153,7 +153,8 @@ interface LegacyBackupSettings {
 function migrate(stored: (BackupSettings & LegacyBackupSettings) | undefined): BackupSettings {
   if (stored == null) return NO_BACKUP
   if (Array.isArray(stored.targets)) {
-    return { targets: stored.targets, auto: stored.auto ?? false }
+    const order = Array.isArray(stored.order) ? { order: stored.order } : {}
+    return { targets: stored.targets, auto: stored.auto ?? false, ...order }
   }
   const targets: BackupTarget[] =
     typeof stored.path === 'string' && stored.path.length > 0

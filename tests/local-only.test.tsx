@@ -55,6 +55,7 @@ function renderMenuBar(): void {
       onVersionDialog={noop}
       onCompile={noop}
       onBackup={noop}
+      onSaveTo={noop}
       onSyncSettings={noop}
       onSearch={noop}
       onPalette={noop}

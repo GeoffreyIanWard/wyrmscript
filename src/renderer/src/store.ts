@@ -55,6 +55,7 @@ import {
 } from '../../shared/types'
 import { api, apiSettled } from './lib/api'
 import { isConnected } from './lib/syncState'
+import { errorMessage } from './lib/errors'
 import { compile, compileFileName, PAGED_FORMATS, renderHtml } from './lib/compile'
 import { validScale } from './lib/mapScale'
 import {
@@ -80,6 +81,19 @@ import { buildEntityIndex, type EntityIndex } from './lib/entities'
 import { refreshEntityLinks } from './lib/entityLinks'
 import { findNode, firstDoc, moveNode, removeNode, type DropPosition } from './lib/tree'
 import { withPatch, type BackPatch } from './lib/cardBack'
+
+/** F-50: why a sync could not reach GitHub, or null when it did. */
+export function syncProblemOf(outcome: SyncOutcome): string | null {
+  if (outcome.status === 'offline') return 'GitHub unreachable'
+  if (outcome.status === 'error') return outcome.detail
+  return null
+}
+
+/** F-50: what Save Now did at each kind of location. Null where there was none. */
+export interface SaveEverywhere {
+  backup: BackupRun | { error: string } | null
+  sync: SyncOutcome | null
+}
 
 export type SaveState = 'saved' | 'dirty' | 'saving'
 
@@ -183,6 +197,7 @@ export const SLICE_KEYS = [
   'syncStatus',
   'syncConflicts',
   'syncNeedsAttention',
+  'syncProblem',
   'stale'
 ] as const
 
@@ -403,6 +418,14 @@ interface WyrmState {
   /** A background sync found conflicts; surfaced quietly, never as a popup. */
   syncNeedsAttention: boolean
   /**
+   * F-50: why the last sync could not reach GitHub, in the writer's words, or
+   * null after one that did. Separate from `syncNeedsAttention`, which also
+   * means conflicts: "GitHub unreachable" must not be said about passages
+   * waiting to be resolved, and an offline sync returns an outcome rather
+   * than throwing, so the flag alone never saw it.
+   */
+  syncProblem: string | null
+  /**
    * F-41: this project's files changed on disk under a background sync, so
    * the state held for it no longer matches them.
    *
@@ -433,6 +456,14 @@ interface WyrmState {
   setBackupAuto(auto: boolean): Promise<void>
   removeBackupTarget(targetId: string): Promise<void>
   backupNow(): Promise<BackupRun>
+  /**
+   * F-50: the drawer's Save Now — a save point, then a copy to every disk
+   * location and GitHub. Each part runs even if another fails, and reports
+   * separately, because the locations fall out of date independently.
+   */
+  saveEverywhere(): Promise<SaveEverywhere>
+  /** F-50: store the drawer's card order (location ids, default first). */
+  setSaveOrder(order: string[]): Promise<void>
   /** Restore a backup into a new project and open it. True if one was opened. */
   restoreFromBackup(): Promise<boolean>
   /** F-43: make a local project from one on GitHub and open it. */
@@ -943,6 +974,7 @@ function emptySlice(): ProjectSlice {
     syncStatus: null,
     syncConflicts: null,
     syncNeedsAttention: false,
+    syncProblem: null,
     stale: false
   }
 }
@@ -1259,7 +1291,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
     // Focused or closed while the sync was in flight; whoever owns it now has
     // its own, better-informed handling.
     if (!slice) return
-    const patch: Partial<ProjectSlice> =
+    const problem = syncProblemOf(outcome)
+    const base: Partial<ProjectSlice> =
       outcome.status === 'conflicts'
         ? // The page is sacred: a background sync never puts a dialog on
           // screen. The quiet flag shows in the status bar once focused.
@@ -1267,6 +1300,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
         : outcome.status === 'pulled' || outcome.status === 'merged'
           ? { stale: true }
           : {}
+    const patch: Partial<ProjectSlice> =
+      problem === (slice.syncProblem ?? null) ? base : { ...base, syncProblem: problem }
     if (Object.keys(patch).length === 0) return
     set({ parked: { ...parked, [path]: { ...slice, ...patch } } })
   }
@@ -1301,6 +1336,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       syncStatus: null,
       syncConflicts: null,
       syncNeedsAttention: false,
+      syncProblem: null,
       // A different project is a different undo, as it is a different view
       // history. Left out, the last project's record came along and lit the
       // button in a novel nothing had been applied to — and in a restored
@@ -1384,6 +1420,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     syncStatus: null,
     syncConflicts: null,
     syncNeedsAttention: false,
+    syncProblem: null,
 
     async boot() {
       // Appearance first and independently of any project: the writer's
@@ -1976,7 +2013,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
     async disconnectSync() {
       const { project } = get()
       if (!project) return
-      set({ syncStatus: await api.disconnectSync(project.path), syncNeedsAttention: false })
+      set({
+        syncStatus: await api.disconnectSync(project.path),
+        syncNeedsAttention: false,
+        syncProblem: null
+      })
     },
 
     async setLocalOnly() {
@@ -2001,9 +2042,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
         // flag puts `◆ SYNC — NEEDS YOUR EYE` in the status bar — the existing
         // non-nagging channel — and we still rethrow so an interactive caller
         // can surface the actual error (F-01).
-        set({ syncNeedsAttention: true })
+        set({ syncNeedsAttention: true, syncProblem: errorMessage(err) })
         throw err
       }
+      set({ syncProblem: syncProblemOf(outcome) })
       if (outcome.status === 'conflicts') {
         // The page is sacred: only a sync the writer asked for may put a
         // dialog on screen. A background one leaves a quiet flag instead.
@@ -2072,10 +2114,49 @@ export const useWyrm = create<WyrmState>((set, get) => {
       return run
     },
 
+    async saveEverywhere() {
+      const { project } = get()
+      if (!project) throw new Error('No project is open')
+      const path = project.path
+      await get().flushSave()
+      const committed = await api.commit(path, 'Save point')
+      // The writer may have brought another project to the front during that
+      // await; everything after acts on the focused project, so stop rather
+      // than copy the wrong novel (the drawer closes on a focus change anyway).
+      if (get().project?.path !== path) return { backup: null, sync: null }
+      clearDirty()
+      if (committed) {
+        set({ lastCommitAt: Date.now() })
+        void get().refreshStats()
+      }
+      const result: SaveEverywhere = { backup: null, sync: null }
+      if (get().backupSettings?.targets.length) {
+        result.backup = await get()
+          .backupNow()
+          .catch((e: unknown) => ({ error: errorMessage(e) }))
+      }
+      if (get().project?.path !== path) return result
+      if (isConnected(get().syncStatus)) {
+        result.sync = await get()
+          .syncNow(true)
+          .catch((e: unknown) => ({ status: 'error', detail: errorMessage(e) }) as const)
+      }
+      return result
+    },
+
+    async setSaveOrder(order) {
+      const { project } = get()
+      if (!project) return
+      set({ backupSettings: await api.setSaveOrder(project.path, order) })
+    },
+
     async restoreFromBackup() {
       const info = await api.restoreFromBackup()
       if (!info) return false
-      await loadProject(info)
+      // Beside whatever is open, never in place of it (F-50): a restore makes
+      // a new project folder, and closing the others would dispose their
+      // runtimes — and their unsaved save points — for nothing.
+      await loadProject(info, true)
       return true
     },
 
@@ -2085,7 +2166,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // and act on rather than a failure to log.
       const info = await api.cloneProject(url)
       if (!info) return false
-      await loadProject(info)
+      // Beside whatever is open, as a restore is (F-50).
+      await loadProject(info, true)
       return true
     },
 

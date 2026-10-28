@@ -74,7 +74,7 @@ import {
   writeStatsSettings,
   writeSyncProject
 } from './settings'
-import { backupNameFor, backupToAll, restoreBackup } from './backup'
+import { backupNameFor, backupToAll, restoreBackup, unreachableTargets } from './backup'
 import { cloneProject } from './clone'
 import { dailyStats } from './stats'
 import {
@@ -315,6 +315,16 @@ export function registerIpc(): void {
 
   ipcMain.handle('backup:remove', (_e, path: string, targetId: string) =>
     removeBackupTarget(path, targetId)
+  )
+
+  ipcMain.handle('backup:order', (_e, path: string, order: unknown) =>
+    writeBackupSettings(path, {
+      order: Array.isArray(order) ? order.filter((id) => typeof id === 'string') : []
+    })
+  )
+
+  ipcMain.handle('backup:unreachable', async (_e, path: string) =>
+    unreachableTargets((await readBackupSettings(path)).targets)
   )
 
   ipcMain.handle('backup:now', async (_e, path: string) => {

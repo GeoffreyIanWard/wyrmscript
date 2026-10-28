@@ -825,6 +825,17 @@ export function createMockApi(): WyrmApi {
       backups.set(path, settings)
       return { ...settings }
     },
+    async setSaveOrder(path: string, order: string[]): Promise<BackupSettings> {
+      const settings = { ...(backups.get(path) ?? demoBackup()), order: [...order] }
+      backups.set(path, settings)
+      return { ...settings }
+    },
+    async unreachableTargets(path: string): Promise<string[]> {
+      // The same stand-in for an unplugged card as backupNow uses below.
+      return (backups.get(path)?.targets ?? [])
+        .filter((t) => t.path.startsWith('/Volumes/Archive'))
+        .map((t) => t.id)
+    },
     async backupNow(path: string): Promise<BackupRun> {
       const settings = backups.get(path)
       if (!settings?.targets.length)

@@ -1030,7 +1030,7 @@ The test that matters most is the last one: after cloning, **the sync engine run
 
 **Today's workaround, and why it is not good enough:** clone by hand and use Open Project. It works, but the app sees `mode: 'unset'` with a `remoteUrl` present, so the writer is asked to choose a sync path for a project that already has one, then walked through connect-project to re-attach a remote that is already in `.git/config`.
 
-### F-50 · One "Save to…" for saving and syncing 📋
+### F-50 · One "Save to…" for saving and syncing 🔨 in progress
 
 Replace today's scattered save, backup and sync controls with one place to keep the work safe, built around a single **Save to…** button.
 
@@ -1098,6 +1098,16 @@ The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places")
 **Save points, not commits** (decided 2026-10-28). The GitHub side should not feel like a GitHub integration. Commit Checkpoint is coder's language, but a writer knows what an explicit save point is. So the command becomes **Create Save Point**, and ⌘S runs it. Tips or coaching in the app may come later, to introduce the patterns. The same rule applies to the GitHub tab's wording: say what happens to the writer's work, not which git operation runs.
 
 **Removable drives** (decided 2026-10-28). Any drive other than the main one (C: on Windows, the startup disk on a Mac) is a fair guess for a removable drive. Adding a Disk location asks with a toggle whether the drive is removable, and the guess sets its starting position. Choosing removable shows a warning that a save skips the location whenever the drive is missing. The rest is up to the writer. This is how F-40 already treats a card that isn't plugged in: skipped, not failed.
+
+**The project's own folder is a card** (decided 2026-10-28). On a computer the project lives in its own folder, and the app writes there as the writer types. That folder is the first card, **This computer**, so every project starts with one location. It can be moved down the list, but **never removed**. The three-location limit counts it.
+
+**Build steps** (agreed 2026-10-28, one PR each):
+
+1. **The drawer and the Save to tab** ✅. File → **Save To…** opens it, and Commit Checkpoint becomes **Create Save Point** (⌘S). The cards are built from what already exists: the project folder, the backup targets (F-40) and the GitHub link. The order is stored with the backup settings (`BackupSettings.order`), and a location the order doesn't name goes after the rest. Dragging (pointer events tracked on the document) or ⌥↑/⌥↓ on a card reorders, and the paper clip follows the default. Adding offers a drive or card, or GitHub (which opens the existing GitHub set-up for now). At three, Add Location says why rather than going dead. Removing asks first and never deletes a copy. The multiple switch reads on whenever there is more than one card. Turning it off removes every card but the default, except This computer, which says why it stays. **Save Now** makes a save point, then copies to every drive and GitHub, each reporting on its own card. A drive that can't be reached, or GitHub when the last sync couldn't reach it, shows **Broken connection!** with the cause on hover. Sync conflicts are not a broken connection: the GitHub card says **Needs your eye** instead. A **Restore from** tab offers a backup or GitHub. A restored or brought-down project now opens **beside** the ones already open, rather than closing them.
+2. **The envelope status line.**
+3. **The Restore from, GitHub and Settings tabs in full**, retiring Backup…, Sync Settings… and Bring Down from GitHub… as separate dialogs and menu items.
+4. **The removable-drive toggle and warning.**
+5. **The Conflicts tab**, opening today's conflict screen. The visual merge waits for more design.
 
 **Settled questions:**
 

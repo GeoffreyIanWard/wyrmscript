@@ -34,6 +34,7 @@ import { useWindowDrag } from './lib/useWindowDrag'
 import type { WindowGeometry } from '../../shared/types'
 import { BackupDialog } from './components/BackupDialog'
 import { SyncDialog } from './components/SyncDialog'
+import { SaveDrawer } from './components/SaveDrawer'
 import { ConflictDialog } from './components/ConflictDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchDialog } from './components/SearchDialog'
@@ -536,6 +537,7 @@ function App(): JSX.Element {
   const [compileOpen, setCompileOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
+  const [saveToOpen, setSaveToOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   /** F-38: printing happens without a dialog, so a failure needs somewhere
@@ -569,6 +571,7 @@ function App(): JSX.Element {
     setCompileOpen(false)
     setBackupOpen(false)
     setSyncOpen(false)
+    setSaveToOpen(false)
     setPaletteOpen(false)
     setSearchOpen(false)
     // Deliberately not About: it belongs to the application, not a project,
@@ -869,6 +872,7 @@ function App(): JSX.Element {
         onCompile={() => setCompileOpen(true)}
         onPrint={runPrint}
         onBackup={() => setBackupOpen(true)}
+        onSaveTo={() => setSaveToOpen(true)}
         onStats={() => useWyrm.getState().showStats()}
         onBrowseTags={() => useWyrm.getState().showTags()}
         onTimeline={() => setTimelineOpen(true)}
@@ -1022,6 +1026,21 @@ function App(): JSX.Element {
             <BackupDialog onClose={() => setBackupOpen(false)} />
           </ErrorBoundary>
         )}
+        {saveToOpen && (
+          <ErrorBoundary label="Save To" onDismiss={() => setSaveToOpen(false)}>
+            <SaveDrawer
+              onClose={() => setSaveToOpen(false)}
+              onAddGithub={() => {
+                setSaveToOpen(false)
+                setSyncOpen(true)
+              }}
+              onBringDown={() => {
+                setSaveToOpen(false)
+                setCloneOpen(true)
+              }}
+            />
+          </ErrorBoundary>
+        )}
         {syncOpen && (
           <ErrorBoundary label="Sync" onDismiss={() => setSyncOpen(false)}>
             <SyncDialog
@@ -1108,9 +1127,15 @@ function App(): JSX.Element {
                 },
                 {
                   id: 'checkpoint',
-                  title: 'Commit Checkpoint…',
+                  title: 'Create Save Point…',
                   subtitle: 'File',
                   run: () => setVersionDialog('commit')
+                },
+                {
+                  id: 'save-to',
+                  title: 'Save To…',
+                  subtitle: 'File',
+                  run: () => setSaveToOpen(true)
                 },
                 {
                   id: 'history',

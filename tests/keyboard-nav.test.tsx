@@ -25,6 +25,7 @@ function renderMenuBar(overrides: Partial<Parameters<typeof MenuBar>[0]> = {}): 
       onVersionDialog={noop}
       onCompile={noop}
       onBackup={noop}
+      onSaveTo={noop}
       onSyncSettings={noop}
       onSearch={noop}
       onPalette={noop}
@@ -126,7 +127,7 @@ describe('menu bar', () => {
     const file = screen.getByText('File')
     act(() => file.focus())
     fireEvent.keyDown(file, { key: 'ArrowDown' })
-    fireEvent.keyDown(menuBar(), { key: 'c' }) // Commit Checkpoint…
+    fireEvent.keyDown(menuBar(), { key: 'c' }) // Create Save Point…
     fireEvent.keyDown(menuBar(), { key: 'c' }) // Compile Manuscript…
 
     fireEvent.keyDown(menuBar(), { key: 'Enter' })
