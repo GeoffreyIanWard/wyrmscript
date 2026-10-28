@@ -140,12 +140,12 @@ export type EnvelopeState = 'saving' | 'missing' | 'attention' | 'behind' | 'sav
 export interface EnvelopeContext {
   sync: SyncStatus | null
   unreachable: readonly string[]
+  /** Locations that do not hold the latest save point (the store's `behind`). */
+  behind: readonly string[]
   syncProblem: string | null
   /** Conflicts waiting for the writer (the store's `syncNeedsAttention`). */
   syncNeedsAttention: boolean
   savingTo: readonly string[]
-  /** When the latest save point was made, or null if there is none yet. */
-  lastCommitAt: number | null
 }
 
 export function envelopeOf(
@@ -158,20 +158,11 @@ export function envelopeOf(
   if (broken) return { state: 'attention', reason: broken }
   if (location.kind === 'github' && ctx.syncNeedsAttention)
     return { state: 'attention', reason: 'Some passages need your eye' }
-  const behind =
-    location.lastSavedAt == null ||
-    (location.kind === 'github'
-      ? ctx.sync?.pendingSync === true
-      : location.kind === 'disk' &&
-        ctx.lastCommitAt != null &&
-        location.lastSavedAt < ctx.lastCommitAt)
-  if (behind) {
-    return {
-      state: 'behind',
-      reason:
-        location.lastSavedAt == null ? 'Not saved here yet' : 'Not up to date with the last save'
-    }
-  }
+  if (location.lastSavedAt == null) return { state: 'behind', reason: 'Not saved here yet' }
+  // Asked of the repositories, not worked out from times: the renderer does
+  // not hear of every save point (see `checkSaveLocations`).
+  if (ctx.behind.includes(location.id) || (location.kind === 'github' && ctx.sync?.pendingSync))
+    return { state: 'behind', reason: 'Not up to date with the last save' }
   return { state: 'saved', reason: null }
 }
 

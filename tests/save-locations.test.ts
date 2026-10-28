@@ -162,7 +162,8 @@ describe('the envelopes in the status line', () => {
     syncProblem: null,
     syncNeedsAttention: false,
     savingTo: [] as string[],
-    lastCommitAt: at
+    // What the main process says does not hold the latest save point.
+    behind: ['old']
   }
   const list = saveLocations(
     PROJECT,
@@ -186,6 +187,18 @@ describe('the envelopes in the status line', () => {
     expect(state(github)).toBe('saved')
   })
 
+  it('goes by what the repositories say, never by the times', () => {
+    // GitHub last synced long before the last save point: its time is no
+    // evidence either way, only whether it holds the save point is.
+    expect(github.lastSavedAt).toBeLessThan(at)
+    expect(state(github, { behind: ['github'] })).toBe('behind')
+    expect(state(github, { behind: [] })).toBe('saved')
+    // A drive written after the last save point can still lack it (the main
+    // process committed on its own since), and is behind if it does.
+    expect(card.lastSavedAt).toBeGreaterThan(at)
+    expect(state(card, { behind: ['card'] })).toBe('behind')
+  })
+
   it('leaves one empty when it is behind the last save point', () => {
     expect(envelopeOf(old, base)).toEqual({
       state: 'behind',
@@ -193,7 +206,7 @@ describe('the envelopes in the status line', () => {
     })
     expect(state(github, { sync: { ...SYNCED, pendingSync: true } })).toBe('behind')
     const fresh = saveLocations(PROJECT, null, null, null)[0]
-    expect(envelopeOf(fresh, { ...base, lastCommitAt: null })).toEqual({
+    expect(envelopeOf(fresh, base)).toEqual({
       state: 'behind',
       reason: 'Not saved here yet'
     })

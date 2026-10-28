@@ -169,7 +169,9 @@ describe('opening the drawer', () => {
 describe('keeping up with drives that come and go', () => {
   it('asks as it appears, every so often, and when the window comes back', async () => {
     vi.useFakeTimers()
-    const ask = vi.spyOn(api, 'unreachableTargets').mockResolvedValue([])
+    const ask = vi
+      .spyOn(api, 'checkSaveLocations')
+      .mockResolvedValue({ unreachable: [], behind: [] })
     renderLine()
     expect(ask).toHaveBeenCalledTimes(1)
     await act(async () => {
@@ -191,6 +193,13 @@ describe('filling in as each place is written', () => {
     vi.spyOn(api, 'backupNow').mockImplementation(
       () => new Promise<BackupRun>((resolve) => (finish = resolve))
     )
+    // The card is taken out while the backup runs; the main process's next
+    // answer says so.
+    let pulled = false
+    vi.spyOn(api, 'checkSaveLocations').mockImplementation(async () => ({
+      unreachable: pulled ? [useWyrm.getState().backupSettings!.targets[0].id] : [],
+      behind: []
+    }))
     renderLine()
     let running: Promise<unknown> = Promise.resolve()
     act(() => {
@@ -199,6 +208,7 @@ describe('filling in as each place is written', () => {
     await waitFor(() => expect(stateOf(envelopes()[1])).toBe('saving'))
     const target = useWyrm.getState().backupSettings!.targets[0].id
     await act(async () => {
+      pulled = true
       finish({
         at: Date.now(),
         results: [{ targetId: target, status: 'unreachable' }]
@@ -209,6 +219,40 @@ describe('filling in as each place is written', () => {
     expect(useWyrm.getState().savingTo).toEqual([])
     expect(stateOf(envelopes()[1])).toBe('missing')
     await api.removeBackupTarget(path, target)
+  })
+
+  it('dithers GitHub while it syncs', async () => {
+    useWyrm.setState({ syncStatus: SYNCED })
+    let finish: () => void = () => {}
+    vi.spyOn(api, 'syncNow').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ status: 'pushed', at: Date.now() })
+        })
+    )
+    let running: Promise<unknown> = Promise.resolve()
+    act(() => {
+      running = useWyrm.getState().syncNow(false)
+    })
+    await waitFor(() => expect(useWyrm.getState().savingTo).toEqual(['github']))
+    await act(async () => {
+      finish()
+      await running
+    })
+    expect(useWyrm.getState().savingTo).toEqual([])
+  })
+
+  it("marks this computer while Save Now's save point is being made", async () => {
+    let seen: string[] = []
+    vi.spyOn(api, 'commit').mockImplementation(async () => {
+      seen = useWyrm.getState().savingTo
+      return true
+    })
+    await act(async () => {
+      await useWyrm.getState().saveEverywhere()
+    })
+    expect(seen).toEqual(['folder'])
+    expect(useWyrm.getState().savingTo).toEqual([])
   })
 
   it('stops showing a write as saving even when it fails', async () => {

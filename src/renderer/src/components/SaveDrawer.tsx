@@ -165,9 +165,9 @@ export function SaveDrawer({
   const locationsRef = useRef(locations)
 
   useEffect(() => {
-    const { loadBackupSettings, loadSyncStatus, checkReach } = useWyrm.getState()
+    const { loadBackupSettings, loadSyncStatus, checkLocations } = useWyrm.getState()
     void loadBackupSettings()
-      .then(() => checkReach())
+      .then(() => checkLocations())
       .catch((e: unknown) => setError(errorMessage(e)))
     void loadSyncStatus().catch(() => {})
   }, [])

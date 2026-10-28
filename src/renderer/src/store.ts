@@ -199,6 +199,7 @@ export const SLICE_KEYS = [
   'syncNeedsAttention',
   'syncProblem',
   'unreachable',
+  'behind',
   'savingTo',
   'stale'
 ] as const
@@ -434,10 +435,20 @@ interface WyrmState {
    * without the app being told.
    */
   unreachable: string[]
+  /**
+   * F-50: the locations (target ids, or `github`) that do not hold the
+   * latest save point, as the repositories themselves answer it — never from
+   * timestamps, which miss the main process's own commits and pulled ones.
+   */
+  behind: string[]
   /** F-50: the locations being written right now, by id, so their envelopes fill in as each finishes. */
   savingTo: string[]
-  /** F-50: ask the main process which drives can be reached now. */
-  checkReach(): Promise<void>
+  /**
+   * F-50: ask the main process which locations are reachable and which hold
+   * the latest save point, and re-read the project's backup and sync status,
+   * for the project at `path` (the focused one by default) wherever it is.
+   */
+  checkLocations(path?: string): Promise<void>
   /**
    * F-41: this project's files changed on disk under a background sync, so
    * the state held for it no longer matches them.
@@ -989,6 +1000,7 @@ function emptySlice(): ProjectSlice {
     syncNeedsAttention: false,
     syncProblem: null,
     unreachable: [],
+    behind: [],
     savingTo: [],
     stale: false
   }
@@ -1089,6 +1101,10 @@ export const useWyrm = create<WyrmState>((set, get) => {
       patchSliceAt(path, (slice) => ({
         savingTo: slice.savingTo.filter((id) => !ids.includes(id))
       }))
+      // Whatever the write did or failed to do, the envelopes ask again.
+      void get()
+        .checkLocations(path)
+        .catch(() => {})
     }
   }
 
@@ -1299,7 +1315,8 @@ export const useWyrm = create<WyrmState>((set, get) => {
     // Both are fire-and-forget, exactly as they are for the focused project:
     // a missing drive or a dead network must never block a checkpoint.
     if (slice.backupSettings?.auto && slice.backupSettings.targets.length) {
-      void api.backupNow(path).catch(() => {})
+      const ids = slice.backupSettings.targets.map((t) => t.id)
+      void writingTo(path, ids, () => api.backupNow(path)).catch(() => {})
     }
     if (isConnected(slice.syncStatus)) {
       void syncParked(path)
@@ -1318,7 +1335,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
    * project comes forward.
    */
   async function syncParked(path: string): Promise<void> {
-    const outcome = await api.syncNow(path).catch(() => null)
+    const outcome = await writingTo(path, ['github'], () => api.syncNow(path)).catch(() => null)
     if (!outcome) return
     const parked = get().parked
     const slice = parked[path]
@@ -1372,6 +1389,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       syncNeedsAttention: false,
       syncProblem: null,
       unreachable: [],
+      behind: [],
       savingTo: [],
       // A different project is a different undo, as it is a different view
       // history. Left out, the last project's record came along and lit the
@@ -1408,7 +1426,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     await get().loadEntities()
     await get().loadBackupSettings()
     void get()
-      .checkReach()
+      .checkLocations()
       .catch(() => {})
     await get().loadSyncStatus()
     void get().refreshStats()
@@ -1461,6 +1479,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     syncNeedsAttention: false,
     syncProblem: null,
     unreachable: [],
+    behind: [],
     savingTo: [],
 
     async boot() {
@@ -2025,6 +2044,11 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const { project } = get()
       if (!project) return
       set({ dailyStats: await api.getDailyStats(project.path).catch(() => []) })
+      // Reading the stats makes a save point in the main process (it commits
+      // first), which the renderer is not told about.
+      void get()
+        .checkLocations(project.path)
+        .catch(() => {})
     },
 
     /* ---------- GitHub sync (Phase 5) ---------- */
@@ -2136,7 +2160,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       if (settings) {
         set({ backupSettings: settings })
         void get()
-          .checkReach()
+          .checkLocations()
           .catch(() => {})
       }
     },
@@ -2160,23 +2184,31 @@ export const useWyrm = create<WyrmState>((set, get) => {
       await get().flushSave()
       const ids = (get().backupSettings?.targets ?? []).map((t) => t.id)
       const run = await writingTo(path, ids, () => api.backupNow(path))
-      // The run has just tried every drive, which is the freshest answer to
-      // which ones are there.
-      patchSliceAt(path, () => ({
-        unreachable: run.results.filter((r) => r.status === 'unreachable').map((r) => r.targetId)
-      }))
-      await get().loadBackupSettings()
+      // Awaited, so a caller reads each drive's new time as soon as this
+      // resolves; re-reads the settings and which drives are there for this
+      // project, wherever it is by then.
+      await get()
+        .checkLocations(path)
+        .catch(() => {})
       return run
     },
 
-    async checkReach() {
-      const path = get().project?.path
+    async checkLocations(path = get().project?.path) {
       if (!path) return
-      const ids = await api.unreachableTargets(path)
-      patchSliceAt(path, (slice) =>
-        // Unchanged is the usual answer; keep the same array so nothing re-renders.
-        slice.unreachable.join('\n') === ids.join('\n') ? {} : { unreachable: ids }
-      )
+      const [check, backupSettings, syncStatus] = await Promise.all([
+        api.checkSaveLocations(path),
+        api.getBackupSettings(path),
+        api.getSyncStatus(path)
+      ])
+      // Unchanged is the usual answer; keep the same arrays and objects so
+      // nothing re-renders on a poll.
+      const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
+      patchSliceAt(path, (slice) => ({
+        ...(same(slice.unreachable, check.unreachable) ? {} : { unreachable: check.unreachable }),
+        ...(same(slice.behind, check.behind) ? {} : { behind: check.behind }),
+        ...(same(slice.backupSettings, backupSettings) ? {} : { backupSettings }),
+        ...(same(slice.syncStatus, syncStatus) ? {} : { syncStatus })
+      }))
     },
 
     async saveEverywhere() {
