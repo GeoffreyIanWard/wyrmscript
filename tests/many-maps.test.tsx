@@ -340,6 +340,8 @@ describe('a map id that names no map', () => {
     delete info.data.maps
     await api.saveProject(demoPath, info.data)
     vi.spyOn(api, 'resolveSyncConflicts').mockResolvedValue({ status: 'merged' } as never)
+    // The resolution screen is up, with the versions its list came from.
+    useWyrm.setState({ syncConflicts: [], conflictHeads: { local: 'l0cal', remote: 'rem0te' } })
     await act(async () => {
       await store().resolveConflicts([])
     })

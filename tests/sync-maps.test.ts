@@ -4,12 +4,26 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 import git from 'isomorphic-git'
-import type { MapSheet, ProjectData, SyncOutcome } from '../src/shared/types'
+import type { ConflictChoice, MapSheet, ProjectData, SyncOutcome } from '../src/shared/types'
 import { resolveSyncConflicts, syncProject, type SyncTransport } from '../src/main/wyrm/sync'
 import { restoreBackup } from '../src/main/wyrm/backup'
 import { commitAll } from '../src/main/wyrm/git'
 import { createProject, saveProject } from '../src/main/wyrm/project'
 import { mergeMapLists, withMergedMaps } from '../src/main/wyrm/mergeMaps'
+
+/** The writer's answer as the resolution screen sends it: the choices, against
+ *  the versions as they stand (what the conflicts outcome named). */
+async function resolveWith(
+  dir: string,
+  choices: ConflictChoice[],
+  transport: SyncTransport
+): Promise<SyncOutcome> {
+  const pinned = {
+    local: await git.resolveRef({ fs, dir, ref: 'HEAD' }),
+    remote: await git.resolveRef({ fs, dir, ref: 'refs/remotes/origin/main' })
+  }
+  return resolveSyncConflicts(dir, { choices, pinned }, transport)
+}
 
 /**
  * Sync and several maps: project.json's list of maps is merged by map, so
@@ -202,7 +216,7 @@ describe('two devices each adding a map', () => {
       expect((await syncProject(b, transport)).status).toBe('pushed')
       await addMap(a, sheet('cray', 'Port Cray'), { title: 'Called A' })
       expect((await syncProject(a, transport)).status).toBe('conflicts')
-      await resolveSyncConflicts(a, [{ path: 'project.json', resolution }], transport)
+      await resolveWith(a, [{ path: 'project.json', resolution }], transport)
       const data = JSON.parse(await fsp.readFile(join(a, 'project.json'), 'utf8')) as ProjectData
       // The rest is the side chosen; the maps are both devices'.
       expect(data.title).toBe(resolution === 'mine' ? 'Called A' : 'Called B')

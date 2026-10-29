@@ -40,6 +40,9 @@ const CONFLICTS: SyncConflict[] = [
   }
 ]
 
+/** The versions a list of conflicts was made from (F-51). */
+const HEADS = { local: 'l0cal', remote: 'rem0te' }
+
 let path = ''
 // Captured once: the mock's "last project" becomes whatever a test opened
 // last, and a test that opens a second novel would otherwise make it the demo.
@@ -81,7 +84,11 @@ afterEach(() => {
 
 describe('what the store keeps', () => {
   it('keeps the list a background sync found, without opening anything', async () => {
-    vi.spyOn(api, 'syncNow').mockResolvedValue({ status: 'conflicts', conflicts: CONFLICTS })
+    vi.spyOn(api, 'syncNow').mockResolvedValue({
+      status: 'conflicts',
+      conflicts: CONFLICTS,
+      heads: HEADS
+    })
     await act(async () => {
       await useWyrm.getState().syncNow(false)
     })
@@ -111,7 +118,11 @@ describe('what the store keeps', () => {
   })
 
   it('forgets it once they are resolved, or the project leaves GitHub', async () => {
-    useWyrm.setState({ syncConflicts: CONFLICTS, waitingConflicts: CONFLICTS })
+    useWyrm.setState({
+      syncConflicts: CONFLICTS,
+      conflictHeads: HEADS,
+      waitingConflicts: CONFLICTS
+    })
     vi.spyOn(api, 'resolveSyncConflicts').mockResolvedValue({
       status: 'merged',
       at: Date.now(),
@@ -142,7 +153,11 @@ describe('what the store keeps', () => {
         await useWyrm.getState().openAdditionalProject(second.path)
       })
       vi.spyOn(api, 'commit').mockResolvedValue(true)
-      vi.spyOn(api, 'syncNow').mockResolvedValue({ status: 'conflicts', conflicts: CONFLICTS })
+      vi.spyOn(api, 'syncNow').mockResolvedValue({
+        status: 'conflicts',
+        conflicts: CONFLICTS,
+        heads: HEADS
+      })
       __ensureRuntime(path).commitDirty = true
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5 * 60_000)
@@ -212,7 +227,7 @@ describe('what the store keeps', () => {
 
     it("puts this novel's conflicts on this novel, not the one in front", async () => {
       const { finish, second } = await syncThenSwitch(false)
-      await finish({ status: 'conflicts', conflicts: CONFLICTS })
+      await finish({ status: 'conflicts', conflicts: CONFLICTS, heads: HEADS })
       expect(useWyrm.getState().project?.path).toBe(second)
       expect(useWyrm.getState().waitingConflicts).toBeNull()
       expect(useWyrm.getState().syncNeedsAttention).toBe(false)
@@ -230,7 +245,7 @@ describe('what the store keeps', () => {
 
     it('never opens the resolution screen over the other novel', async () => {
       const { finish } = await syncThenSwitch(true)
-      await finish({ status: 'conflicts', conflicts: CONFLICTS })
+      await finish({ status: 'conflicts', conflicts: CONFLICTS, heads: HEADS })
       expect(useWyrm.getState().syncConflicts).toBeNull()
       expect(useWyrm.getState().parked[path].waitingConflicts).toEqual(CONFLICTS)
     })
@@ -266,7 +281,7 @@ describe('the Conflicts tab', () => {
     useWyrm.setState({ waitingConflicts: CONFLICTS, syncNeedsAttention: true })
     const sync = vi
       .spyOn(api, 'syncNow')
-      .mockResolvedValue({ status: 'conflicts', conflicts: CONFLICTS })
+      .mockResolvedValue({ status: 'conflicts', conflicts: CONFLICTS, heads: HEADS })
     renderConflicts()
     await act(async () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Resolve…' }))

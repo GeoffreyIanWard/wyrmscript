@@ -6,11 +6,12 @@ import os from 'node:os'
 import { join } from 'node:path'
 import git from 'isomorphic-git'
 import matter from 'gray-matter'
-import type { Entity, Scrap, SyncOutcome } from '../src/shared/types'
+import type { ConflictChoice, Entity, Scrap, SyncOutcome } from '../src/shared/types'
 import {
   PushRejectedError,
   isFrontmattered,
   isRecord,
+  readAnswer,
   resolveSyncConflicts,
   syncProject,
   type SyncTransport
@@ -34,6 +35,20 @@ import { listRelationships, writeRelationship } from '../src/main/wyrm/relations
 import { listPlotlines, writePlotline } from '../src/main/wyrm/plotlines'
 import { listScraps, writeScrap } from '../src/main/wyrm/scratch'
 import { findNode, firstDoc } from '../src/renderer/src/lib/tree'
+
+/** The writer's answer as the resolution screen sends it: the choices, against
+ *  the versions as they stand (what the conflicts outcome named). */
+async function resolveWith(
+  dir: string,
+  choices: ConflictChoice[],
+  transport: SyncTransport
+): Promise<SyncOutcome> {
+  const pinned = {
+    local: await git.resolveRef({ fs, dir, ref: 'HEAD' }),
+    remote: await git.resolveRef({ fs, dir, ref: 'refs/remotes/origin/main' })
+  }
+  return resolveSyncConflicts(dir, { choices, pinned }, transport)
+}
 
 /**
  * The engine runs against real repositories with a transport faked over a
@@ -504,11 +519,7 @@ describe('genuine conflicts', () => {
     const conflicts = expectStatus(await syncProject(w.a, w.transport), 'conflicts').conflicts
 
     const outcome = expectStatus(
-      await resolveSyncConflicts(
-        w.a,
-        [{ path: conflicts[0].path, resolution: 'mine' }],
-        w.transport
-      ),
+      await resolveWith(w.a, [{ path: conflicts[0].path, resolution: 'mine' }], w.transport),
       'merged'
     )
     expect(outcome.pushed).toBe(true)
@@ -526,11 +537,7 @@ describe('genuine conflicts', () => {
     await diverge(w)
     const conflicts = expectStatus(await syncProject(w.a, w.transport), 'conflicts').conflicts
 
-    await resolveSyncConflicts(
-      w.a,
-      [{ path: conflicts[0].path, resolution: 'theirs' }],
-      w.transport
-    )
+    await resolveWith(w.a, [{ path: conflicts[0].path, resolution: 'theirs' }], w.transport)
 
     expect((await readDoc(w.a, w.docId)).body).toBe('Ending written on device B.\n')
   })
@@ -540,7 +547,7 @@ describe('genuine conflicts', () => {
     await diverge(w)
     const conflicts = expectStatus(await syncProject(w.a, w.transport), 'conflicts').conflicts
 
-    await resolveSyncConflicts(w.a, [{ path: conflicts[0].path, resolution: 'both' }], w.transport)
+    await resolveWith(w.a, [{ path: conflicts[0].path, resolution: 'both' }], w.transport)
 
     expect((await readDoc(w.a, w.docId)).body).toBe('Ending written on device A.\n')
     const variants = await listVariants(w.a, w.docId)
@@ -553,7 +560,7 @@ describe('genuine conflicts', () => {
     const w = await makeWorld()
     const b = await diverge(w)
     const conflicts = expectStatus(await syncProject(w.a, w.transport), 'conflicts').conflicts
-    await resolveSyncConflicts(w.a, [{ path: conflicts[0].path, resolution: 'mine' }], w.transport)
+    await resolveWith(w.a, [{ path: conflicts[0].path, resolution: 'mine' }], w.transport)
 
     const onB = expectStatus(await syncProject(b, w.transport), 'pulled')
     expect(onB.pushed).toBe(true)
@@ -592,7 +599,7 @@ describe('clean merges beside a real conflict (I-13)', () => {
     // Only the document is the writer's to decide.
     expect(conflicts.map((c) => c.path)).toEqual([`documents/${w.docId}.md`])
 
-    await resolveSyncConflicts(w.a, [{ path: conflicts[0].path, resolution: 'mine' }], w.transport)
+    await resolveWith(w.a, [{ path: conflicts[0].path, resolution: 'mine' }], w.transport)
     const notes = await fsp.readFile(join(w.a, NOTES), 'utf8')
     expect(notes).toBe(lines({ 2: 'Line two, from A.', 9: 'Line nine, from B.' }))
     expect((await readDoc(w.a, w.docId)).body).toBe('Ending written on device A.\n')
@@ -624,7 +631,7 @@ describe('clean merges beside a real conflict (I-13)', () => {
     const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
     expect(outcome.conflicts.map((c) => c.path)).not.toContain(NOTES)
     const conflict = outcome.conflicts.find((c) => c.kind === 'entity')!
-    await resolveSyncConflicts(w.a, [{ path: conflict.path, resolution: 'mine' }], w.transport)
+    await resolveWith(w.a, [{ path: conflict.path, resolution: 'mine' }], w.transport)
     expect(await fsp.readFile(join(w.a, NOTES), 'utf8')).toBe(
       lines({ 2: 'Line two, from A.', 9: 'Line nine, from B.' })
     )
@@ -633,11 +640,7 @@ describe('clean merges beside a real conflict (I-13)', () => {
   it('reaches the other device intact', async () => {
     const { w, b } = await worldWithNotes()
     const conflicts = expectStatus(await syncProject(w.a, w.transport), 'conflicts').conflicts
-    await resolveSyncConflicts(
-      w.a,
-      [{ path: conflicts[0].path, resolution: 'theirs' }],
-      w.transport
-    )
+    await resolveWith(w.a, [{ path: conflicts[0].path, resolution: 'theirs' }], w.transport)
     expectStatus(await syncProject(b, w.transport), 'pulled')
     expect(await fsp.readFile(join(b, NOTES), 'utf8')).toBe(
       lines({ 2: 'Line two, from A.', 9: 'Line nine, from B.' })
@@ -669,7 +672,7 @@ describe('a file that is not text, changed on both devices (I-17)', () => {
     expect(conflict.localBody).toBe('(not text — an image or other file)')
     expect(conflict.remoteBody).toBe('(not text — an image or other file)')
 
-    await resolveSyncConflicts(w.a, [{ path: PORTRAIT, resolution: 'theirs' }], w.transport)
+    await resolveWith(w.a, [{ path: PORTRAIT, resolution: 'theirs' }], w.transport)
     expect((await fsp.readFile(join(w.a, PORTRAIT))).equals(theirs)).toBe(true)
   })
 })
@@ -781,11 +784,7 @@ describe('a record field changed differently on both devices is the writer’s c
     const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
     expect(outcome.conflicts.map((c) => c.path)).toEqual(['map-shapes/s1.md'])
 
-    await resolveSyncConflicts(
-      w.a,
-      [{ path: 'map-shapes/s1.md', resolution: 'theirs' }],
-      w.transport
-    )
+    await resolveWith(w.a, [{ path: 'map-shapes/s1.md', resolution: 'theirs' }], w.transport)
     expect((await listMapShapes(w.a))[0].points).toEqual(theirs)
     expect(theirs[0]).toEqual({ x: 5, y: 5 })
   })
@@ -1117,7 +1116,7 @@ describe('a frontmattered file that is not UTF-8 goes to the writer as bytes', (
     'choosing %s keeps the 0xE9 and never writes U+FFFD',
     async (side) => {
       const { w, mine, theirs } = await conflicted()
-      await resolveSyncConflicts(w.a, [{ path: FILE, resolution: side }], w.transport)
+      await resolveWith(w.a, [{ path: FILE, resolution: side }], w.transport)
 
       const onDisk = await fsp.readFile(join(w.a, FILE))
       expect(onDisk.includes(0xe9)).toBe(true)
@@ -1163,11 +1162,7 @@ describe('text and bytes beside a real document conflict', () => {
   async function resolveDoc(w: World): Promise<void> {
     const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
     expect(outcome.conflicts.map((c) => c.path)).toEqual([`documents/${w.docId}.md`])
-    await resolveSyncConflicts(
-      w.a,
-      [{ path: `documents/${w.docId}.md`, resolution: 'mine' }],
-      w.transport
-    )
+    await resolveWith(w.a, [{ path: `documents/${w.docId}.md`, resolution: 'mine' }], w.transport)
   }
 
   it('a U+FFFD the writer typed is text: non-overlapping edits around it both survive', async () => {
@@ -1221,7 +1216,7 @@ describe('text and bytes beside a real document conflict', () => {
     expect(outcome.conflicts[0].localBody).toBe('(not text — an image or other file)')
     expect(outcome.conflicts[0].remoteBody).toBe('(not text — an image or other file)')
 
-    await resolveSyncConflicts(w.a, [{ path: PORTRAIT, resolution: 'theirs' }], w.transport)
+    await resolveWith(w.a, [{ path: PORTRAIT, resolution: 'theirs' }], w.transport)
     expect((await fsp.readFile(join(w.a, PORTRAIT))).equals(theirs)).toBe(true)
   })
 
@@ -1310,11 +1305,7 @@ describe('text and bytes beside a real document conflict', () => {
 
     const outcome = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
     expect(outcome.conflicts.map((c) => c.path)).toEqual(['characters/elara001.md'])
-    await resolveSyncConflicts(
-      w.a,
-      [{ path: 'characters/elara001.md', resolution: 'mine' }],
-      w.transport
-    )
+    await resolveWith(w.a, [{ path: 'characters/elara001.md', resolution: 'mine' }], w.transport)
 
     const merged = await fsp.readFile(join(w.a, NOTES))
     expect(merged.subarray(0, 3).equals(BOM)).toBe(true)
@@ -1353,7 +1344,7 @@ describe('the hard cases', () => {
     expect(conflict!.localBody).toBeNull()
     expect(conflict!.remoteBody).toContain('rewritten on B')
 
-    await resolveSyncConflicts(w.a, [{ path: conflict!.path, resolution: 'theirs' }], w.transport)
+    await resolveWith(w.a, [{ path: conflict!.path, resolution: 'theirs' }], w.transport)
     const entities = await listEntities(w.a)
     expect(entities.find((e) => e.id === entity.id)?.body).toContain('rewritten on B')
   })
@@ -1386,7 +1377,7 @@ describe('the hard cases', () => {
     const project = outcome.conflicts.find((c) => c.kind === 'project')
     expect(project).toBeDefined()
 
-    await resolveSyncConflicts(w.a, [{ path: project!.path, resolution: 'mine' }], w.transport)
+    await resolveWith(w.a, [{ path: project!.path, resolution: 'mine' }], w.transport)
 
     // A's binder won — but B's document file merged in at tree level, and the
     // reconciliation re-attached it rather than letting it become invisible.
@@ -1510,5 +1501,246 @@ describe('the scratch pad (F-51)', () => {
     const [conflict] = expectStatus(await syncProject(w.a, w.transport), 'conflicts').conflicts
     expect(conflict.kind).toBe('scrap')
     expect(conflict.title).toBe('Scratch pad note')
+  })
+})
+
+describe('the merge screen’s answer (F-51)', () => {
+  /** Both devices rewrote the first draft; A's sync finds the conflict. */
+  async function disputed(): Promise<{
+    w: World
+    b: string
+    outcome: Extract<SyncOutcome, { status: 'conflicts' }>
+  }> {
+    const w = await makeWorld('Base paragraph.\n')
+    const b = await cloneB(w)
+    await editDoc(b, w.docId, 'Base paragraph, as B had it.\n', 'B edit')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+    await editDoc(w.a, w.docId, 'Base paragraph, as A had it.\n', 'A edit')
+    return { w, b, outcome: expectStatus(await syncProject(w.a, w.transport), 'conflicts') }
+  }
+
+  const docPath = (w: World): string => `documents/${w.docId}.md`
+
+  it('names the versions the list was made from, and gives each conflict its before and its times', async () => {
+    const started = Date.now() - 60_000
+    const { w, outcome } = await disputed()
+    expect(outcome.heads).toEqual({
+      local: await git.resolveRef({ fs, dir: w.a, ref: 'HEAD' }),
+      remote: await git.resolveRef({ fs, dir: w.a, ref: 'refs/remotes/origin/main' })
+    })
+    const [conflict] = outcome.conflicts
+    expect(conflict.baseBody).toBe('Base paragraph.\n')
+    for (const at of [conflict.localAt, conflict.remoteAt]) {
+      expect(at).toBeGreaterThan(started)
+      expect(at).toBeLessThanOrEqual(Date.now())
+    }
+  })
+
+  it('writes the prose as the writer arranged it, with both devices’ details merged field by field', async () => {
+    const w = await makeWorld('Base paragraph.\n')
+    const b = await cloneB(w)
+    const onB = await readDoc(b, w.docId)
+    await writeDoc(b, {
+      meta: { ...onB.meta, tags: ['ferry'] },
+      body: 'Base paragraph, as B had it.\n'
+    })
+    await commitAll(b, 'B edit and tag')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+    const onA = await readDoc(w.a, w.docId)
+    await writeDoc(w.a, {
+      meta: { ...onA.meta, title: 'The Ferry' },
+      body: 'Base paragraph, as A had it.\n'
+    })
+    await commitAll(w.a, 'A edit and title')
+    const found = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+
+    const arranged = 'As B had it.\n\nAs A had it, after.\n'
+    const merged = expectStatus(
+      await resolveSyncConflicts(
+        w.a,
+        {
+          choices: [{ path: docPath(w), resolution: 'arranged', body: arranged }],
+          pinned: found.heads
+        },
+        w.transport
+      ),
+      'merged'
+    )
+    expect(merged.pushed).toBe(true)
+    const doc = await readDoc(w.a, w.docId)
+    expect(doc.body).toBe(arranged)
+    expect(doc.meta).toMatchObject({ title: 'The Ferry', tags: ['ferry'] })
+    // Both devices' versions are parents of the combined save point.
+    const head = await git.resolveRef({ fs, dir: w.a, ref: 'HEAD' })
+    const { commit } = await git.readCommit({ fs, dir: w.a, oid: head })
+    expect(commit.parent).toEqual([found.heads.local, found.heads.remote])
+    // And the other device brings in exactly that.
+    expectStatus(await syncProject(b, w.transport), 'pulled')
+    expect((await readDoc(b, w.docId)).body).toBe(arranged)
+  })
+
+  it('keeps the cards the writer saved on the scratch pad in the same save point', async () => {
+    const { w, b, outcome } = await disputed()
+    const now = new Date().toISOString()
+    const scrap: Scrap = {
+      id: 'kept1',
+      body: 'Base paragraph, as B had it.\n',
+      created: now,
+      modified: now,
+      how: 'incoming',
+      fromDoc: w.docId,
+      fromTitle: 'First Scene'
+    }
+    expectStatus(
+      await resolveSyncConflicts(
+        w.a,
+        {
+          choices: [
+            { path: docPath(w), resolution: 'arranged', body: 'Base paragraph, as A had it.\n' }
+          ],
+          pinned: outcome.heads,
+          scraps: [scrap]
+        },
+        w.transport
+      ),
+      'merged'
+    )
+    expect(await listScraps(w.a)).toEqual([
+      expect.objectContaining({ id: 'kept1', how: 'incoming', body: scrap.body })
+    ])
+    const head = await git.resolveRef({ fs, dir: w.a, ref: 'HEAD' })
+    expect(await git.listFiles({ fs, dir: w.a, ref: head })).toContain('scratch/kept1.md')
+    expectStatus(await syncProject(b, w.transport), 'pulled')
+    expect((await listScraps(b)).map((s) => s.id)).toEqual(['kept1'])
+  })
+
+  it('refuses an answer when the other device moved since, with a fresh list, and changes nothing', async () => {
+    const { w, outcome } = await disputed()
+    const stale = { ...outcome.heads, remote: outcome.heads.local }
+    const before = await git.resolveRef({ fs, dir: w.a, ref: 'HEAD' })
+    const fresh = expectStatus(
+      await resolveSyncConflicts(
+        w.a,
+        { choices: [{ path: docPath(w), resolution: 'arranged', body: 'Mine.\n' }], pinned: stale },
+        w.transport
+      ),
+      'conflicts'
+    )
+    expect(fresh.moved).toBe(true)
+    expect(fresh.heads).toEqual(outcome.heads)
+    expect(await git.resolveRef({ fs, dir: w.a, ref: 'HEAD' })).toBe(before)
+    expect((await readDoc(w.a, w.docId)).body).toBe('Base paragraph, as A had it.\n')
+  })
+
+  it('refuses an answer when this device’s copy of the chapter changed since (typing after Later)', async () => {
+    const { w, outcome } = await disputed()
+    await editDoc(w.a, w.docId, 'Typed after leaving the screen.\n', 'More typing')
+    const fresh = expectStatus(
+      await resolveSyncConflicts(
+        w.a,
+        {
+          choices: [{ path: docPath(w), resolution: 'arranged', body: 'Arranged.\n' }],
+          pinned: outcome.heads
+        },
+        w.transport
+      ),
+      'conflicts'
+    )
+    expect(fresh.moved).toBe(true)
+    expect(fresh.conflicts[0].localBody).toBe('Typed after leaving the screen.\n')
+    expect((await readDoc(w.a, w.docId)).body).toBe('Typed after leaving the screen.\n')
+  })
+
+  it('still applies an answer when only other files were saved since', async () => {
+    const { w, outcome } = await disputed()
+    await fsp.writeFile(join(w.a, 'notes.txt'), 'Elsewhere.\n')
+    expectStatus(
+      await resolveSyncConflicts(
+        w.a,
+        {
+          choices: [{ path: docPath(w), resolution: 'arranged', body: 'Arranged.\n' }],
+          pinned: outcome.heads
+        },
+        w.transport
+      ),
+      'merged'
+    )
+    expect((await readDoc(w.a, w.docId)).body).toBe('Arranged.\n')
+    expect(await fsp.readFile(join(w.a, 'notes.txt'), 'utf8')).toBe('Elsewhere.\n')
+  })
+
+  it('refuses an answer that leaves a conflict unchosen, with the list as it stands', async () => {
+    const { w, outcome } = await disputed()
+    const fresh = expectStatus(
+      await resolveSyncConflicts(w.a, { choices: [], pinned: outcome.heads }, w.transport),
+      'conflicts'
+    )
+    expect(fresh.conflicts.map((c) => c.path)).toEqual([docPath(w)])
+  })
+
+  it('arranges only prose that both devices still have', async () => {
+    const w = await makeWorld()
+    const b = await cloneB(w)
+    await fsp.rm(join(b, 'documents', `${w.docId}.md`))
+    await commitAll(b, 'B deletes it')
+    expectStatus(await syncProject(b, w.transport), 'pushed')
+    await editDoc(w.a, w.docId, 'A keeps writing it.\n', 'A edit')
+    const found = expectStatus(await syncProject(w.a, w.transport), 'conflicts')
+    const refused = expectStatus(
+      await resolveSyncConflicts(
+        w.a,
+        {
+          choices: [{ path: docPath(w), resolution: 'arranged', body: 'X.\n' }],
+          pinned: found.heads
+        },
+        w.transport
+      ),
+      'error'
+    )
+    expect(refused.detail).toMatch(/cannot be put together by hand/)
+    expect((await readDoc(w.a, w.docId)).body).toBe('A keeps writing it.\n')
+  })
+
+  it('never lets a kept scrap write over a file either device has', async () => {
+    const { w, outcome } = await disputed()
+    const now = new Date().toISOString()
+    await writeScrap(w.a, { id: 'taken', body: 'Already here.\n', created: now, modified: now })
+    await commitAll(w.a, 'A scrap')
+    const latest = { ...outcome.heads, local: await git.resolveRef({ fs, dir: w.a, ref: 'HEAD' }) }
+    for (const scraps of [
+      [{ id: 'taken', body: 'Over it.\n', created: now, modified: now }],
+      [{ id: '../documents/x', body: 'Out.\n', created: now, modified: now }]
+    ]) {
+      expectStatus(
+        await resolveSyncConflicts(
+          w.a,
+          {
+            choices: [{ path: docPath(w), resolution: 'mine' }],
+            pinned: latest,
+            scraps
+          },
+          w.transport
+        ),
+        'error'
+      )
+    }
+    expect((await listScraps(w.a)).map((s) => s.body)).toEqual(['Already here.\n'])
+  })
+
+  it('reads an answer from over IPC only when it is one', () => {
+    const pinned = { local: 'a', remote: 'b' }
+    expect(
+      readAnswer({ choices: [{ path: 'd.md', resolution: 'arranged', body: 'X.' }], pinned })
+    ).toEqual({ choices: [{ path: 'd.md', resolution: 'arranged', body: 'X.' }], pinned })
+    for (const bad of [
+      null,
+      { choices: [], pinned: { local: 1, remote: 'b' } },
+      { choices: [{ path: 'd.md', resolution: 'delete-everything' }], pinned },
+      { choices: [{ path: 'd.md', resolution: 'arranged' }], pinned },
+      { choices: 'all', pinned },
+      { choices: [], pinned, scraps: 'x' }
+    ]) {
+      expect(() => readAnswer(bad)).toThrow(/Not an answer/)
+    }
   })
 })

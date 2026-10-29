@@ -8,7 +8,6 @@ import type {
   WindowGeometry,
   BoardString,
   BoardSticker,
-  ConflictResolution,
   DocFile,
   Entity,
   EntityType,
@@ -86,6 +85,7 @@ import {
   clearRemote,
   getRemoteUrl,
   realTransport,
+  readAnswer,
   resolveSyncConflicts,
   setRemoteUrl,
   syncProject
@@ -564,10 +564,8 @@ export function registerIpc(): void {
     recordOutcome(path, await syncProject(path, transport))
   )
 
-  ipcMain.handle(
-    'sync:resolve',
-    async (_e, path: string, choices: { path: string; resolution: ConflictResolution }[]) =>
-      recordOutcome(path, await resolveSyncConflicts(path, choices, transport))
+  ipcMain.handle('sync:resolve', async (_e, path: string, answer: unknown) =>
+    recordOutcome(path, await resolveSyncConflicts(path, readAnswer(answer), transport))
   )
 
   ipcMain.handle(

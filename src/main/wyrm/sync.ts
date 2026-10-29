@@ -5,14 +5,18 @@ import git from 'isomorphic-git'
 import diff3Merge from 'diff3'
 import matter from 'gray-matter'
 import type {
-  ConflictResolution,
+  ConflictAnswer,
+  ConflictChoice,
   MapSheet,
   ProjectData,
   SyncConflict,
+  SyncHeads,
   SyncOutcome
 } from '../../shared/types'
 import { author, commitAll, commitMerge } from './git'
 import { mergedMapsOf, withMaps, withMergedMaps } from './mergeMaps'
+import { isPlainId } from './plainId'
+import { scrapFileText, scrapRepoPath } from './scratch'
 
 /**
  * GitHub sync engine (Phase 5, brief §7). Sync is git's own push/pull over
@@ -162,17 +166,35 @@ function detail(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+/**
+ * When a side last changed a file: the newest commit on that side touching
+ * it (its committer time). A save point the app made on its own — before a
+ * sync, say — counts: it is when the words were last saved there. Null when
+ * the history cannot say.
+ */
+async function lastChangedAt(dir: string, ref: string, filepath: string): Promise<number | null> {
+  try {
+    const [entry] = await git.log({ fs, dir, ref, filepath, depth: 1, force: true })
+    return entry ? entry.commit.committer.timestamp * 1000 : null
+  } catch {
+    return null
+  }
+}
+
 /** Human-facing description of a conflicted path, for the resolution screen. */
 async function describeConflict(
   dir: string,
   filepath: string,
   localHead: string,
-  remoteHead: string
+  remoteHead: string,
+  base: string | null
 ): Promise<SyncConflict> {
   const localBlob = await blobAt(dir, localHead, filepath)
   const remoteBlob = await blobAt(dir, remoteHead, filepath)
+  const baseBlob = base ? await blobAt(dir, base, filepath) : null
   const localRaw = localBlob == null ? null : new TextDecoder().decode(localBlob)
   const remoteRaw = remoteBlob == null ? null : new TextDecoder().decode(remoteBlob)
+  const baseRaw = baseBlob == null ? null : new TextDecoder().decode(baseBlob)
 
   const kind: SyncConflict['kind'] = filepath.startsWith('documents/')
     ? 'doc'
@@ -188,6 +210,7 @@ async function describeConflict(
   let title = filepath
   let localBody = localRaw
   let remoteBody = remoteRaw
+  let baseBody = baseRaw
   if (kind === 'doc' || kind === 'entity' || kind === 'scrap') {
     const parsed = [localRaw, remoteRaw].map((raw) => (raw == null ? null : matter(raw)))
     const meta = (parsed[0] ?? parsed[1])?.data as
@@ -202,6 +225,7 @@ async function describeConflict(
     // noise, the body differing is the decision.
     localBody = parsed[0] == null ? null : parsed[0].content.replace(/^\n/, '')
     remoteBody = parsed[1] == null ? null : parsed[1].content.replace(/^\n/, '')
+    baseBody = baseRaw == null ? null : matter(baseRaw).content.replace(/^\n/, '')
   } else if (kind === 'project') {
     title = 'Binder & project settings'
   } else {
@@ -210,9 +234,19 @@ async function describeConflict(
     const NOT_TEXT = '(not text — an image or other file)'
     localBody = isBinary(localBlob) ? NOT_TEXT : localRaw
     remoteBody = isBinary(remoteBlob) ? NOT_TEXT : remoteRaw
+    baseBody = isBinary(baseBlob) ? NOT_TEXT : baseRaw
   }
 
-  return { path: filepath, kind, title, localBody, remoteBody }
+  return {
+    path: filepath,
+    kind,
+    title,
+    localBody,
+    remoteBody,
+    baseBody,
+    localAt: await lastChangedAt(dir, localHead, filepath),
+    remoteAt: await lastChangedAt(dir, remoteHead, filepath)
+  }
 }
 
 /* ---------- the merge machinery ---------- */
@@ -322,11 +356,28 @@ function mergeFrontmattered(
           ? theirs.content
           : null
   if (body == null) return null
+  const data = mergeFields(base.data, ours.data, theirs.data, strict)
+  if (data == null) return null
 
-  const keys = new Set([...Object.keys(ours.data), ...Object.keys(theirs.data)])
+  const cleanBody = body.replace(/^\n/, '')
+  return matter.stringify(cleanBody.endsWith('\n') ? cleanBody : cleanBody + '\n', data)
+}
+
+/**
+ * Frontmatter merged field by field: `modified` takes the newer stamp,
+ * `created` the older, a position moves as one pair, and any other field
+ * changed differently on both devices keeps this device's value — or, when
+ * `strict`, makes the file the writer's call (null).
+ */
+function mergeFields(
+  bd: Record<string, unknown>,
+  od: Record<string, unknown>,
+  td: Record<string, unknown>,
+  strict: boolean
+): Record<string, unknown> | null {
+  const keys = new Set([...Object.keys(od), ...Object.keys(td)])
   const data: Record<string, unknown> = {}
   const asJson = (v: unknown): string => JSON.stringify(v ?? null)
-  const [bd, od, td] = [base.data, ours.data, theirs.data] as Record<string, unknown>[]
   /** Which side's value to keep, or null when both changed it differently
    *  and that is the writer's to decide. */
   const pick = (b: string, o: string, t: string): 'ours' | 'theirs' | null => {
@@ -381,9 +432,31 @@ function mergeFrontmattered(
   // deleting (not writing null) keeps "cleared" meaning "absent" — the only
   // form the writers ever put on disk — so the cleared field stays cleared.
   for (const key of Object.keys(data)) if (data[key] === undefined) delete data[key]
+  return data
+}
 
-  const cleanBody = body.replace(/^\n/, '')
-  return matter.stringify(cleanBody.endsWith('\n') ? cleanBody : cleanBody + '\n', data)
+/**
+ * F-51: a conflicted prose file as the writer arranged it on the merge
+ * screen — their body, with the details (title, tags, synopsis, positions)
+ * merged field by field exactly as a clean sync merges them. Only the prose
+ * was disputed, so only the prose is the writer's to arrange.
+ */
+function arrangedFile(
+  baseRaw: string | null,
+  oursRaw: string,
+  theirsRaw: string,
+  body: string
+): string {
+  const base = baseRaw == null ? {} : (matter(baseRaw).data as Record<string, unknown>)
+  const data =
+    mergeFields(
+      base,
+      matter(oursRaw).data as Record<string, unknown>,
+      matter(theirsRaw).data as Record<string, unknown>,
+      false
+    ) ?? {}
+  const clean = body.replace(/^\n/, '')
+  return matter.stringify(clean.endsWith('\n') ? clean : clean + '\n', data)
 }
 
 interface MergeAnalysis {
@@ -609,7 +682,9 @@ async function completeMerge(
   localHead: string,
   remoteHead: string,
   analysis: MergeAnalysis,
-  choices: Map<string, ConflictResolution>
+  choices: Map<string, ConflictChoice>,
+  /** New files to write with the merge (scraps kept from the merge screen). */
+  added: Map<string, string> = new Map()
 ): Promise<CompletedMerge> {
   const mergeBases = await git.findMergeBase({ fs, dir, oids: [localHead, remoteHead] })
   const base = (mergeBases[0] as string | undefined) ?? null
@@ -627,9 +702,20 @@ async function completeMerge(
     if (choice) {
       const local = await blobAt(dir, localHead, filepath)
       const remote = await blobAt(dir, remoteHead, filepath)
-      if (choice === 'mine') {
+      if (choice.resolution === 'arranged') {
+        // Checked by the caller: prose, text, on both sides.
+        target.set(
+          filepath,
+          arrangedFile(
+            base ? await textAt(dir, base, filepath) : null,
+            Buffer.from(local!).toString('utf8'),
+            Buffer.from(remote!).toString('utf8'),
+            choice.body
+          )
+        )
+      } else if (choice.resolution === 'mine') {
         if (local != null) target.set(filepath, local)
-      } else if (choice === 'theirs') {
+      } else if (choice.resolution === 'theirs') {
         if (remote != null) target.set(filepath, remote)
       } else {
         // Keep both: this device's text stays current; the other device's
@@ -691,6 +777,7 @@ async function completeMerge(
       // Not JSON: left exactly as chosen.
     }
   }
+  for (const [filepath, text] of added) target.set(filepath, text)
   await materialize(dir, localHead, target)
   await reconcileBinder(dir)
   const oid = await commitMerge(dir, 'Sync: combined work from two devices', [
@@ -813,17 +900,90 @@ export async function syncProject(dir: string, transport: SyncTransport): Promis
     return { status: 'merged', at: Date.now(), pushed }
   }
 
-  const conflicts: SyncConflict[] = []
-  for (const filepath of analysis.conflicts) {
-    conflicts.push(await describeConflict(dir, filepath, localHead, remoteHead))
-  }
   // Nothing has moved: refs are untouched, the working tree is untouched.
-  return { status: 'conflicts', conflicts }
+  return {
+    status: 'conflicts',
+    conflicts: await describeAll(dir, analysis.conflicts, localHead, remoteHead),
+    heads: { local: localHead, remote: remoteHead }
+  }
 }
 
+async function describeAll(
+  dir: string,
+  paths: string[],
+  localHead: string,
+  remoteHead: string
+): Promise<SyncConflict[]> {
+  const bases = await git.findMergeBase({ fs, dir, oids: [localHead, remoteHead] })
+  const base = (bases[0] as string | undefined) ?? null
+  const conflicts: SyncConflict[] = []
+  for (const filepath of paths) {
+    conflicts.push(await describeConflict(dir, filepath, localHead, remoteHead, base))
+  }
+  return conflicts
+}
+
+const RESOLUTIONS = new Set(['mine', 'theirs', 'both', 'arranged'])
+const isText = (v: unknown): v is string => typeof v === 'string'
+
+/**
+ * An answer as it arrives over IPC, checked field by field: anything that is
+ * not a well-formed answer is refused before it can reach the merge.
+ */
+export function readAnswer(raw: unknown): ConflictAnswer {
+  const a = raw as Partial<ConflictAnswer> | null
+  const bad = (): never => {
+    throw new Error('Not an answer to these conflicts.')
+  }
+  if (!a || !Array.isArray(a.choices) || !a.pinned) bad()
+  if (!isText(a!.pinned!.local) || !isText(a!.pinned!.remote)) bad()
+  const choices = a!.choices!.map((c): ConflictChoice => {
+    if (!c || !isText(c.path) || !RESOLUTIONS.has(c.resolution)) bad()
+    if (c.resolution === 'arranged') {
+      if (!isText((c as { body?: unknown }).body)) bad()
+      return { path: c.path, resolution: 'arranged', body: (c as { body: string }).body }
+    }
+    return { path: c.path, resolution: c.resolution }
+  })
+  if (a!.scraps != null && !Array.isArray(a!.scraps)) bad()
+  return {
+    choices,
+    pinned: { local: a!.pinned!.local, remote: a!.pinned!.remote },
+    ...(a!.scraps ? { scraps: a!.scraps } : {})
+  }
+}
+
+/** Whether the conflict a choice answers is still the one the writer saw:
+ *  the other side unmoved, and this side's copy of every chosen file as it
+ *  was. Work saved meanwhile in other files does not matter. */
+async function stillPinned(
+  dir: string,
+  pinned: SyncHeads,
+  localHead: string,
+  remoteHead: string,
+  paths: string[]
+): Promise<boolean> {
+  if (remoteHead !== pinned.remote) return false
+  if (localHead === pinned.local) return true
+  for (const filepath of paths) {
+    const now = await blobAt(dir, localHead, filepath)
+    const then = await blobAt(dir, pinned.local, filepath)
+    if (!sameBytes(now, then)) return false
+  }
+  return true
+}
+
+/**
+ * Apply the writer's answer. It is only ever applied against the versions
+ * it was made from (`pinned`): if the other side has moved, or this side's
+ * copy of a file the writer chose for has changed since (typing after
+ * leaving the screen with Later), the arrangement no longer matches the
+ * text, and the answer is refused with a fresh list (`moved`) rather than
+ * applied. So is an answer that leaves a conflict unchosen.
+ */
 export async function resolveSyncConflicts(
   dir: string,
-  choices: { path: string; resolution: ConflictResolution }[],
+  answer: ConflictAnswer,
   transport: SyncTransport
 ): Promise<SyncOutcome> {
   await commitAll(dir, 'Auto: before sync')
@@ -833,15 +993,74 @@ export async function resolveSyncConflicts(
     return { status: 'error', detail: 'There is no sync in progress to resolve.' }
   }
 
+  const chosen = new Map(answer.choices.map((c) => [c.path, c]))
   const analysis = await analyseMerge(dir, localHead, remoteHead)
-  const chosen = new Map(choices.map((c) => [c.path, c.resolution]))
-  for (const filepath of analysis.conflicts) {
-    if (!chosen.has(filepath)) {
-      return { status: 'error', detail: `No choice was made for “${filepath}”.` }
+  const pinned = await stillPinned(dir, answer.pinned, localHead, remoteHead, [...chosen.keys()])
+  if (!pinned || analysis.conflicts.some((p) => !chosen.has(p))) {
+    if (analysis.conflicts.length === 0) {
+      return {
+        status: 'error',
+        detail:
+          'Both versions changed while you were combining them, and nothing is waiting any more. Sync again to bring the work together.'
+      }
+    }
+    return {
+      status: 'conflicts',
+      conflicts: await describeAll(dir, analysis.conflicts, localHead, remoteHead),
+      heads: { local: localHead, remote: remoteHead },
+      moved: true
     }
   }
 
-  const { pushed } = await completeMerge(dir, transport, localHead, remoteHead, analysis, chosen)
+  // An arrangement is prose: a document, entry or scrap that both sides
+  // still have, as text. Anything else is a keep-this-or-that choice.
+  for (const choice of chosen.values()) {
+    if (choice.resolution !== 'arranged') continue
+    const local = await blobAt(dir, localHead, choice.path)
+    const remote = await blobAt(dir, remoteHead, choice.path)
+    if (
+      typeof choice.body !== 'string' ||
+      !isFrontmattered(choice.path) ||
+      isRecord(choice.path) ||
+      local == null ||
+      remote == null ||
+      isBinary(local) ||
+      isBinary(remote)
+    ) {
+      return { status: 'error', detail: `“${choice.path}” cannot be put together by hand.` }
+    }
+  }
+
+  // Scraps kept from the merge screen are new files, written with it. One
+  // that would land on a file either side already has is refused: the pad
+  // never writes over anything.
+  const added = new Map<string, string>()
+  for (const scrap of answer.scraps ?? []) {
+    if (!isPlainId(scrap?.id)) return { status: 'error', detail: 'Not a scrap.' }
+    const filepath = scrapRepoPath(scrap.id)
+    if (
+      added.has(filepath) ||
+      (await blobAt(dir, localHead, filepath)) != null ||
+      (await blobAt(dir, remoteHead, filepath)) != null
+    ) {
+      return { status: 'error', detail: 'A scrap with that name is already on the pad.' }
+    }
+    try {
+      added.set(filepath, scrapFileText(scrap))
+    } catch {
+      return { status: 'error', detail: 'Not a scrap.' }
+    }
+  }
+
+  const { pushed } = await completeMerge(
+    dir,
+    transport,
+    localHead,
+    remoteHead,
+    analysis,
+    chosen,
+    added
+  )
   return { status: 'merged', at: Date.now(), pushed }
 }
 
