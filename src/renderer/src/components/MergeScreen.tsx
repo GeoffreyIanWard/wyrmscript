@@ -1,5 +1,12 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
-import type { JSX, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
+import { Fragment, useEffect, useReducer, useRef, useState } from 'react'
+import type {
+  FocusEvent as ReactFocusEvent,
+  JSX,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+  RefObject
+} from 'react'
 import type { ConflictResolution, SyncConflict } from '../../../shared/types'
 import {
   pageItems,
@@ -17,6 +24,9 @@ import {
   dropIndex,
   forget,
   intoGap,
+  keySpots,
+  keyStart,
+  keyStep,
   leaveNote,
   leftovers,
   noteFor,
@@ -35,12 +45,25 @@ import {
   type ProseChapter
 } from '../lib/mergeScreen'
 import { errorMessage } from '../lib/errors'
+import { afterKeysUp } from '../lib/keys'
 import { useWyrm } from '../store'
 import { PaperClip } from './PaperClip'
 
 /** What the hint line says when there is nothing else to say. */
 const HINT =
-  'Drag a card onto the page; the cursor shows where it lands. Drag a stack’s clip to move it all. Underlined words changed.'
+  'Drag a card onto the page, or Tab to it and press Return; the cursor shows where it lands. Drag a stack’s clip to move it all. Underlined words changed.'
+
+/** What it says with a card, or the clip, in keyboard focus. */
+const CARD_HINT =
+  'Return picks the card up. Delete bins it; S keeps it on the scratch pad. ↑ ↓ for the next card, Tab for the next stack or the page.'
+const CLIP_HINT =
+  'The clip: Return picks up the whole stack, in order. Delete bins it all; S keeps it all on the scratch pad.'
+
+/** And with cards in hand. */
+const holdHint = (n: number): string => {
+  const them = n > 1 ? 'them' : 'it'
+  return `In hand: ↑ ↓ move the cursor, Return puts ${them} there, Esc puts ${them} back. Delete bins ${them}; S keeps ${them} on the scratch pad.`
+}
 
 const SIDE_NAME: Record<MergeCard['side'], string> = {
   local: 'Local',
@@ -120,6 +143,40 @@ interface Drag {
   started: boolean
 }
 
+/**
+ * The keyboard's way round the screen: Tab goes between the stacks and the
+ * page (a roving tab stop each), ↑ and ↓ between the cards in one. Every
+ * card, and a stack's clip, carries its place as `data-nav` and `data-key`.
+ */
+type Region = 'local' | 'incoming' | 'both' | 'page'
+
+/** Cards picked up from the keyboard, and where the cursor would put them. */
+interface Held {
+  chapter: number
+  pageId: string
+  /** What picked them up: a card, or a stack's clip (`clip`). */
+  region: Region
+  key: string
+  ids: string[]
+  /** An index into the chapter's items, one of `keySpots`. */
+  at: number
+}
+
+/**
+ * Where focus goes once a move is drawn, since the card that had it may
+ * have gone: a card, wherever it is now (in `region` first, for a clip); the
+ * nth card left in a place, or the place itself once it is empty; the nth
+ * Put back left in the tray; or Finish, when an answer has come back and
+ * left focus nowhere. Set only where a render is sure to follow, or it
+ * would wait for some later one and pull focus back from wherever it went.
+ */
+type Want =
+  | { card: string; region?: Region }
+  | { region: Region; index: number }
+  | { place: Region }
+  | { tray: number }
+  | { finish: true }
+
 function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }): JSX.Element {
   const [{ arr, undo }, dispatch] = useReducer(reduce, null, () => ({
     arr: arrange(conflicts, recall(path)),
@@ -141,16 +198,25 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
   // The store puts a fresh list on screen only when the versions moved under
   // an answer (a sync landing meanwhile leaves the list alone). It is laid
   // out again here, during render, as React has state follow a prop.
+  const [held, setHeld] = useState<Held | null>(null)
   const [shown, setShown] = useState(conflicts)
   if (shown !== conflicts) {
     setShown(conflicts)
     dispatch({ type: 'fresh', conflicts })
     setNote(MOVED)
+    setHeld(null)
   }
   const [busy, setBusy] = useState(false)
   const [drag, setDrag] = useState<(Drag & { target: Target | null }) | null>(null)
+  // The card each place's tab stop is on, and what has keyboard focus now.
+  const [active, setActive] = useState<Partial<Record<Region, string>>>({})
+  const [focused, setFocused] = useState<{ region: Region; key: string } | null>(null)
 
   const rootRef = useRef<HTMLDivElement>(null)
+  const finishRef = useRef<HTMLButtonElement>(null)
+  const want = useRef<Want | null>(null)
+  // Where focus was before the screen came up, to go back to as it goes.
+  const before = useRef<HTMLElement | null>(null)
   const mainRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const binRef = useRef<HTMLButtonElement>(null)
@@ -180,16 +246,31 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
     // The window's body is inert beneath the screen: focus left in it (the
     // page, a field) comes here, so no key reaches what cannot be seen.
     const root = rootRef.current
-    if (root && !root.contains(document.activeElement)) root.focus({ preventScroll: true })
+    if (root && !root.contains(document.activeElement)) {
+      // A ref, not a local: StrictMode's second run finds focus here already.
+      const was = document.activeElement
+      before.current = was instanceof HTMLElement && was !== document.body ? was : null
+      root.focus({ preventScroll: true })
+    }
     return () => {
       alive.current = false
+      // Back where the writer was, the page as a rule, once the screen has
+      // gone and what it covered can take focus again — unless focus has
+      // somewhere else to be by then.
+      const now = document.activeElement
+      const was = before.current
+      if (was?.isConnected && (!now || now === document.body || root?.contains(now))) {
+        was.focus({ preventScroll: true })
+      }
     }
   }, [path])
 
+  // Any move puts down what the keyboard was holding.
   const move = (fn: (a: Arrangement) => Arrangement): void => {
     if (busyRef.current) return
     setError(null)
     setNote(null)
+    setHeld(null)
     dispatch({ type: 'move', move: fn })
   }
 
@@ -198,14 +279,29 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
     useWyrm.getState().dismissConflicts()
   }
 
+  const goTo = (n: number): void => {
+    setHeld(null)
+    setAt(n)
+  }
+
   // ⌘Z undoes a move; Esc is Later, as it is "back" everywhere else (App's
   // own Esc stands aside while the screen is up). Heard last, on the window:
   // an open menu, guided help or a dialog takes its own Esc first and stops
-  // it. Mid-drag, Esc drops the card where it came from and ⌘Z waits — the
-  // drag is aimed at the page as it is drawn.
-  const keysRef = useRef({ later, undo: () => dispatch({ type: 'undo' }) })
+  // it. Mid-drag, or with cards in hand, Esc puts them back where they came
+  // from and ⌘Z waits — the cursor is aimed at the page as it is drawn.
+  const undoKey = (): void => {
+    if (undo.length === 0) return
+    // The card with focus may be put somewhere else: focus goes with it.
+    const el = document.activeElement
+    const { nav, key } =
+      el instanceof HTMLElement && rootRef.current?.contains(el) ? el.dataset : {}
+    if (nav && key) want.current = { card: key, region: nav as Region }
+    dispatch({ type: 'undo' })
+  }
+  const putDown = (): void => setHeld(null)
+  const keysRef = useRef({ later, undo: undoKey, holding: held != null, putDown })
   useEffect(() => {
-    keysRef.current = { later, undo: () => dispatch({ type: 'undo' }) }
+    keysRef.current = { later, undo: undoKey, holding: held != null, putDown }
   })
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -218,6 +314,10 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
       e.stopImmediatePropagation()
       if (pending.current) {
         if (e.key === 'Escape') unlisten.current?.()
+        return
+      }
+      if (keysRef.current.holding) {
+        if (e.key === 'Escape') keysRef.current.putDown()
         return
       }
       if (busyRef.current) return
@@ -233,9 +333,10 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
 
   const finish = async (): Promise<void> => {
     if (busyRef.current) return
+    setHeld(null)
     const blank = unchosen(arr)
     if (blank != null) {
-      setAt(pages.findIndex((p) => p.chapter === blank))
+      goTo(pages.findIndex((p) => p.chapter === blank))
       setNote(`Choose which version of “${arr[blank].title}” to keep first.`)
       return
     }
@@ -258,7 +359,12 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
       failed = errorMessage(e)
     } finally {
       busyRef.current = false
-      if (alive.current) setBusy(false)
+      if (alive.current) {
+        // While it was on its way the main area was inert and Finish off,
+        // which leaves focus nowhere: back to Finish, if nothing took it.
+        want.current = { finish: true }
+        setBusy(false)
+      }
     }
     if (failed != null) {
       // Said beside the buttons, or, if the screen went meanwhile, when it
@@ -325,6 +431,8 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
     if (e.button !== 0 || !page?.page || chapter?.kind !== 'prose' || busyRef.current) return
     e.preventDefault()
     e.stopPropagation()
+    // The pointer takes over from the keyboard.
+    setHeld(null)
     const ch = chapter
     const pageId = page.page.id
     const p: Drag = { chapter: page.chapter, ids, x: e.clientX, y: e.clientY, started: false }
@@ -377,6 +485,185 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
 
   const dragging = new Set(drag?.started ? drag.ids : [])
 
+  /* ---------- the keyboard ---------- */
+
+  // A hold is on the page in front: turning the page puts it down.
+  const hand =
+    held && page?.page && held.chapter === page.chapter && held.pageId === page.page.id
+      ? held
+      : null
+  const holding = new Set(hand?.ids ?? [])
+
+  // Each place's cards, in the order ↑ and ↓ go through them: a stack of
+  // more than one starts with its clip, above its top card.
+  const lists: Record<Region, string[]> = { local: [], incoming: [], both: [], page: [] }
+  if (page?.page && chapter?.kind === 'prose') {
+    for (const side of ['local', 'incoming'] as const) {
+      const ids = stackOf(chapter, page.page.id, side)
+      lists[side] = ids.length > 1 ? ['clip', ...ids] : ids
+    }
+    lists.both = stackOf(chapter, page.page.id, 'both')
+    lists.page = pageItems(chapter.items, page.page)
+      .shown.filter((i) => i.kind === 'card')
+      .map((i) => i.id)
+  }
+  const cardsOf = (region: Region): string[] => lists[region].filter((k) => k !== 'clip')
+
+  /** One tab stop a place: the card last focused there, or its top card. */
+  const tabStop = (region: Region, key: string): 0 | -1 => {
+    const keys = lists[region]
+    const on = keys.includes(active[region] ?? '') ? active[region] : cardsOf(region)[0]
+    return on === key ? 0 : -1
+  }
+
+  const onFocus = (e: ReactFocusEvent): void => {
+    const { nav, key } = (e.target as HTMLElement).dataset
+    if (!nav || !key) {
+      setFocused(null)
+      return
+    }
+    const region = nav as Region
+    setActive((a) => (a[region] === key ? a : { ...a, [region]: key }))
+    setFocused({ region, key })
+  }
+
+  const onBlur = (e: ReactFocusEvent): void => {
+    const { nav, key } = (e.target as HTMLElement).dataset
+    if (!nav) return
+    setFocused(null)
+    // Cards in hand are put down when focus goes elsewhere, by a click or
+    // Tab — though not when the app loses focus to another program, which
+    // is the one blur with nowhere to go and the document unfocused.
+    const away = e.relatedTarget != null || document.hasFocus()
+    if (held && held.region === nav && held.key === key && away) setHeld(null)
+  }
+
+  /** Cards into the bin or onto the pad; focus to the card after them. */
+  const send = (ids: string[], to: 'bin' | 'pad', region: Region, index: number): void => {
+    if (!page?.page) return
+    const c = page.chapter
+    const pageId = page.page.id
+    move((a) => ids.reduce((acc, id) => takeOff(acc, c, id, to, pageId), a))
+    want.current = { region, index }
+  }
+
+  /**
+   * Return picks up the focused card (or, on the clip, its whole stack) and
+   * shows the cursor where it would go; ↑ and ↓ move the cursor between the
+   * paragraphs and Return puts the cards there. Delete bins, S keeps on the
+   * scratch pad. Esc puts what is in hand back; with nothing in hand it is
+   * Later, heard on the window.
+   */
+  const onKeyDown = (e: ReactKeyboardEvent): void => {
+    if (e.metaKey || e.ctrlKey || e.altKey || busyRef.current) return
+    const { nav, key } = (e.target as HTMLElement).dataset
+    if (!nav || !key || !page?.page || chapter?.kind !== 'prose') return
+    const region = nav as Region
+    const sheet = page.page
+    const pick = e.key === 'Enter' || e.key === ' '
+    const to =
+      e.key === 'Delete' || e.key === 'Backspace'
+        ? 'bin'
+        : e.key.toLowerCase() === 's'
+          ? 'pad'
+          : null
+    const step = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0
+    if (hand) {
+      if (e.key === 'Tab') {
+        setHeld(null)
+        return
+      }
+      if (e.key === 'Escape') {
+        // Its own Esc, so stopped: the cards go back, and the screen stays.
+        e.preventDefault()
+        e.stopPropagation()
+        setHeld(null)
+        return
+      }
+      if (!step && !pick && !to) return
+      e.preventDefault()
+      if (step) {
+        setHeld({ ...hand, at: keyStep(keySpots(chapter, sheet, hand.ids), hand.at, step) })
+      } else if (pick) {
+        const { chapter: c, at: where, ids } = hand
+        move((a) => placeOn(a, c, where, ids))
+        want.current = { card: ids[0] }
+      } else if (to) {
+        send(hand.ids, to, hand.region, lists[hand.region].indexOf(hand.key))
+      }
+      return
+    }
+    if (!step && !pick && !to) return
+    e.preventDefault()
+    const k = lists[region].indexOf(key)
+    if (step) {
+      const next = lists[region][k + step]
+      if (next) {
+        rootRef.current
+          ?.querySelector<HTMLElement>(`[data-nav="${region}"][data-key="${next}"]`)
+          ?.focus()
+      }
+      return
+    }
+    const ids = key === 'clip' ? cardsOf(region) : [key]
+    if (pick) {
+      setHeld({
+        chapter: page.chapter,
+        pageId: sheet.id,
+        region,
+        key,
+        ids,
+        at: keyStart(chapter, sheet, ids)
+      })
+    } else if (to) {
+      send(ids, to, region, k)
+    }
+  }
+
+  // The cursor kept in sight as it moves down a long page.
+  const cursorRef = useRef<HTMLDivElement>(null)
+  const cursorAt = hand ? `${hand.pageId}:${hand.at}` : null
+  useEffect(() => {
+    if (cursorAt) cursorRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [cursorAt])
+
+  // Focus follows a move, once it is drawn: the card that had it may have
+  // gone. A button is focused only once the key that pressed it is up, or
+  // Chromium hands that key to the new button too.
+  useEffect(() => {
+    const w = want.current
+    const root = rootRef.current
+    if (!w || !root) return
+    want.current = null
+    const one = (selector: string): HTMLElement | null => root.querySelector(selector)
+    if ('card' in w) {
+      const el =
+        (w.region ? one(`[data-nav="${w.region}"][data-key="${w.card}"]`) : null) ??
+        (w.card === 'clip' ? null : one(`[data-nav][data-key="${w.card}"]`))
+      // Gone altogether (a clip whose stack undo broke up): the screen, so
+      // the keys still have somewhere to go.
+      ;(el ?? (root.contains(document.activeElement) ? null : root))?.focus()
+    } else if ('region' in w) {
+      // In the order ↑ and ↓ go, which puts a stack's clip first.
+      const keys = lists[w.region]
+      const next = keys[Math.min(w.index, keys.length - 1)]
+      ;(
+        (next ? one(`[data-nav="${w.region}"][data-key="${next}"]`) : null) ??
+        one(`[data-place="${w.region}"]`)
+      )?.focus()
+    } else if ('place' in w) {
+      one(`[data-place="${w.place}"]`)?.focus()
+    } else if ('tray' in w) {
+      const rows = root.querySelectorAll<HTMLElement>('[data-put-back]')
+      const el = rows[Math.min(w.tray, rows.length - 1)] ?? one('.merge-tray')
+      if (el) afterKeysUp(() => el.focus())
+    } else {
+      const now = document.activeElement
+      if (now && now !== document.body) return
+      afterKeysUp(() => finishRef.current?.focus())
+    }
+  })
+
   /* ---------- drawing ---------- */
 
   let body: ReactNode
@@ -401,7 +688,7 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
       ? chapter.merge.disputes.find((d) => d.id === sheet.dispute)
       : null
     const conflict = conflicts.find((c) => c.path === chapter.path)
-    const both = stackOf(chapter, sheet.id, 'both')
+    const both = lists.both
     const stack = (side: MergeSide): JSX.Element => (
       <Stack
         side={side}
@@ -409,38 +696,69 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
           side === 'local' ? (conflict?.localAt ?? null) : (conflict?.remoteAt ?? null)
         )}
         deleted={dispute?.deleted === side}
-        ids={stackOf(chapter, sheet.id, side)}
+        ids={cardsOf(side)}
         cards={chapter.cards}
         dragging={dragging}
+        holding={holding}
+        tabStop={(key) => tabStop(side, key)}
         hot={drag?.target?.kind === 'stack' && chapter.cards[drag.ids[0]]?.side === side}
         columnRef={side === 'local' ? localRef : incomingRef}
         onPress={(e, ids) => press(e, ids, start)}
         onIntoGap={
-          dispute ? () => move((a) => intoGap(a, page.chapter, sheet.id, side)) : undefined
+          dispute
+            ? () => {
+                const first = cardsOf(side)[0]
+                move((a) => intoGap(a, page.chapter, sheet.id, side))
+                // The button goes with the stack: focus to the stack's top
+                // card, on the page now.
+                if (first) want.current = { card: first }
+              }
+            : undefined
         }
       />
+    )
+    // The keyboard's cursor, in the page's own flow between two paragraphs.
+    const keyCursor = (
+      <div className="merge-cursor-slot" ref={cursorRef} aria-hidden>
+        <div className="merge-cursor" />
+      </div>
     )
     body = (
       <div className="merge-body">
         {stack('local')}
         <div className="merge-page-column">
-          <div className="merge-page" ref={pageRef}>
+          <div
+            className="merge-page"
+            ref={pageRef}
+            data-place="page"
+            tabIndex={-1}
+            data-help="merge-page"
+          >
             <div className="merge-page-head">
               <span>{chapter.title}</span>
               <span>
                 {page.n} of {page.of}
               </span>
             </div>
-            {shown.map((item) => (
-              <PageItem
-                key={item.id}
-                item={item}
-                cards={chapter.cards}
-                lifted={item.kind === 'card' && dragging.has(item.id)}
-                onPress={(e, id) => press(e, [id], start)}
-                onPutBack={(id) => move((a) => putBack(a, page.chapter, id))}
-              />
+            {shown.map((item, k) => (
+              <Fragment key={item.id}>
+                {hand?.at === start + k && keyCursor}
+                <PageItem
+                  item={item}
+                  cards={chapter.cards}
+                  lifted={item.kind === 'card' && dragging.has(item.id)}
+                  held={item.kind === 'card' && holding.has(item.id)}
+                  tab={item.kind === 'card' ? tabStop('page', item.id) : -1}
+                  onPress={(e, id) => press(e, [id], start)}
+                  onPutBack={(id) => {
+                    move((a) => putBack(a, page.chapter, id))
+                    // Its button goes with it.
+                    want.current = { place: 'page' }
+                  }}
+                />
+              </Fragment>
             ))}
+            {hand?.at === start + shown.length && keyCursor}
             {drag?.target?.kind === 'page' && (
               <div className="merge-cursor" style={{ top: drag.target.bar }} aria-hidden />
             )}
@@ -451,6 +769,9 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
             <div
               className={`merge-both${drag?.target?.kind === 'stack' && chapter.cards[drag.ids[0]]?.side === 'both' ? ' hot' : ''}`}
               ref={bothRef}
+              data-place="both"
+              tabIndex={-1}
+              data-help="merge-both"
             >
               <div className="merge-stack-head">
                 <span className="merge-side">BOTH EDITS</span>
@@ -461,7 +782,10 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
                 <Card
                   key={id}
                   card={chapter.cards[id]}
+                  region="both"
                   lifted={dragging.has(id)}
+                  held={holding.has(id)}
+                  tab={tabStop('both', id)}
                   onPress={(e) => press(e, [id], start)}
                 />
               ))}
@@ -478,7 +802,15 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
     drag?.started && chapter?.kind === 'prose' ? drag.ids.map((id) => chapter.cards[id]) : []
 
   return (
-    <div className="terminal merge-screen" ref={rootRef} tabIndex={-1}>
+    <div
+      className="terminal merge-screen"
+      ref={rootRef}
+      tabIndex={-1}
+      data-help="merge-screen"
+      onKeyDown={onKeyDown}
+      onFocus={onFocus}
+      onBlur={onBlur}
+    >
       <div className="entity-main-bar merge-bar">
         <span className="entity-kind">COMBINE</span>
         <span className="row-title">Changes from two computers</span>
@@ -487,20 +819,22 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
           type="button"
           className="btn small"
           aria-label="Previous page"
+          data-help="merge-pages"
           disabled={at === 0}
-          onClick={() => setAt(at - 1)}
+          onClick={() => goTo(at - 1)}
         >
           ‹
         </button>
-        <span className="merge-page-count">
+        <span className="merge-page-count" data-help="merge-pages">
           {pages.length === 0 ? 'Nothing to arrange' : `Page ${at + 1} of ${pages.length}`}
         </span>
         <button
           type="button"
           className="btn small"
           aria-label="Next page"
+          data-help="merge-pages"
           disabled={at >= pages.length - 1}
-          onClick={() => setAt(at + 1)}
+          onClick={() => goTo(at + 1)}
         >
           ›
         </button>
@@ -514,6 +848,7 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
           type="button"
           className={`merge-drop${drag?.target?.kind === 'bin' ? ' hot' : ''}`}
           aria-expanded={trayOpen === 'bin'}
+          data-help="merge-bin"
           onClick={() => setTrayOpen(trayOpen === 'bin' ? null : 'bin')}
         >
           Bin · {binned.length}
@@ -523,6 +858,7 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
           type="button"
           className={`merge-drop${drag?.target?.kind === 'pad' ? ' hot' : ''}`}
           aria-expanded={trayOpen === 'pad'}
+          data-help="merge-pad"
           onClick={() => setTrayOpen(trayOpen === 'pad' ? null : 'pad')}
         >
           Scratch Pad · {padded.length}
@@ -531,20 +867,34 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
         <button
           type="button"
           className="btn"
+          data-help="merge-undo"
           disabled={undo.length === 0 || busy}
           onClick={() => dispatch({ type: 'undo' })}
         >
           Undo
         </button>
-        <button type="button" className="btn" disabled={busy} onClick={later}>
+        <button
+          type="button"
+          className="btn"
+          data-help="merge-later"
+          disabled={busy}
+          onClick={later}
+        >
           Later
         </button>
-        <button type="button" className="btn default" disabled={busy} onClick={() => void finish()}>
+        <button
+          ref={finishRef}
+          type="button"
+          className="btn default"
+          data-help="merge-finish"
+          disabled={busy}
+          onClick={() => void finish()}
+        >
           {busy ? 'Combining…' : left > 0 ? `Finish · ${left} to scratch pad` : 'Finish'}
         </button>
       </div>
       {trayOpen && (
-        <div className="merge-tray" inert={busy}>
+        <div className="merge-tray" inert={busy} tabIndex={-1} data-help="merge-tray">
           <div className="merge-tray-head">
             {trayOpen === 'bin'
               ? 'In the bin: kept until you finish, and in the history after.'
@@ -553,7 +903,7 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
           {trayList.length === 0 ? (
             <div className="dialog-hint">Empty.</div>
           ) : (
-            trayList.map(({ chapter: c, id }) => {
+            trayList.map(({ chapter: c, id }, k) => {
               const ch = arr[c] as ProseChapter
               const card = ch.cards[id]
               return (
@@ -564,7 +914,12 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
                   <button
                     type="button"
                     className="btn small"
-                    onClick={() => move((a) => takeOff(a, c, id, 'stack'))}
+                    data-put-back
+                    onClick={() => {
+                      move((a) => takeOff(a, c, id, 'stack'))
+                      // Its row goes with it: focus to the next one's.
+                      want.current = { tray: k }
+                    }}
                   >
                     Put back
                   </button>
@@ -575,7 +930,10 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
         </div>
       )}
       <div className={`merge-hint${error ? ' error-text' : ''}`} role={error ? 'alert' : undefined}>
-        {error ?? note ?? HINT}
+        {error ??
+          (hand
+            ? holdHint(hand.ids.length)
+            : (note ?? (focused ? (focused.key === 'clip' ? CLIP_HINT : CARD_HINT) : HINT)))}
       </div>
       {draggedCards.length > 0 && drag && (
         <div className="merge-ghost" style={{ left: drag.x, top: drag.y }} aria-hidden>
@@ -599,6 +957,8 @@ function Stack({
   ids,
   cards,
   dragging,
+  holding,
+  tabStop,
   hot,
   columnRef,
   onPress,
@@ -610,13 +970,23 @@ function Stack({
   ids: string[]
   cards: Record<string, MergeCard>
   dragging: Set<string>
+  holding: Set<string>
+  /** Whether a card (or `clip`) is this stack's one tab stop. */
+  tabStop: (key: string) => 0 | -1
   hot: boolean
   columnRef: RefObject<HTMLDivElement | null>
   onPress: (e: ReactPointerEvent, ids: string[]) => void
   onIntoGap?: () => void
 }): JSX.Element {
   return (
-    <div className={`merge-stack${hot ? ' hot' : ''}`} data-side={side} ref={columnRef}>
+    <div
+      className={`merge-stack${hot ? ' hot' : ''}`}
+      data-side={side}
+      ref={columnRef}
+      data-place={side}
+      tabIndex={-1}
+      data-help="merge-stack"
+    >
       <div className="merge-stack-head">
         <span className="merge-side">{side === 'local' ? 'LOCAL' : 'INCOMING'}</span>
         <span className="merge-when">
@@ -635,14 +1005,21 @@ function Stack({
           <Card
             key={id}
             card={cards[id]}
+            region={side}
             lifted={dragging.has(id)}
+            held={holding.has(id)}
+            tab={tabStop(id)}
             onPress={(e) => onPress(e, [id])}
-            clip={k === 0 && ids.length > 1 ? (e: ReactPointerEvent) => onPress(e, ids) : undefined}
+            clip={
+              k === 0 && ids.length > 1
+                ? { press: (e: ReactPointerEvent) => onPress(e, ids), tab: tabStop('clip') }
+                : undefined
+            }
           />
         ))}
       </div>
       {onIntoGap && ids.length > 0 && (
-        <button type="button" className="btn small" onClick={onIntoGap}>
+        <button type="button" className="btn small" data-help="merge-into-gap" onClick={onIntoGap}>
           {ids.length > 1 ? 'All into the gap' : 'Into the gap'}
         </button>
       )}
@@ -652,29 +1029,46 @@ function Stack({
 
 function Card({
   card,
+  region,
   lifted,
+  held,
+  tab,
   onPress,
   clip
 }: {
   card: MergeCard
+  region: Region
   lifted: boolean
+  /** Picked up from the keyboard. */
+  held: boolean
+  tab: 0 | -1
   onPress: (e: ReactPointerEvent) => void
   /** The paper clip on the top card of a stack, the handle for all of it. */
-  clip?: (e: ReactPointerEvent) => void
+  clip?: { press: (e: ReactPointerEvent) => void; tab: 0 | -1 }
 }): JSX.Element {
   return (
     <div
-      className={`merge-card${lifted ? ' lifted' : ''}${clip ? ' clipped' : ''}`}
+      className={`merge-card${lifted ? ' lifted' : ''}${held ? ' held' : ''}${clip ? ' clipped' : ''}`}
       data-card={card.id}
+      data-nav={region}
+      data-key={card.id}
+      tabIndex={tab}
+      data-help="merge-card"
       onPointerDown={onPress}
     >
       {clip && (
         <span
           className="merge-clip"
+          role="button"
+          aria-label="The whole stack"
           title="Drag the clip to move the whole stack, in order"
+          data-nav={region}
+          data-key="clip"
+          tabIndex={clip.tab}
+          data-help="merge-clip"
           onPointerDown={(e) => {
             e.stopPropagation()
-            clip(e)
+            clip.press(e)
           }}
         >
           <PaperClip />
@@ -708,12 +1102,16 @@ function PageItem({
   item,
   cards,
   lifted,
+  held,
+  tab,
   onPress,
   onPutBack
 }: {
   item: MergeItem
   cards: Record<string, MergeCard>
   lifted: boolean
+  held: boolean
+  tab: 0 | -1
   onPress: (e: ReactPointerEvent, id: string) => void
   onPutBack: (id: string) => void
 }): JSX.Element | null {
@@ -728,7 +1126,7 @@ function PageItem({
   }
   if (item.kind === 'gap') {
     return (
-      <div className="merge-gap" data-item>
+      <div className="merge-gap" data-item data-help="merge-gap">
         <span className="merge-tag">
           {item.before.length > 0 ? 'Before · both changed this' : 'Both computers added here'}
         </span>
@@ -744,7 +1142,7 @@ function PageItem({
   }
   if (item.kind === 'removed') {
     return (
-      <div className="merge-removed" data-item>
+      <div className="merge-removed" data-item data-help="merge-removed">
         <span className="merge-tag">Removed on {whereName(item.side)}</span>
         {item.before.map((p, k) => (
           <p key={k} className="merge-was">
@@ -763,9 +1161,13 @@ function PageItem({
   if (!card) return null
   return (
     <div
-      className={`merge-placed${lifted ? ' lifted' : ''}`}
+      className={`merge-placed${lifted ? ' lifted' : ''}${held ? ' held' : ''}`}
       data-item
       data-card={card.id}
+      data-nav="page"
+      data-key={card.id}
+      tabIndex={tab}
+      data-help="merge-placed"
       style={spaced(card.blanks)}
       onPointerDown={(e) => onPress(e, card.id)}
     >
@@ -826,7 +1228,12 @@ function ChoicePage({
         {side('local', conflict?.localBody, conflict?.localAt ?? null)}
         {side('incoming', conflict?.remoteBody, conflict?.remoteAt ?? null)}
       </div>
-      <div className="merge-choice-options" role="group" aria-label="Which to keep">
+      <div
+        className="merge-choice-options"
+        role="group"
+        aria-label="Which to keep"
+        data-help="merge-choice"
+      >
         {options.map((o) => (
           <button
             key={o.value}

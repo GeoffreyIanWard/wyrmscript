@@ -22,7 +22,8 @@ import {
 /**
  * F-51 step 4: the merge screen's state — what the writer has arranged, and
  * the moves that change it — kept pure so every rule is tested without a
- * screen. `components/MergeScreen.tsx` draws it and turns drags into moves.
+ * screen. `components/MergeScreen.tsx` draws it and turns drags, and keys
+ * (step 5), into moves.
  *
  * A conflicted file is a chapter of the arrangement. Prose both computers
  * still have (a document, story-bible entry or scrap) is laid out by
@@ -291,6 +292,55 @@ export function intoGap(
   if (!page?.dispute) return arr
   const ids = stackOf(ch, pageId, side)
   return ids.length === 0 ? arr : placeOn(arr, chapter, gapIndex(ch, page.dispute), ids)
+}
+
+/* ---------- the keyboard's cursor ---------- */
+
+/**
+ * Where on a page cards picked up from the keyboard can go, top to bottom,
+ * as indexes into the chapter's items: every boundary between the page's
+ * items, less any that would arrange the page as an earlier one does. A card
+ * on the page goes nowhere put just before or just after itself, so those
+ * two are one place, and ↓ never spends a press on no move.
+ */
+export function keySpots(ch: ProseChapter, page: MergePage, ids: string[]): number[] {
+  const { start, shown } = pageItems(ch.items, page)
+  const seen = new Set<string>()
+  const spots: number[] = []
+  for (let at = start; at <= start + shown.length; at++) {
+    const order = placeCards(ch.items, at, ids)
+      .map((i) => i.id)
+      .join('\n')
+    if (seen.has(order)) continue
+    seen.add(order)
+    spots.push(at)
+  }
+  return spots
+}
+
+/**
+ * Where the cursor starts for cards picked up from the keyboard: where the
+ * card is, for one on this page, so Return at once is no move; where it was,
+ * for a change only one side made that was taken off (the paragraph it
+ * replaced came back there); just after the gap, as All into the gap puts
+ * them, for a dispute's cards; or else the top of the page.
+ */
+export function keyStart(ch: ProseChapter, page: MergePage, ids: string[]): number {
+  const spots = keySpots(ch, page, ids)
+  const wanted = [
+    ch.items.findIndex((i) => i.kind === 'card' && i.id === ids[0]),
+    // `liftCard` names what it brings back by the card's id.
+    ch.items.findIndex((i) => i.id === `${ids[0]}.back0`),
+    page.dispute ? gapIndex(ch, page.dispute) : -1
+  ]
+  return wanted.find((at) => spots.includes(at)) ?? spots[0]
+}
+
+/** The next place up (-1) or down (1) the page; the same at its top or foot. */
+export function keyStep(spots: number[], at: number, dir: -1 | 1): number {
+  const k = spots.indexOf(at)
+  if (k === -1) return spots[0] ?? at
+  return spots[Math.max(0, Math.min(spots.length - 1, k + dir))]
 }
 
 /** The cards in the bin or on the pad, across every chapter. */

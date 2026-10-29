@@ -257,6 +257,80 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   'board-tools': {
     title: "The board's tools",
     body: 'The same scenes seen other ways — a timeline, a plot graph, your plotlines, your cast and a map — pinned here because they are the same material, not five separate features. Beside them, the tools for the board itself: Add Card, Apply Order and its Undo, String, Stack and Tidy.'
+  },
+  // The merge screen (F-51), the clip first: it is the one thing on the
+  // screen nobody would guess.
+  'merge-clip': {
+    title: 'The paper clip',
+    body: 'Holds a stack together. Drag the clip, not a card, to move every card in the stack at once and in order: onto the page, into the bin or onto the scratch pad. From the keyboard, press ↑ on the top card to reach the clip, then Return to pick up the lot.'
+  },
+  'merge-screen': {
+    title: 'Combine',
+    body: 'A chapter was changed one way on this computer and another way on your other one. Put each page back together from both: drag the cards you want onto the page, and bin or keep the rest. Nothing goes to GitHub until you finish.'
+  },
+  'merge-stack': {
+    title: 'Local and Incoming',
+    body: 'Each computer’s version of the passage, a card per paragraph, in order, with when it was written: Local is this computer’s, Incoming your other computer’s. Drag a card onto the page, or Tab to it and press Return. Cards left here go to the scratch pad when you finish.'
+  },
+  'merge-card': {
+    title: 'A card',
+    body: 'One paragraph as one computer has it. The underlined words are what that computer changed. New is a paragraph that was not there before, Restyled the same words styled differently, Cut words taken out. Drag it, or press Return to pick it up, Delete to bin it, S for the scratch pad.'
+  },
+  'merge-both': {
+    title: 'Both edits',
+    body: 'When each computer changed different words in the same paragraph, this card makes both changes at once. Nothing is combined unless you place it. Left here it is simply not used: it is only the other two cards put together.'
+  },
+  'merge-page': {
+    title: 'The page',
+    body: 'The chapter as it will read: what both computers agree on, a few paragraphs either side of the passage that needs you. It cannot be typed on here. Arrange it, and make finer changes in the manuscript once you finish.'
+  },
+  'merge-gap': {
+    title: 'The gap',
+    body: 'Where the passage both computers changed was, and how it read before either changed it, struck through. Put the cards you want just after it. The gap and the old words are gone when you finish.'
+  },
+  'merge-placed': {
+    title: 'A placed card',
+    body: 'A paragraph on the page, marked with the computer it came from; “only changed there” means one computer alone changed it, so it was placed for you. It stays a card until you finish: drag it again, or back to its stack, the bin or the scratch pad.'
+  },
+  'merge-removed': {
+    title: 'Removed on one computer',
+    body: 'A paragraph one computer deleted and the other left as it was. It stays out of the chapter unless you put it back.'
+  },
+  'merge-into-gap': {
+    title: 'Into the gap',
+    body: 'Puts the whole stack on the page just after the gap, in order: the same as dragging it by its clip, without the dragging.'
+  },
+  'merge-bin': {
+    title: 'The bin',
+    body: 'Cards you do not want. They wait here until you finish, and any of them can be put back; after that their words are still in the history, which keeps both computers’ versions. Click to see what it holds.'
+  },
+  'merge-pad': {
+    title: 'The scratch pad',
+    body: 'Cards you cannot bear to bin. Each is kept as a scrap on the scratch pad in the binder, never part of the book, where its words can be copied back into the manuscript. Cards still on a stack go here too when you finish.'
+  },
+  'merge-tray': {
+    title: 'What the bin or the pad holds',
+    body: 'Every card in it, from every chapter, with the computer it came from. Put back returns a card to its stack.'
+  },
+  'merge-undo': {
+    title: 'Undo',
+    body: 'Takes back the last move on this screen, then the one before, one at a time. ⌘Z does the same. It never touches what you typed in the manuscript.'
+  },
+  'merge-later': {
+    title: 'Later',
+    body: 'Sets this screen aside and keeps your arrangement while WyrmStar is open. Your work is still saved on this computer, but nothing goes to GitHub until you finish. Resolve… in the Conflicts tab brings the screen back. Esc does the same.'
+  },
+  'merge-finish': {
+    title: 'Finish',
+    body: 'Puts each chapter together as you arranged it, in one save point that keeps both computers’ versions in the history, and syncs. Cards still on a stack go to the scratch pad, so finishing early loses nothing; the button says how many.'
+  },
+  'merge-pages': {
+    title: 'The pages',
+    body: 'One page for each passage both computers changed, chapter by chapter, and pages to look over the changes only one computer made, so nothing is combined unseen. ‹ and › turn them.'
+  },
+  'merge-choice': {
+    title: 'Keep one',
+    body: 'This is not prose to arrange — the binder, an image, or a chapter one computer deleted — so choose the version to keep. The other stays in the history.'
   }
 }
 

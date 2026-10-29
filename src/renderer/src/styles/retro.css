@@ -4163,6 +4163,55 @@ button.map-place-name {
   right: 0;
 }
 
+/* The keyboard's cursor sits in the page's flow, in a slot with no height,
+   so the margins either side of it collapse as if it were not there and the
+   paragraphs never move as it does. Its line spans what the pointer's does. */
+.merge-cursor-slot {
+  position: relative;
+  height: 0;
+}
+
+.merge-cursor-slot .merge-cursor {
+  left: -14px;
+  right: -14px;
+  top: -7px;
+}
+
+/* Picked up from the keyboard: raised off its place, words still showing,
+   while the cursor shows where it will go. */
+.merge-card.held,
+.merge-placed.held {
+  translate: -3px -3px;
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+.merge-card:focus-visible,
+.merge-placed:focus-visible {
+  outline: 2px dotted var(--ink);
+  outline-offset: 3px;
+}
+
+/* Close round the clip, which stands up into the stack's heading. */
+.merge-clip:focus-visible {
+  outline: 2px dotted var(--ink);
+  outline-offset: 1px;
+}
+
+/* The clip stands 22px proud of its card: room for it, and its focus ring,
+   under a heading that has wrapped onto two lines. */
+.merge-stack:has(.merge-clip) .merge-stack-head {
+  margin-bottom: 20px;
+}
+
+/* A place focus falls back to once its last card has gone. */
+.merge-stack:focus-visible,
+.merge-both:focus-visible,
+.merge-page:focus-visible,
+.merge-tray:focus-visible {
+  outline: 1px dashed var(--ink);
+  outline-offset: 2px;
+}
+
 .merge-both {
   align-self: center;
   width: min(100%, 360px);
