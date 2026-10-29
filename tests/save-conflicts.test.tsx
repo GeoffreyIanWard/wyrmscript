@@ -403,7 +403,7 @@ describe('a card to focus', () => {
 })
 
 describe('the drawer and the resolution screen', () => {
-  it('steps aside when conflicts come up, rather than stack two dialogs', async () => {
+  it('steps aside when conflicts come up, for the merge screen', async () => {
     cleanup()
     vi.spyOn(api, 'getStatsSettings').mockResolvedValue(DEFAULT_STATS)
     vi.spyOn(api, 'getAppearance').mockResolvedValue(DEFAULT_APPEARANCE)
@@ -417,11 +417,11 @@ describe('the drawer and the resolution screen', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^This computer:/ }))
     await waitFor(() => expect(document.querySelector('.save-drawer')).not.toBeNull())
     act(() => {
-      useWyrm.setState({ syncConflicts: CONFLICTS })
+      useWyrm.setState({ syncConflicts: CONFLICTS, conflictHeads: HEADS })
     })
     await waitFor(() => expect(document.querySelector('.save-drawer')).toBeNull())
-    expect(screen.getByText('Two Versions — Yours to Decide')).toBeTruthy()
-    // Exactly one dialog up: the resolution screen.
-    expect(document.querySelectorAll('.dialog-overlay')).toHaveLength(1)
+    // The merge screen takes the window (F-51), and no dialog is left up.
+    expect(document.querySelector('.merge-screen')).not.toBeNull()
+    expect(document.querySelectorAll('.dialog-overlay')).toHaveLength(0)
   })
 })

@@ -34,7 +34,7 @@ import { useWindowDrag } from './lib/useWindowDrag'
 import type { WindowGeometry } from '../../shared/types'
 import { SaveDrawer, type SaveDrawerTab } from './components/SaveDrawer'
 import { SaveLine } from './components/SaveLine'
-import { ConflictDialog } from './components/ConflictDialog'
+import { MergeScreen } from './components/MergeScreen'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchDialog } from './components/SearchDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -567,9 +567,9 @@ function App(): JSX.Element {
   // reaching into its DOM (F-07).
   const focusMenusRef = useRef<(() => void) | null>(null)
   const syncConflicts = useWyrm((s) => s.syncConflicts)
-  // The resolution screen and the drawer are both app-modal; when conflicts
-  // come up (Resolve…, Save Now, Sync Now), the drawer steps aside rather
-  // than leave two dialogs, and two focus traps, stacked (F-50 step 5).
+  // When conflicts come up (Resolve…, Save Now, Sync Now), the drawer steps
+  // aside for the merge screen (F-51), which takes the window: a dialog left
+  // over it would hide the screen it opened (F-50 step 5).
   useEffect(
     () =>
       useWyrm.subscribe((state, prev) => {
@@ -676,6 +676,9 @@ function App(): JSX.Element {
       // rather than Esc changing what's on screen twice in one keypress.
       if (e.key === 'Escape') {
         if (document.querySelector('.dialog-overlay')) return
+        // The merge screen's Esc is its own (Later): going back would move
+        // the view it covers, out of sight.
+        if (useWyrm.getState().syncConflicts != null) return
         // A control that uses Esc for itself — cancelling a rename, closing a
         // menu — stops it from reaching here, so one keypress never does two
         // things. Not `defaultPrevented`: ProseMirror prevents the default of
@@ -925,25 +928,45 @@ function App(): JSX.Element {
                     onToggleFocusMode={() => setFocusMode((v) => !v)}
                   >
                     <div className="window-body">
-                      {/* The corkboard replaces the manuscript view rather than
-                          sitting beside it: the binder is the manuscript as a
-                          list and the board is the same scenes as cards, so
-                          showing both at once is the same information twice.
-                          The tools pinned to the board take its place. */}
-                      {!focusMode && boardOpen === false && <Binder />}
-                      <ErrorBoundary
-                        label="Story bible"
-                        onDismiss={() => useWyrm.getState().showDoc()}
+                      {/* F-51: the merge screen covers the whole window, as
+                      the board does — it needs the width for two stacks and
+                      a page — until it is finished or set aside. What it
+                      covers stays mounted, inert: unmounted, the page's
+                      editor was gone when a merge landed (and came back with
+                      the text from before it, to be saved over the merge),
+                      and an entry's unsaved draft was thrown away. */}
+                      <div
+                        className={`window-panes${syncConflicts != null ? ' covered' : ''}`}
+                        inert={syncConflicts != null}
                       >
-                        <MainPane
-                          onTimeline={() => setTimelineOpen(true)}
-                          onPlotGraph={() => setPlotGraphOpen(true)}
-                          onPlotlines={() => setPlotlinesOpen(true)}
-                          onCharacterGraph={() => setCharacterGraphOpen(true)}
-                          onWorldMap={() => useWyrm.getState().showMap()}
-                        />
-                      </ErrorBoundary>
-                      {!focusMode && <EntityPanel />}
+                        {/* The corkboard replaces the manuscript view rather than
+                        sitting beside it: the binder is the manuscript as a
+                        list and the board is the same scenes as cards, so
+                        showing both at once is the same information twice.
+                        The tools pinned to the board take its place. */}
+                        {!focusMode && boardOpen === false && <Binder />}
+                        <ErrorBoundary
+                          label="Story bible"
+                          onDismiss={() => useWyrm.getState().showDoc()}
+                        >
+                          <MainPane
+                            onTimeline={() => setTimelineOpen(true)}
+                            onPlotGraph={() => setPlotGraphOpen(true)}
+                            onPlotlines={() => setPlotlinesOpen(true)}
+                            onCharacterGraph={() => setCharacterGraphOpen(true)}
+                            onWorldMap={() => useWyrm.getState().showMap()}
+                          />
+                        </ErrorBoundary>
+                        {!focusMode && <EntityPanel />}
+                      </div>
+                      {syncConflicts != null && (
+                        <ErrorBoundary
+                          label="Combine changes"
+                          onDismiss={() => useWyrm.getState().dismissConflicts()}
+                        >
+                          <MergeScreen />
+                        </ErrorBoundary>
+                      )}
                     </div>
                     {!focusMode && (
                       <StatusBar onOpenSaveTo={(focus, tab) => openSaveTo(tab ?? 'save', focus)} />
@@ -1167,11 +1190,6 @@ function App(): JSX.Element {
         {searchOpen && (
           <ErrorBoundary label="Find in Project" onDismiss={() => setSearchOpen(false)}>
             <SearchDialog onClose={() => setSearchOpen(false)} />
-          </ErrorBoundary>
-        )}
-        {syncConflicts != null && (
-          <ErrorBoundary label="Sync" onDismiss={() => useWyrm.getState().dismissConflicts()}>
-            <ConflictDialog />
           </ErrorBoundary>
         )}
         {versionDialog !== null && (

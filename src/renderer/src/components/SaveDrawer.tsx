@@ -25,6 +25,7 @@ import {
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { guessRemovable } from '../../../shared/removable'
 import { useWyrm } from '../store'
+import { PaperClip } from './PaperClip'
 import { BringDownPanel } from './BringDownPanel'
 import { SaveDrawerConflicts } from './SaveDrawerConflicts'
 import { SaveDrawerGitHub } from './SaveDrawerGitHub'
@@ -50,41 +51,6 @@ function tiltOf(id: string): number {
   let hash = 0
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) | 0
   return TILTS[Math.abs(hash) % TILTS.length]
-}
-
-/**
- * The paper clip on the default card, drawn in whole pixels. Four wires two
- * pixels thick with two pixels of paper between any that run side by side,
- * and a one-pixel paper outline so the clip stays clear of the card's border.
- */
-const CLIP_WIRES: [number, number, number, number][] = [
-  [4, 14, 2, 22],
-  [6, 35, 2, 2],
-  [8, 4, 2, 31],
-  [2, 2, 6, 2],
-  [0, 4, 2, 39],
-  [2, 42, 10, 2],
-  [12, 12, 2, 30]
-]
-
-function PaperClip(): JSX.Element {
-  return (
-    <svg
-      className="paper-clip"
-      width="16"
-      height="46"
-      viewBox="-1 -1 16 46"
-      shapeRendering="crispEdges"
-      aria-hidden="true"
-    >
-      {CLIP_WIRES.map(([x, y, w, h], i) => (
-        <rect key={`h${i}`} x={x - 1} y={y - 1} width={w + 2} height={h + 2} fill="var(--paper)" />
-      ))}
-      {CLIP_WIRES.map(([x, y, w, h], i) => (
-        <rect key={`w${i}`} x={x} y={y} width={w} height={h} fill="var(--ink)" />
-      ))}
-    </svg>
-  )
 }
 
 /** "Broken connection!" with the particular cause on hover or focus. */

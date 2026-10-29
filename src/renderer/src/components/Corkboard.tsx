@@ -278,7 +278,9 @@ export function Corkboard({
     if (!stickerKind) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
-      if (document.querySelector('.dialog-overlay, .sticker-picker')) return
+      // The merge screen over the board (F-51) has the Esc too: the board is
+      // out of sight beneath it.
+      if (document.querySelector('.dialog-overlay, .sticker-picker, .merge-screen')) return
       e.preventDefault()
       e.stopPropagation()
       setStickerKind(null)
@@ -302,7 +304,8 @@ export function Corkboard({
       // A dialog over the board (Add Card, the back of a card) has the Esc:
       // this listener runs first, in the capture phase, and would otherwise
       // take it, leaving the dialog impossible to close from the keyboard.
-      if (document.querySelector('.dialog-overlay')) return
+      // So does the merge screen (F-51), with the board out of sight beneath.
+      if (document.querySelector('.dialog-overlay, .merge-screen')) return
       // The label field takes its own Esc (cancel the string), below.
       if ((e.target as Element | null)?.closest?.('.string-label-input')) return
       // Stopped as well as handled: Esc is also "back", and putting the

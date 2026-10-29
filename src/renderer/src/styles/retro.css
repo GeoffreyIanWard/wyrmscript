@@ -540,6 +540,18 @@ button {
   flex: 1;
   min-height: 0;
   display: flex;
+  position: relative;
+}
+
+/* The binder, page and entity panel, as the window body's own children. The
+   merge screen covers them (F-51) without unmounting them: hidden and inert,
+   with the screen drawn over the top. */
+.window-panes {
+  display: contents;
+}
+
+.window-panes.covered {
+  visibility: hidden;
 }
 
 /* ---------- binder ---------- */
@@ -3869,6 +3881,14 @@ button.map-place-name {
   background: var(--paper);
 }
 
+/* The paper above resets `.btn:disabled`'s dither (same weight, later), which
+   left a disabled button an empty box: its label is transparent text. */
+.entity-main-bar .btn:disabled {
+  background: var(--dither-50) 0 0 / 2px 2px;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
 .entity-main-bar .row-title {
   padding: 2px 6px;
 }
@@ -3890,6 +3910,387 @@ button.map-place-name {
   overflow-y: auto;
   padding: 16px 20px 40px;
   max-width: 720px;
+}
+
+/* F-51 step 4: the merge screen. The page in the middle, a stack of cards
+   either side, the bin and the pad below. Ink and paper only, with the app's
+   hard offset shadow, so it reads in every palette. */
+.merge-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+}
+
+.merge-screen:focus {
+  outline: none;
+}
+
+.merge-page-count {
+  background: var(--paper);
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.merge-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 24px;
+  background-image: var(--dither-25);
+  background-size: 4px 4px;
+}
+
+.merge-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.merge-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 120px;
+  padding: 4px;
+}
+
+.merge-stack.hot,
+.merge-both.hot {
+  outline: 2px dashed var(--ink);
+  outline-offset: 2px;
+}
+
+.merge-stack-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.merge-side {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 1px 6px;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.merge-when {
+  background: var(--paper);
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+.merge-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.merge-card {
+  position: relative;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  padding: 10px 10px 8px;
+  font-family: var(--font-prose);
+  font-size: 13px;
+  line-height: 1.55;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.merge-card:nth-child(odd) {
+  transform: rotate(-0.6deg);
+}
+
+.merge-card:nth-child(even) {
+  transform: rotate(0.5deg);
+}
+
+.merge-card.lifted,
+.merge-placed.lifted {
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.merge-card.lifted > *,
+.merge-placed.lifted > * {
+  visibility: hidden;
+}
+
+.merge-clip {
+  position: absolute;
+  left: 12px;
+  top: -22px;
+  z-index: 2;
+  cursor: grab;
+}
+
+/* The clip's wire runs down the card's left edge: the words start clear of
+   it, so none are hidden and a press on them takes only this card. */
+.merge-card.clipped {
+  padding-left: 34px;
+}
+
+.merge-clip .paper-clip {
+  position: static;
+}
+
+.merge-card-tags {
+  display: inline-flex;
+  gap: 4px;
+  margin-right: 6px;
+}
+
+.merge-tag {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-chrome);
+  font-size: 10px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.merge-changed {
+  text-decoration: underline 2px;
+  text-underline-offset: 3px;
+}
+
+.merge-page-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.merge-page {
+  position: relative;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  padding: 12px 28px 20px;
+  min-height: 280px;
+  font-family: var(--font-prose);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.merge-page-head {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 4px;
+  margin-bottom: 12px;
+  font-family: var(--font-chrome);
+  font-size: 11px;
+}
+
+.merge-text {
+  margin: 0 0 12px;
+}
+
+.merge-gap,
+.merge-removed,
+.merge-placed {
+  position: relative;
+  margin: 16px -14px 12px;
+  padding: 14px 12px 6px;
+}
+
+.merge-gap {
+  border: 2px dashed var(--ink);
+}
+
+.merge-removed {
+  border: 2px dotted var(--ink);
+}
+
+.merge-placed {
+  border: 2px dotted var(--ink);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.merge-gap > .merge-tag,
+.merge-removed > .merge-tag,
+.merge-placed > .merge-tag {
+  position: absolute;
+  top: -9px;
+  left: 8px;
+}
+
+.merge-placed .merge-card-tags {
+  position: absolute;
+  top: -9px;
+  right: 8px;
+  margin: 0;
+}
+
+.merge-placed .merge-text,
+.merge-was {
+  margin: 0 0 6px;
+}
+
+.merge-cursor {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  height: 2px;
+  background: var(--ink);
+  pointer-events: none;
+}
+
+.merge-cursor::before,
+.merge-cursor::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  width: 2px;
+  height: 12px;
+  background: var(--ink);
+}
+
+.merge-cursor::before {
+  left: 0;
+}
+
+.merge-cursor::after {
+  right: 0;
+}
+
+.merge-both {
+  align-self: center;
+  width: min(100%, 360px);
+}
+
+.merge-empty {
+  border: 2px dashed var(--ink);
+  background: var(--paper);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.merge-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-top: 2px solid var(--ink);
+  background: var(--paper);
+}
+
+.merge-drop {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-chrome);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.merge-drop.hot {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.merge-tray {
+  border-top: 2px solid var(--ink);
+  background: var(--paper);
+  padding: 8px 12px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.merge-tray-head {
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.merge-tray-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.merge-tray-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.merge-hint {
+  padding: 4px 12px 6px;
+  font-size: 11px;
+  background: var(--paper);
+  min-height: 1.6em;
+}
+
+.merge-ghost {
+  position: fixed;
+  z-index: 400;
+  width: 260px;
+  pointer-events: none;
+  transform: translate(-24px, calc(-100% - 14px)) rotate(-1.5deg);
+}
+
+.merge-ghost .merge-card {
+  box-shadow: 6px 6px 0 var(--ink);
+  margin-bottom: 6px;
+}
+
+.merge-nothing {
+  background: var(--paper);
+  padding: 12px;
+}
+
+.merge-choice {
+  max-width: 900px;
+  margin: 0 auto;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  padding: 14px 18px;
+}
+
+.merge-choice-title {
+  margin: 0 0 6px;
+  font-family: var(--font-chrome);
+  font-size: 14px;
+}
+
+.merge-choice-sides {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  margin: 10px 0 14px;
+}
+
+.merge-choice-text {
+  margin: 0;
+  border: 2px solid var(--ink);
+  padding: 8px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-prose);
+  font-size: 12px;
+}
+
+.merge-choice-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* F-51: the scratch pad. Each scrap is a sheet torn from a legal pad: a
@@ -3980,7 +4381,8 @@ button.map-place-name {
 /* The page's highlight and selection, in the sheet's own two inks: without
    these the browser's yellow mark and blue selection show through, outside
    every palette. The phosphor palettes' inverse video follows below. */
-.scrap-text mark {
+.scrap-text mark,
+.merge-screen mark {
   background: var(--highlight-bg);
   color: inherit;
   box-shadow: 0 0 0 1px var(--ink);
@@ -4526,7 +4928,11 @@ button.map-place-name {
 [data-palette='green'] .scrap-text mark,
 [data-palette='amber'] .scrap-text mark,
 [data-palette='vaporwave'] .scrap-text mark,
-[data-palette='virtualwyrm'] .scrap-text mark {
+[data-palette='virtualwyrm'] .scrap-text mark,
+[data-palette='green'] .merge-screen mark,
+[data-palette='amber'] .merge-screen mark,
+[data-palette='vaporwave'] .merge-screen mark,
+[data-palette='virtualwyrm'] .merge-screen mark {
   background: var(--ink);
   color: var(--paper);
   text-shadow: none;

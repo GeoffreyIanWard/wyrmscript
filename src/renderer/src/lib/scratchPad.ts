@@ -16,6 +16,8 @@ export function scrapOrigin(scrap: Scrap): string {
       return `Kept from ${from}, as written on this computer`
     case 'incoming':
       return `Kept from ${from}, as written on your other computer`
+    case 'both':
+      return `Kept from ${from}, both computers' edits combined`
     default:
       return 'A note'
   }

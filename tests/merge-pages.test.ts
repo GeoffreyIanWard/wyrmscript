@@ -382,6 +382,11 @@ describe('cards', () => {
     for (const c of halves) expect(c.restyled).toBe(false)
   })
 
+  it('never call an ordinary edit cut: its new words are underlined instead', () => {
+    const m = lay(body('A quiet night.'), body('A still night.'), body('A quiet day.'))
+    expect(card(m, m.disputes[0].local[0])).toMatchObject({ cut: false, restyled: false })
+  })
+
   it('underline a hard break put where a space was', () => {
     const m = lay(
       body('A.', 'Line one line two.', 'D.'),
