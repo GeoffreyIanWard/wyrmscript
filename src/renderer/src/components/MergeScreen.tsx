@@ -166,9 +166,12 @@ interface Held {
  * Where focus goes once a move is drawn, since the card that had it may
  * have gone: a card, wherever it is now (in `region` first, for a clip); the
  * nth card left in a place, or the place itself once it is empty; the nth
- * Put back left in the tray; or Finish, when an answer has come back and
- * left focus nowhere. Set only where a render is sure to follow, or it
- * would wait for some later one and pull focus back from wherever it went.
+ * Put back left in the tray; Finish, when an answer has come back and left
+ * focus nowhere; or, only if the control that had focus went or was turned
+ * off (Undo with nothing left, ‹ on the first page), the first of `keep`
+ * there is, or the screen itself. Set only where a render is sure to
+ * follow, or it would wait for some later one and pull focus back from
+ * wherever it went.
  */
 type Want =
   | { card: string; region?: Region }
@@ -176,6 +179,15 @@ type Want =
   | { place: Region }
   | { tray: number }
   | { finish: true }
+  | { keep: string[] }
+
+/** Where focus stays if a control that is not a card goes: in its tray or
+ *  its place, if it was in one. */
+function keepFor(el: HTMLElement): string[] {
+  if (el.closest('.merge-tray')) return ['.merge-tray [data-put-back]', '.merge-tray']
+  const place = el.closest<HTMLElement>('[data-place]')?.dataset.place
+  return place ? [`[data-place="${place}"]`] : []
+}
 
 function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }): JSX.Element {
   const [{ arr, undo }, dispatch] = useReducer(reduce, null, () => ({
@@ -291,11 +303,15 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
   // from and ⌘Z waits — the cursor is aimed at the page as it is drawn.
   const undoKey = (): void => {
     if (undo.length === 0) return
-    // The card with focus may be put somewhere else: focus goes with it.
     const el = document.activeElement
-    const { nav, key } =
-      el instanceof HTMLElement && rootRef.current?.contains(el) ? el.dataset : {}
-    if (nav && key) want.current = { card: key, region: nav as Region }
+    if (el instanceof HTMLElement && rootRef.current?.contains(el)) {
+      const { nav, key } = el.dataset
+      // The card with focus may be put somewhere else: focus goes with it.
+      // A button may go altogether (a tray's Put back, Into the gap): focus
+      // stays in the tray, or the stack, or at least on the screen.
+      if (nav && key) want.current = { card: key, region: nav as Region }
+      else want.current = { keep: keepFor(el) }
+    }
     dispatch({ type: 'undo' })
   }
   const putDown = (): void => setHeld(null)
@@ -431,8 +447,13 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
     if (e.button !== 0 || !page?.page || chapter?.kind !== 'prose' || busyRef.current) return
     e.preventDefault()
     e.stopPropagation()
-    // The pointer takes over from the keyboard.
+    // The pointer takes over from the keyboard. The default is prevented, so
+    // the card pressed is given focus here: the keys act on the card the
+    // writer last touched, never one focused before it.
     setHeld(null)
+    const el = e.currentTarget as HTMLElement
+    const { nav, key } = el.dataset
+    el.focus({ preventScroll: true })
     const ch = chapter
     const pageId = page.page.id
     const p: Drag = { chapter: page.chapter, ids, x: e.clientX, y: e.clientY, started: false }
@@ -474,6 +495,12 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
         const to = target.kind === 'stack' ? 'stack' : target.kind
         move((a) => ids.reduce((acc, id) => takeOff(acc, p.chapter, id, to, pageId), a))
       }
+      // Focus goes with the card, as it does from the keyboard: to it, on
+      // the page or a stack, or on to the next card after a bin or the pad.
+      // (A started drag always draws again, as it ends.)
+      if (target.kind === 'page' || target.kind === 'stack') want.current = { card: ids[0] }
+      else if (nav && key)
+        want.current = { region: nav as Region, index: lists[nav as Region].indexOf(key) }
     }
     const onCancel = (): void => stop()
     document.addEventListener('pointermove', onMove)
@@ -568,6 +595,13 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
           ? 'pad'
           : null
     const step = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0
+    // Once a press: a held Return would pick up, put down and pick up again,
+    // and a held Delete or S would take card after card. Only the arrows
+    // repeat, as they do everywhere.
+    if (e.repeat && !step) {
+      if (pick || to) e.preventDefault()
+      return
+    }
     if (hand) {
       if (e.key === 'Tab') {
         setHeld(null)
@@ -629,13 +663,26 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
 
   // Focus follows a move, once it is drawn: the card that had it may have
   // gone. A button is focused only once the key that pressed it is up, or
-  // Chromium hands that key to the new button too.
+  // Chromium hands that key to the new button too — and only if focus is
+  // still lost by then, never taken back from wherever the writer put it.
   useEffect(() => {
     const w = want.current
     const root = rootRef.current
     if (!w || !root) return
     want.current = null
     const one = (selector: string): HTMLElement | null => root.querySelector(selector)
+    // Chromium drops focus to the body from a control that goes, or that is
+    // turned off while it has it.
+    const lost = (): boolean => {
+      const now = document.activeElement
+      return !now || now === document.body || (now instanceof HTMLButtonElement && now.disabled)
+    }
+    const settle = (el: HTMLElement | null): void => {
+      if (!el || !lost()) return
+      afterKeysUp(() => {
+        if (lost()) el.focus()
+      })
+    }
     if ('card' in w) {
       const el =
         (w.region ? one(`[data-nav="${w.region}"][data-key="${w.card}"]`) : null) ??
@@ -655,12 +702,11 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
       one(`[data-place="${w.place}"]`)?.focus()
     } else if ('tray' in w) {
       const rows = root.querySelectorAll<HTMLElement>('[data-put-back]')
-      const el = rows[Math.min(w.tray, rows.length - 1)] ?? one('.merge-tray')
-      if (el) afterKeysUp(() => el.focus())
+      settle(rows[Math.min(w.tray, rows.length - 1)] ?? one('.merge-tray'))
+    } else if ('keep' in w) {
+      settle(w.keep.map(one).find((e) => e != null) ?? root)
     } else {
-      const now = document.activeElement
-      if (now && now !== document.body) return
-      afterKeysUp(() => finishRef.current?.focus())
+      settle(finishRef.current)
     }
   })
 
@@ -821,7 +867,11 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
           aria-label="Previous page"
           data-help="merge-pages"
           disabled={at === 0}
-          onClick={() => goTo(at - 1)}
+          onClick={() => {
+            goTo(at - 1)
+            // Turned off on the first page, which drops its focus.
+            want.current = { keep: [] }
+          }}
         >
           ‹
         </button>
@@ -834,7 +884,10 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
           aria-label="Next page"
           data-help="merge-pages"
           disabled={at >= pages.length - 1}
-          onClick={() => goTo(at + 1)}
+          onClick={() => {
+            goTo(at + 1)
+            want.current = { keep: [] }
+          }}
         >
           ›
         </button>
@@ -869,7 +922,11 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
           className="btn"
           data-help="merge-undo"
           disabled={undo.length === 0 || busy}
-          onClick={() => dispatch({ type: 'undo' })}
+          onClick={() => {
+            dispatch({ type: 'undo' })
+            // Turned off once nothing is left to undo, which drops its focus.
+            want.current = { keep: [] }
+          }}
         >
           Undo
         </button>
@@ -1046,16 +1103,16 @@ function Card({
   /** The paper clip on the top card of a stack, the handle for all of it. */
   clip?: { press: (e: ReactPointerEvent) => void; tab: 0 | -1 }
 }): JSX.Element {
-  return (
-    <div
-      className={`merge-card${lifted ? ' lifted' : ''}${held ? ' held' : ''}${clip ? ' clipped' : ''}`}
-      data-card={card.id}
-      data-nav={region}
-      data-key={card.id}
-      tabIndex={tab}
-      data-help="merge-card"
-      onPointerDown={onPress}
-    >
+  const props = {
+    className: `merge-card${lifted ? ' lifted' : ''}${held ? ' held' : ''}${clip ? ' clipped' : ''}`,
+    'data-card': card.id,
+    'data-nav': region,
+    'data-key': card.id,
+    tabIndex: tab,
+    onPointerDown: onPress
+  }
+  const face = (
+    <>
       {clip && (
         <span
           className="merge-clip"
@@ -1076,6 +1133,18 @@ function Card({
       )}
       <CardTags card={card} />
       <Runs runs={card.runs} />
+    </>
+  )
+  // The Both edits card is not one computer's paragraph, and says so. The
+  // help ids are written out, not computed: guided help's drift guard reads
+  // the source for literal `data-help="…"` strings.
+  return card.side === 'both' ? (
+    <div {...props} data-help="merge-both">
+      {face}
+    </div>
+  ) : (
+    <div {...props} data-help="merge-card">
+      {face}
     </div>
   )
 }

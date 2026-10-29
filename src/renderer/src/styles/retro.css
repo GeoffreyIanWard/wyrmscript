@@ -4169,6 +4169,9 @@ button.map-place-name {
 .merge-cursor-slot {
   position: relative;
   height: 0;
+  /* The line is drawn above the slot: scrolled into view flush with the
+     top, it would be out of sight. Room for it and a line of context. */
+  scroll-margin: 40px 0;
 }
 
 .merge-cursor-slot .merge-cursor {

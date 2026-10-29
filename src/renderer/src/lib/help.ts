@@ -278,7 +278,7 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'merge-both': {
     title: 'Both edits',
-    body: 'When each computer changed different words in the same paragraph, this card makes both changes at once. Nothing is combined unless you place it. Left here it is simply not used: it is only the other two cards put together.'
+    body: 'When each computer changed different words in the same paragraph, this card makes both changes at once, and underlines both. Nothing is combined unless you place it: drag it onto the page, or Tab to it and press Return. Left here it is simply not used: it is only the other two cards put together.'
   },
   'merge-page': {
     title: 'The page',
