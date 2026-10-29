@@ -15,7 +15,6 @@ import type {
 } from '../../shared/types'
 import { author, commitAll, commitMerge } from './git'
 import { mergedMapsOf, withMaps, withMergedMaps } from './mergeMaps'
-import { isPlainId } from './plainId'
 import { scrapFileText, scrapRepoPath } from './scratch'
 
 /**
@@ -173,9 +172,35 @@ function detail(e: unknown): string {
  * the history cannot say.
  */
 async function lastChangedAt(dir: string, ref: string, filepath: string): Promise<number | null> {
+  // Walked by hand, as git simplifies history: from each commit, on to a
+  // parent whose copy of the file is the same, and the first commit with no
+  // such parent is the one that changed it. isomorphic-git's `log` with a
+  // file compares each commit with whichever one it visited before, not with
+  // its own parents, so a merge carrying the other side's words was reported
+  // as when they were written — hours newer than they were.
+  let oid = await resolveOrNull(dir, ref)
+  for (let step = 0; oid != null && step < 5000; step++) {
+    const { commit } = await git.readCommit({ fs, dir, oid }).catch(() => ({ commit: null }))
+    if (!commit) return null
+    const mine = await fileOid(dir, oid, filepath)
+    let next: string | null = null
+    for (const parent of commit.parent) {
+      if ((await fileOid(dir, parent, filepath)) === mine) {
+        next = parent
+        break
+      }
+    }
+    if (next == null)
+      return mine == null && commit.parent.length === 0 ? null : commit.committer.timestamp * 1000
+    oid = next
+  }
+  return null
+}
+
+/** The blob id of a file at a commit, or null when it is not there. */
+async function fileOid(dir: string, commit: string, filepath: string): Promise<string | null> {
   try {
-    const [entry] = await git.log({ fs, dir, ref, filepath, depth: 1, force: true })
-    return entry ? entry.commit.committer.timestamp * 1000 : null
+    return (await git.readBlob({ fs, dir, oid: commit, filepath })).oid
   } catch {
     return null
   }
@@ -924,6 +949,8 @@ async function describeAll(
 }
 
 const RESOLUTIONS = new Set(['mine', 'theirs', 'both', 'arranged'])
+/** A scrap id as the app mints them (base 36), with room to spare. */
+const SCRAP_ID = /^[A-Za-z0-9_-]{1,64}$/
 const isText = (v: unknown): v is string => typeof v === 'string'
 
 /**
@@ -1035,16 +1062,27 @@ export async function resolveSyncConflicts(
   // that would land on a file either side already has is refused: the pad
   // never writes over anything.
   const added = new Map<string, string>()
+  // Compared without case: the working tree is on a disk that may not tell
+  // `taken` from `TAKEN` (a Mac's, Windows'), and a scrap landing on one
+  // would write over it, or two kept in one answer would become one.
+  const taken = new Set(
+    [
+      ...(await git.listFiles({ fs, dir, ref: localHead })),
+      ...(await git.listFiles({ fs, dir, ref: remoteHead }))
+    ].map((p) => p.toLowerCase())
+  )
   for (const scrap of answer.scraps ?? []) {
-    if (!isPlainId(scrap?.id)) return { status: 'error', detail: 'Not a scrap.' }
+    // An id as the app mints one. Checked here, before anything is written:
+    // a name the disk refuses would fail halfway through the merge and leave
+    // the folder half-combined.
+    if (typeof scrap?.id !== 'string' || !SCRAP_ID.test(scrap.id)) {
+      return { status: 'error', detail: 'Not a scrap.' }
+    }
     const filepath = scrapRepoPath(scrap.id)
-    if (
-      added.has(filepath) ||
-      (await blobAt(dir, localHead, filepath)) != null ||
-      (await blobAt(dir, remoteHead, filepath)) != null
-    ) {
+    if (taken.has(filepath.toLowerCase())) {
       return { status: 'error', detail: 'A scrap with that name is already on the pad.' }
     }
+    taken.add(filepath.toLowerCase())
     try {
       added.set(filepath, scrapFileText(scrap))
     } catch {

@@ -261,6 +261,34 @@ describe('while the resolution screen is up (F-51)', () => {
     expect(answered.stale).toBe(true)
   })
 
+  it('keeps the list on screen when a sync already on its way lands after the screen came up', async () => {
+    await openConnected()
+    const later = { ...CONFLICT, remoteBody: 'rewritten again' }
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    const network = vi
+      .spyOn(api, 'syncNow')
+      .mockResolvedValueOnce({ status: 'conflicts', conflicts: [CONFLICT], heads: HEADS })
+      .mockImplementationOnce(async () => {
+        await held
+        return {
+          status: 'conflicts',
+          conflicts: [later],
+          heads: { local: 'l0cal', remote: 'newer' }
+        }
+      })
+    // Save Now and Sync Now overlap: both are past the pause before either lands.
+    const first = useWyrm.getState().syncNow(true)
+    const second = useWyrm.getState().syncNow(true)
+    await first
+    expect(useWyrm.getState().conflictHeads).toEqual(HEADS)
+    release()
+    await second
+    expect(network).toHaveBeenCalledTimes(2)
+    expect(useWyrm.getState().syncConflicts).toEqual([CONFLICT])
+    expect(useWyrm.getState().conflictHeads).toEqual(HEADS)
+  })
+
   it('syncs again once the screen is answered or set aside', async () => {
     await screenUp()
     useWyrm.getState().dismissConflicts()

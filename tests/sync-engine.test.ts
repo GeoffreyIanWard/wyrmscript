@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomBytes } from 'node:crypto'
 import { promises as fsp } from 'node:fs'
 import fs from 'node:fs'
@@ -1536,6 +1536,35 @@ describe('the merge screen’s answer (F-51)', () => {
     }
   })
 
+  it('says when each side last changed the file, looking through merges to the edit itself', async () => {
+    // A clock the commits read, so each step has its own hour.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const at = (hour: number): number => Date.UTC(2026, 9, 28, hour)
+    try {
+      vi.setSystemTime(at(6))
+      const w = await makeWorld('Base paragraph.\n')
+      const b = await cloneB(w)
+      vi.setSystemTime(at(9))
+      await editDoc(b, w.docId, 'Base paragraph, as B had it.\n', 'B edit at nine')
+      vi.setSystemTime(at(10))
+      await fsp.writeFile(join(w.a, 'notes.txt'), 'Elsewhere.\n')
+      await commitAll(w.a, 'A, other work at ten')
+      expectStatus(await syncProject(w.a, w.transport), 'pushed')
+      vi.setSystemTime(at(12))
+      await editDoc(w.a, w.docId, 'Base paragraph, as A had it.\n', 'A edit at noon')
+      // B brings A's other work in with a clean merge, at five.
+      vi.setSystemTime(at(17))
+      expectStatus(await syncProject(b, w.transport), 'merged')
+      vi.setSystemTime(at(18))
+      const [conflict] = expectStatus(await syncProject(w.a, w.transport), 'conflicts').conflicts
+      expect(conflict.localAt).toBe(at(12))
+      // Nine, when B wrote the words — not five, when B's merge carried them.
+      expect(conflict.remoteAt).toBe(at(9))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('writes the prose as the writer arranged it, with both devices’ details merged field by field', async () => {
     const w = await makeWorld('Base paragraph.\n')
     const b = await cloneB(w)
@@ -1699,6 +1728,53 @@ describe('the merge screen’s answer (F-51)', () => {
     )
     expect(refused.detail).toMatch(/cannot be put together by hand/)
     expect((await readDoc(w.a, w.docId)).body).toBe('A keeps writing it.\n')
+  })
+
+  it('never lets a kept scrap land on another whose name differs only by case, nor two do so together', async () => {
+    const { w, outcome } = await disputed()
+    const now = new Date().toISOString()
+    // Named by another tool, or by hand: not the case the app would use.
+    await writeScrap(w.a, { id: 'Taken', body: 'Already here.\n', created: now, modified: now })
+    await commitAll(w.a, 'A scrap')
+    const latest = { ...outcome.heads, local: await git.resolveRef({ fs, dir: w.a, ref: 'HEAD' }) }
+    for (const scraps of [
+      [{ id: 'TAKEN', body: 'Over it.\n', created: now, modified: now }],
+      [
+        { id: 'abc', body: 'First kept.\n', created: now, modified: now },
+        { id: 'ABC', body: 'Second kept.\n', created: now, modified: now }
+      ]
+    ]) {
+      expectStatus(
+        await resolveSyncConflicts(
+          w.a,
+          { choices: [{ path: docPath(w), resolution: 'mine' }], pinned: latest, scraps },
+          w.transport
+        ),
+        'error'
+      )
+    }
+    expect((await listScraps(w.a)).map((s) => s.body)).toEqual(['Already here.\n'])
+  })
+
+  it('refuses a scrap name the disk would refuse before anything is written, so nothing is half-combined', async () => {
+    const { w, outcome } = await disputed()
+    const now = new Date().toISOString()
+    for (const id of ['a\u0000b', 'with space', 'x'.repeat(65), '']) {
+      expectStatus(
+        await resolveSyncConflicts(
+          w.a,
+          {
+            choices: [{ path: docPath(w), resolution: 'theirs' }],
+            pinned: outcome.heads,
+            scraps: [{ id, body: 'x\n', created: now, modified: now }]
+          },
+          w.transport
+        ),
+        'error'
+      )
+      expect((await readDoc(w.a, w.docId)).body).toBe('Base paragraph, as A had it.\n')
+      expect(await git.resolveRef({ fs, dir: w.a, ref: 'HEAD' })).toBe(outcome.heads.local)
+    }
   })
 
   it('never lets a kept scrap write over a file either device has', async () => {

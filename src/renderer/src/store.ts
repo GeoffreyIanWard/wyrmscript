@@ -2299,23 +2299,29 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // about what is waiting: keep the list rather than call it resolved.
       const reached = outcome.status !== 'offline' && outcome.status !== 'error'
       const pulled = outcome.status === 'pulled' || outcome.status === 'merged'
-      patchSliceAt(path, () => ({
+      patchSliceAt(path, (slice) => ({
         syncProblem: syncProblemOf(outcome),
-        ...(outcome.status === 'conflicts'
-          ? // The page is sacred: only a sync the writer asked for, on the
-            // novel in front, may put a dialog on screen. Anything else
-            // leaves the quiet flag and the list for the Conflicts tab.
-            interactive && here
-            ? {
-                syncConflicts: outcome.conflicts,
-                conflictHeads: outcome.heads,
-                syncNeedsAttention: false,
-                waitingConflicts: null
-              }
-            : { syncNeedsAttention: true, waitingConflicts: outcome.conflicts }
-          : reached
-            ? { syncNeedsAttention: false, waitingConflicts: null }
-            : {}),
+        ...(slice.syncConflicts
+          ? // The resolution screen came up while this sync was on its way
+            // (F-51): its list and versions are what the writer is choosing
+            // against, and stay. If this sync moved a version, the answer is
+            // refused with a fresh list, as it should be.
+            {}
+          : outcome.status === 'conflicts'
+            ? // The page is sacred: only a sync the writer asked for, on the
+              // novel in front, may put a dialog on screen. Anything else
+              // leaves the quiet flag and the list for the Conflicts tab.
+              interactive && here
+              ? {
+                  syncConflicts: outcome.conflicts,
+                  conflictHeads: outcome.heads,
+                  syncNeedsAttention: false,
+                  waitingConflicts: null
+                }
+              : { syncNeedsAttention: true, waitingConflicts: outcome.conflicts }
+            : reached
+              ? { syncNeedsAttention: false, waitingConflicts: null }
+              : {}),
         // Pulled into a novel no longer in front: re-read it when it comes
         // back, as a background sync does.
         ...(pulled && !here ? { stale: true } : {})
