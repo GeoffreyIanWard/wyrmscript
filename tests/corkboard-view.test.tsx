@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { Entity } from '../src/shared/types'
@@ -831,36 +833,220 @@ describe('strings between cards (F-46)', () => {
     )
   })
 
-  it('comes away when a pin is pulled', async () => {
+  /** The pin heads of the one string up, by which card they are in. */
+  const pins = (): SVGElement[] => [
+    ...document.querySelectorAll<SVGElement>('.board-string .board-pin')
+  ]
+  const chosen = (): boolean => document.querySelector('.board-string.chosen') != null
+  const oneString = async (): Promise<void> => {
     const [a, b] = titles()
     await clickAt(faceOf(a), 40, 30)
     await clickAt(faceOf(b), 60, 234)
     await runIt()
     await waitFor(() => expect(stringsDrawn()).toBe(1))
+  }
+
+  it('chooses a string from its pin, and takes it down on Delete (I-23)', async () => {
+    await oneString()
+    await act(async () => {
+      fireEvent.click(pins()[0], { detail: 1 })
+    })
+    // Chosen, not pulled: a click is never what takes a string down.
+    expect(stringsDrawn()).toBe(1)
+    expect(chosen()).toBe(true)
+    expect(document.activeElement).toBe(pins()[0])
+    const [a, b] = titles()
+    expect(screen.getByRole('status').textContent).toBe(
+      `Selected the string from ${a} to ${b}. Delete removes it; Esc lets go.`
+    )
 
     await act(async () => {
-      fireEvent.click(document.querySelector('.board-string .board-pin') as Element)
+      fireEvent.keyDown(document.activeElement!, { key: 'Delete' })
     })
+    await waitFor(() => expect(stringsDrawn()).toBe(0))
+    expect(await api.listBoardStrings(path)).toHaveLength(0)
+    expect(document.activeElement).toBe(faceOf(a))
+  })
 
+  it('chooses from a pin with the tool down too, and Delete reaches it from a card', async () => {
+    await oneString()
+    await act(async () => {
+      fireEvent.click(tool('String'))
+    })
+    await act(async () => {
+      fireEvent.click(pins()[1], { detail: 1 })
+    })
+    expect(stringsDrawn()).toBe(1)
+    expect(chosen()).toBe(true)
+    // Wherever focus is on the board, Delete means the chosen string; the
+    // Mac's delete key is Backspace.
+    const [, , c] = titles()
+    faceOf(c).focus()
+    // ⌘⌫ is the app's, not the string's.
+    await act(async () => {
+      fireEvent.keyDown(faceOf(c), { key: 'Backspace', metaKey: true })
+    })
+    expect(stringsDrawn()).toBe(1)
+    await act(async () => {
+      fireEvent.keyDown(faceOf(c), { key: 'Backspace' })
+    })
     await waitFor(() => expect(stringsDrawn()).toBe(0))
     expect(await api.listBoardStrings(path)).toHaveLength(0)
   })
 
-  it('leaves pins alone when the tool is down', async () => {
-    const [a, b] = titles()
-    await clickAt(faceOf(a), 40, 30)
-    await clickAt(faceOf(b), 60, 234)
+  it('lets go on Esc, without putting the tool down or going back', async () => {
+    await oneString()
+    const back = vi.fn()
+    window.addEventListener('keydown', back)
+    try {
+      await act(async () => {
+        fireEvent.click(pins()[0], { detail: 1 })
+      })
+      await act(async () => {
+        fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+      })
+      expect(chosen()).toBe(false)
+      expect(back).not.toHaveBeenCalled()
+      expect(tool('String').getAttribute('aria-pressed')).toBe('true')
+      // An Esc the board never hears, with one chosen, is still the tool's.
+      await act(async () => {
+        fireEvent.click(pins()[0], { detail: 1 })
+      })
+      await act(async () => {
+        fireEvent.keyDown(document.body, { key: 'Escape' })
+      })
+      expect(tool('String').getAttribute('aria-pressed')).toBe('false')
+      // Pressed, as a real click is: the press lets the string go.
+      await act(async () => {
+        fireEvent.pointerDown(tool('String'))
+        fireEvent.click(tool('String'))
+      })
+      expect(chosen()).toBe(false)
+      // Let go, Delete takes nothing down; the next Esc is the tool's.
+      await act(async () => {
+        fireEvent.keyDown(pins()[0], { key: 'Escape' })
+      })
+      expect(tool('String').getAttribute('aria-pressed')).toBe('false')
+      await act(async () => {
+        fireEvent.keyDown(faceOf(titles()[0]), { key: 'Delete' })
+      })
+      expect(stringsDrawn()).toBe(1)
+    } finally {
+      window.removeEventListener('keydown', back)
+    }
+  })
+
+  it('lets go when the cork is pressed, or focus leaves the board', async () => {
+    await oneString()
+    await act(async () => {
+      fireEvent.click(pins()[0], { detail: 1 })
+    })
+    await act(async () => {
+      fireEvent.pointerDown(document.querySelector('.corkboard-board')!)
+    })
+    expect(chosen()).toBe(false)
+
+    await act(async () => {
+      fireEvent.click(pins()[0], { detail: 1 })
+    })
+    // The window losing focus (Cmd-Tab) is not the writer leaving.
+    const away = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    await act(async () => {
+      fireEvent.blur(pins()[0])
+    })
+    away.mockRestore()
+    expect(chosen()).toBe(true)
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    try {
+      await act(async () => {
+        outside.focus()
+      })
+      expect(chosen()).toBe(false)
+      await act(async () => {
+        fireEvent.keyDown(faceOf(titles()[0]), { key: 'Delete' })
+      })
+      expect(stringsDrawn()).toBe(1)
+    } finally {
+      outside.remove()
+    }
+  })
+
+  it("chooses one string at a time: Tab onto another's pin lets the first go", async () => {
+    await oneString()
+    const [, b, c] = titles()
+    await clickAt(faceOf(b), 40, 30)
+    await clickAt(faceOf(c), 60, 234)
     await runIt()
-    await waitFor(() => expect(stringsDrawn()).toBe(1))
+    await waitFor(() => expect(stringsDrawn()).toBe(2))
     await act(async () => {
-      fireEvent.click(tool('String'))
+      fireEvent.click(pins()[0], { detail: 1 })
     })
-
+    expect(document.querySelectorAll('.board-string.chosen')).toHaveLength(1)
     await act(async () => {
-      fireEvent.click(document.querySelector('.board-string .board-pin') as Element)
+      pins()[2].focus()
     })
+    expect(chosen()).toBe(false)
+    // A click on the other string's pin while the first is chosen moves the
+    // choice to it, rather than letting both go.
+    await act(async () => {
+      fireEvent.click(pins()[0], { detail: 1 })
+    })
+    await act(async () => {
+      fireEvent.click(pins()[3], { detail: 1 })
+    })
+    const both = [...document.querySelectorAll('.board-string')]
+    expect(both.map((g) => g.classList.contains('chosen'))).toEqual([false, true])
+  })
 
+  it('leaves Delete to a field over the board, whatever string is chosen', async () => {
+    await oneString()
+    await act(async () => {
+      fireEvent.click(pins()[0], { detail: 1 })
+    })
+    // Opened from the keyboard (⌥⌘N), so no press lets the string go first.
+    await act(async () => {
+      useWyrm.getState().openAddCard()
+    })
+    const input = await waitFor(() => {
+      const el = document.querySelector('.dialog input') as HTMLInputElement | null
+      expect(el).toBeTruthy()
+      return el!
+    })
+    expect(chosen()).toBe(true)
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Backspace' })
+    })
     expect(stringsDrawn()).toBe(1)
+    expect(await api.listBoardStrings(path)).toHaveLength(1)
+  })
+
+  it('drags the card a pin is in, without choosing the string', async () => {
+    await oneString()
+    const pin = pins()[1]
+    await act(async () => pointer(pin, 'pointerdown', 60, 234))
+    await act(async () => pointer(pin, 'pointermove', 360, 434))
+    await act(async () => pointer(pin, 'pointerup', 360, 434))
+    await act(async () => {
+      fireEvent.click(pins()[1], { detail: 1 })
+    })
+    await waitFor(() =>
+      expect(document.querySelector('.board-string path')?.getAttribute('d')).toMatch(/ 360 434$/)
+    )
+    // The click that ends the drag is the drag's.
+    expect(chosen()).toBe(false)
+
+    // A string already chosen stays chosen through a drag from its pin.
+    await act(async () => {
+      fireEvent.click(pins()[1], { detail: 1 })
+    })
+    await act(async () => pointer(pins()[1], 'pointerdown', 360, 434))
+    await act(async () => pointer(pins()[1], 'pointermove', 400, 474))
+    await act(async () => pointer(pins()[1], 'pointerup', 400, 474))
+    await waitFor(() =>
+      expect(document.querySelector('.board-string path')?.getAttribute('d')).toMatch(/ 400 474$/)
+    )
+    expect(chosen()).toBe(true)
   })
 
   it('hides a string whose card has left the board rather than losing it', async () => {
@@ -1201,5 +1387,27 @@ describe('applying the board order to the manuscript', () => {
     expect(posOf(cardEls()[3])).toEqual({ x: '300px', y: '0px' })
 
     expect(tool('Apply Order').disabled).toBe(true)
+  })
+})
+
+describe('string styles (I-23)', () => {
+  // jsdom applies no stylesheet, so these read the rules themselves.
+  const css = readFileSync(join(__dirname, '../src/renderer/src/styles/retro.css'), 'utf8')
+  const rule = (selector: string): string => {
+    const at = css.indexOf(`${selector} {`)
+    expect(at, selector).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf('}', at))
+  }
+
+  it('lets every pin and tag take a click, tool up or down', () => {
+    // Not only `.board-strings.live`: with the tool down a pin was
+    // decoration, and nothing on the board said how to take a string down.
+    expect(rule('.board-string .board-pin')).toContain('pointer-events: auto')
+    expect(rule('button.string-label')).toContain('pointer-events: auto')
+  })
+
+  it('draws the chosen string so it can be seen which one Delete takes', () => {
+    expect(rule('.board-string.chosen path')).toMatch(/stroke-width: 4px/)
+    expect(rule('button.string-label.chosen')).toMatch(/outline: 2px solid/)
   })
 })

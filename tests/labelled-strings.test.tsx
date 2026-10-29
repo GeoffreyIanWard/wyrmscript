@@ -242,6 +242,12 @@ const write = async (text: string, k = 'Enter'): Promise<void> => {
     fireEvent.keyDown(field(), { key: k })
   })
 }
+/** A written tag chooses its string first (I-23); the second click changes it. */
+const choose = async (named: string): Promise<void> => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: `Select the ${named}` }), { detail: 1 })
+  })
+}
 /** What each tag shows on screen — not its screen-reader name. */
 const tags = (): string[] =>
   [...document.querySelectorAll('.string-label')].map(
@@ -311,6 +317,14 @@ describe('labelling a string between scenes', () => {
     expect('label' in s).toBe(false)
     // With the tool up there is room to add one; with it down, no tag.
     expect(tags()).toEqual(['+ label'])
+    // An empty tag is only there to be written on: one click opens it.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: `Label the string from ${a} to ${b}` }), {
+        detail: 1
+      })
+    })
+    expect(field().value).toBe('')
+    await write('', 'Escape')
     await toolUp()
     expect(tags()).toEqual([])
   })
@@ -342,6 +356,7 @@ describe('labelling a string between scenes', () => {
     await pinAt(a, 40, 30)
     await pinAt(b, 60, 234)
     await write('same night')
+    await choose(`string "same night" from ${a} to ${b}`)
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Change the label "same night"' }))
     })
@@ -349,6 +364,7 @@ describe('labelling a string between scenes', () => {
     await write('the morning after')
     expect((await api.listBoardStrings(path))[0].label).toBe('the morning after')
 
+    await choose(`string "the morning after" from ${a} to ${b}`)
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Change the label "the morning after"' }))
     })
@@ -362,13 +378,21 @@ describe('labelling a string between scenes', () => {
     await pinAt(a, 40, 30)
     await pinAt(b, 60, 234)
     await write('same night')
-    const tag = screen.getByRole('button', { name: 'Change the label "same night"' })
+    const tag = screen.getByRole('button', {
+      name: `Select the string "same night" from ${a} to ${b}`
+    })
     const at = tagPlace({ x: 40, y: 30 }, { x: 60, y: 234 })
     expect([parseFloat(tag.style.left), parseFloat(tag.style.top)]).toEqual([at.x, at.y])
+    // Twice, as a double-click is: the first chooses, the second opens it.
     await act(async () => {
-      fireEvent.click(tag)
+      fireEvent.click(tag, { detail: 1 })
     })
-    expect(screen.queryByRole('button', { name: 'Change the label "same night"' })).toBeNull()
+    expect(tag.getAttribute('aria-label')).toBe('Change the label "same night"')
+    await act(async () => {
+      fireEvent.click(tag, { detail: 2 })
+    })
+    expect(document.querySelector('button.string-label')).toBeNull()
+    expect(field().value).toBe('same night')
   })
 
   it('writes nothing when a label is opened and left as it was', async () => {
@@ -377,6 +401,7 @@ describe('labelling a string between scenes', () => {
     await pinAt(b, 60, 234)
     await write('same night')
     const writes = vi.spyOn(api, 'writeBoardString')
+    await choose(`string "same night" from ${a} to ${b}`)
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Change the label "same night"' }))
     })
@@ -443,19 +468,48 @@ describe('labelling a string between scenes', () => {
     expect(document.activeElement).toBe(face(a))
   })
 
-  it('shows the label as text, not a control, with the tool down', async () => {
+  it('keeps the tag a control with the tool down, out of the tab order', async () => {
     const [a, b] = scenes
     await pinAt(a, 40, 30)
     await pinAt(b, 60, 234)
     await write('same night')
     await toolUp()
     const tag = document.querySelector('.string-label') as HTMLElement
-    expect(tag.tagName).toBe('SPAN')
+    expect(tag.tagName).toBe('BUTTON')
+    expect(tag.getAttribute('tabindex')).toBe('-1')
     expect(tags()).toEqual(['same night'])
     // A screen reader hears who it joins, not a bare word.
-    expect(tag.querySelector('.sr-only')?.textContent).toBe(
-      `"same night", a string between ${a} and ${b}`
-    )
+    expect(tag.getAttribute('aria-label')).toBe(`Select the string "same night" from ${a} to ${b}`)
+    // Tool down, a click chooses its string, and a second changes the label.
+    await choose(`string "same night" from ${a} to ${b}`)
+    expect(document.querySelector('.board-string.chosen')).toBeTruthy()
+    expect(document.activeElement).toBe(tag)
+    await act(async () => {
+      fireEvent.click(tag, { detail: 1 })
+    })
+    expect(field().value).toBe('same night')
+    expect(document.querySelector('.board-string.chosen')).toBeNull()
+  })
+
+  it('takes the string down from its tag: click it, then Delete', async () => {
+    const [a, b] = scenes
+    await pinAt(a, 40, 30)
+    await pinAt(b, 60, 234)
+    await write('same night')
+    await toolUp()
+    // An unchosen tag's Delete is not a string's: only a chosen one is taken.
+    const tag = document.querySelector('.string-label') as HTMLElement
+    await act(async () => {
+      fireEvent.keyDown(tag, { key: 'Delete' })
+    })
+    expect(await api.listBoardStrings(path)).toHaveLength(1)
+    await choose(`string "same night" from ${a} to ${b}`)
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement!, { key: 'Delete' })
+    })
+    await waitFor(async () => expect(await api.listBoardStrings(path)).toEqual([]))
+    expect(document.querySelectorAll('.board-string')).toHaveLength(0)
+    expect(document.activeElement).toBe(face(a))
   })
 })
 
@@ -486,8 +540,9 @@ describe('a string between two characters is a relationship', () => {
     // jsdom's single column puts Marten below Elara.
     expect(tags()[0]).toBe('sister of ↓')
     const tag = document.querySelector('.string-label') as HTMLElement
-    expect(tag.querySelector('[aria-hidden="true"]')).toBeTruthy()
-    expect(tag.querySelector('.sr-only')?.textContent).toBe('Elara Voss is "sister of" Marten')
+    expect(tag.getAttribute('aria-label')).toBe(
+      'Select the relationship "sister of" from Elara Voss to Marten'
+    )
     // Nothing was written to the board's own strings to show it.
     expect(await api.listBoardStrings(path)).toEqual([])
   })
@@ -528,6 +583,37 @@ describe('a string between two characters is a relationship', () => {
     )
   })
 
+  it('leaves Backspace to a field still open, with a string chosen', async () => {
+    await renderBoard()
+    await toolUp()
+    await waitFor(() =>
+      expect(document.querySelectorAll('.board-string.relationship')).toHaveLength(1)
+    )
+    // The other way round: a new relationship, waiting for its name.
+    await pinAt('Marten', 20, 300)
+    await pinAt('Elara Voss', 20, 20)
+    const input = field()
+    // The string already up is chosen, and the unnamed one stays open.
+    const pin = document.querySelector('.board-string.relationship .board-pin') as SVGElement
+    await act(async () => {
+      fireEvent.pointerDown(pin)
+      fireEvent.click(pin, { detail: 1 })
+    })
+    expect(document.querySelector('.board-string.chosen')).toBeTruthy()
+    expect(field()).toBe(input)
+    // Back in the field, Backspace is the field's.
+    await act(async () => {
+      fireEvent.pointerDown(input)
+      input.focus()
+    })
+    expect(document.querySelector('.board-string.chosen')).toBeTruthy()
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Backspace' })
+    })
+    expect(await api.listRelationships(path)).toHaveLength(1)
+    expect(document.querySelectorAll('.board-string.relationship')).toHaveLength(1)
+  })
+
   it('keeps an unnamed one open, saying why, when the writer clicks away', async () => {
     for (const r of await api.listRelationships(path)) await api.deleteRelationship(path, r.id)
     await renderBoard()
@@ -550,11 +636,13 @@ describe('a string between two characters is a relationship', () => {
   it('renames the relationship from its tag, in the Character Graph too', async () => {
     await renderBoard()
     await toolUp()
-    const tag = await waitFor(() =>
-      screen.getByRole('button', {
-        name: 'Change the relationship "sister of" from Elara Voss to Marten'
-      })
+    await waitFor(() =>
+      expect(document.querySelectorAll('.board-string.relationship')).toHaveLength(1)
     )
+    await choose('relationship "sister of" from Elara Voss to Marten')
+    const tag = screen.getByRole('button', {
+      name: 'Change the relationship "sister of" from Elara Voss to Marten'
+    })
     await act(async () => {
       fireEvent.click(tag)
     })
@@ -567,11 +655,13 @@ describe('a string between two characters is a relationship', () => {
   it('will not rename a relationship to nothing', async () => {
     await renderBoard()
     await toolUp()
-    const tag = await waitFor(() =>
-      screen.getByRole('button', {
-        name: 'Change the relationship "sister of" from Elara Voss to Marten'
-      })
+    await waitFor(() =>
+      expect(document.querySelectorAll('.board-string.relationship')).toHaveLength(1)
     )
+    await choose('relationship "sister of" from Elara Voss to Marten')
+    const tag = screen.getByRole('button', {
+      name: 'Change the relationship "sister of" from Elara Voss to Marten'
+    })
     await act(async () => {
       fireEvent.click(tag)
     })
@@ -617,17 +707,28 @@ describe('a string between two characters is a relationship', () => {
     await act(async () => pointer(card, 'pointerup', 650, 50))
   })
 
-  it('removes the relationship when its pin is pulled', async () => {
+  it('removes the relationship when its string is chosen and Delete pressed', async () => {
     await renderBoard()
     await toolUp()
     const pin = await waitFor(
       () =>
         screen.getAllByRole('button', {
-          name: /^Pull the relationship "sister of" from Elara Voss to Marten/
+          name: 'The relationship "sister of" from Elara Voss to Marten. Return selects it; Delete removes it, from the Character Graph too.'
         })[0]
     )
     await act(async () => {
-      fireEvent.click(pin)
+      fireEvent.click(pin, { detail: 1 })
+    })
+    // Said again, chosen, and aloud: Delete reaches into the graph.
+    expect(pin.getAttribute('aria-label')).toBe(
+      'The relationship "sister of" from Elara Voss to Marten, selected. Delete removes it, from the Character Graph too.'
+    )
+    expect(screen.getByRole('status').textContent).toBe(
+      'Selected the relationship "sister of" from Elara Voss to Marten. Delete removes it, from the Character Graph too; Esc lets go.'
+    )
+    expect(await api.listRelationships(path)).toHaveLength(1)
+    await act(async () => {
+      fireEvent.keyDown(pin, { key: 'Delete' })
     })
     await waitFor(async () => expect(await api.listRelationships(path)).toEqual([]))
     expect(document.querySelectorAll('.board-string.relationship')).toHaveLength(0)

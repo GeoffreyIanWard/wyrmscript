@@ -224,7 +224,7 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'board-string': {
     title: 'String',
-    body: 'String between cards, pin to pin, in the colour chosen beside it. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string — or press Return on each, which pins at the top. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go. After the second pin, give it a label, or Return to leave it plain. Between two characters it is a relationship, and goes in the Character Graph — so it needs a name.'
+    body: 'String between cards, pin to pin, in the colour chosen beside it. With the tool up, click a card to push a pin in where you clicked, then click a second card to run the string — or press Return on each, which pins at the top. Esc pulls a waiting pin, or puts the tool down. The string follows the cards wherever they go. After the second pin, give it a label, or Return to leave it plain. Between two characters it is a relationship, and goes in the Character Graph — so it needs a name. To remove a string, tool up or down, click one of its pins or its label and press Delete.'
   },
   'board-colour': {
     title: 'Colour',
@@ -240,11 +240,11 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'string-label': {
     title: "A string's label",
-    body: 'What the string means, on a tag at its middle. Click it with the string tool up to change it. Between two characters a string is a relationship from the Character Graph, labelled with what one is to the other, and the arrow shows which way it reads; change it here and it changes there.'
+    body: 'What the string means, on a tag at its middle. Click it to select the string: Delete then removes it, Esc lets it go, and a second click changes the label. Between two characters a string is a relationship from the Character Graph, labelled with what one is to the other, and the arrow shows which way it reads; change it or remove it here and it changes there too.'
   },
   'board-pin': {
     title: 'A pin',
-    body: 'One end of a string. While the string tool is up, click a pin to pull it and the string comes away with it — or Tab to it and press Delete. Pins stay put when the tool is down, so a card can still be dragged from under one.'
+    body: 'One end of a string. Click a pin to select its string, then press Delete to remove it, or Esc to let it go. With the string tool up, Tab reaches the pins too: Return selects, Delete removes. Drag a pin and the card it is in comes with it.'
   },
   'board-stack': {
     title: 'Stack',

@@ -313,36 +313,32 @@ describe('strings from the keyboard', () => {
     expect(screen.getByRole('status').textContent).toBe('')
   })
 
-  it('lets a pin be reached with Tab and pulled with Delete — only while the tool is up', async () => {
+  it('lets a pin be reached with Tab only while the tool is up, and Delete takes its string down', async () => {
     const [first, second] = scenes
     await press(first)
     await press(second)
     await runIt()
-    const pin = await waitFor(() =>
-      screen.getAllByRole('button', { name: `Pull the string from ${first} to ${second}` })
-    )
+    const name = `The string from ${first} to ${second}. Return selects it; Delete removes it.`
+    const pin = await waitFor(() => screen.getAllByRole('button', { name }))
     expect(pin[0].getAttribute('tabindex')).toBe('0')
 
-    // Put the tool down: the pins are decoration again — out of the tab
-    // order, not announced as buttons, and deaf to the keys.
+    // Put the tool down: out of the tab order and not announced as buttons,
+    // though a click still gives a pin focus (I-23).
     await act(async () => {
       fireEvent.click(tool('String'))
     })
     for (const p of document.querySelectorAll('.board-pin')) {
-      expect(p.getAttribute('tabindex')).toBeNull()
+      expect(p.getAttribute('tabindex')).toBe('-1')
       expect(p.getAttribute('role')).toBeNull()
       expect(p.getAttribute('aria-label')).toBeNull()
     }
-    await key(document.querySelector('.board-pin') as HTMLElement, 'Delete')
-    await key(document.querySelector('.board-pin') as HTMLElement, 'Enter')
-    expect(await api.listBoardStrings(path)).toHaveLength(1)
     await act(async () => {
       fireEvent.click(tool('String'))
     })
 
-    const again = screen.getAllByRole('button', {
-      name: `Pull the string from ${first} to ${second}`
-    })
+    // Delete on a pin with focus takes its own string, chosen or not: the
+    // keyboard's pin is drawn thickened.
+    const again = screen.getAllByRole('button', { name })
     await key(again[0] as HTMLElement, 'Delete')
     await waitFor(() => expect(document.querySelectorAll('.board-string').length).toBe(0))
     expect(await api.listBoardStrings(path)).toEqual([])
@@ -351,15 +347,15 @@ describe('strings from the keyboard', () => {
   })
 })
 
-describe('pulling a pin', () => {
-  it('answers to Return, Space and Backspace as well as Delete', async () => {
+describe('a pin from the keyboard', () => {
+  it('chooses on Return and Space, and takes down on Delete and Backspace', async () => {
     const path = await openDemo()
     const scenes = await tagScenes(path, 2)
     await renderBoard()
     await act(async () => {
       fireEvent.click(tool('String'))
     })
-    for (const k of ['Enter', ' ', 'Backspace']) {
+    for (const k of ['Delete', 'Backspace']) {
       for (const t of scenes) {
         await act(async () => {
           fireEvent.click(face(t), { detail: 0 })
@@ -368,7 +364,17 @@ describe('pulling a pin', () => {
       const field = document.querySelector('.string-label-input') as HTMLInputElement
       await key(field, 'Enter')
       await waitFor(() => expect(document.querySelectorAll('.board-string').length).toBe(1))
-      await key(document.querySelector('.board-pin') as HTMLElement, k)
+      const pin = document.querySelector('.board-pin') as HTMLElement
+      for (const choosing of ['Enter', ' ']) {
+        await key(pin, choosing)
+        expect(document.querySelector('.board-string.chosen')).toBeTruthy()
+        expect(document.querySelectorAll('.board-string').length).toBe(1)
+        // Esc lets it go, and the tool stays up for the next one.
+        await key(pin, 'Escape')
+        expect(document.querySelector('.board-string.chosen')).toBeNull()
+        expect(tool('String').getAttribute('aria-pressed')).toBe('true')
+      }
+      await key(pin, k)
       await waitFor(() => expect(document.querySelectorAll('.board-string').length).toBe(0))
     }
   })

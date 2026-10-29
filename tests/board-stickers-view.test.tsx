@@ -435,6 +435,30 @@ describe('string colours', () => {
     expect(s).toMatchObject({ label: 'twins', colour: 'yellow' })
   })
 
+  it('lets go of a chosen string on Esc before putting a sticker down', async () => {
+    await act(async () => {
+      fireEvent.click(tool('String'))
+    })
+    await string()
+    await act(async () => {
+      fireEvent.keyDown(field(), { key: 'Enter' })
+    })
+    await pick('Dot')
+    await act(async () => {
+      fireEvent.click(document.querySelector('.board-string .board-pin')!, { detail: 1 })
+    })
+    expect(document.querySelector('.board-string.chosen')).toBeTruthy()
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    })
+    expect(document.querySelector('.board-string.chosen')).toBeNull()
+    expect(tool('Sticker').classList.contains('on')).toBe(true)
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+    })
+    expect(tool('Sticker').classList.contains('on')).toBe(false)
+  })
+
   it('recolours a string already up from its tag', async () => {
     await act(async () => {
       fireEvent.click(tool('String'))
@@ -444,8 +468,12 @@ describe('string colours', () => {
       fireEvent.change(field(), { target: { value: 'echo' } })
       fireEvent.keyDown(field(), { key: 'Enter' })
     })
+    // The first click chooses the string (I-23); the second opens its tag.
     await act(async () => {
-      fireEvent.click(document.querySelector('button.string-label')!)
+      fireEvent.click(document.querySelector('button.string-label')!, { detail: 1 })
+    })
+    await act(async () => {
+      fireEvent.click(document.querySelector('button.string-label')!, { detail: 2 })
     })
     const group = screen.getByRole('radiogroup', { name: 'Colour of this string' })
     expect(group.querySelector('[aria-checked="true"]')!.getAttribute('aria-label')).toBe('Red')
@@ -677,9 +705,10 @@ describe('relationship colours', () => {
     expect(rel).toMatchObject({ label: 'sister of', colour: 'blue' })
     expect(document.querySelector('.board-string.relationship')!.classList).toContain('colour-blue')
     // From its tag: to red, which is written as no colour at all.
-    await act(async () => {
-      fireEvent.click(document.querySelector('button.string-label.relationship')!, { detail: 1 })
-    })
+    for (const detail of [1, 2])
+      await act(async () => {
+        fireEvent.click(document.querySelector('button.string-label.relationship')!, { detail })
+      })
     await act(async () => {
       fireEvent.click(swatch('Colour of this string', 'Red'))
     })
