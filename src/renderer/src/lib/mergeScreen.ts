@@ -33,7 +33,7 @@ import {
  * stack, in the bin, or on the scratch pad (`off`). Every card has a home
  * page (`home`), whose stacks it sits on when it is off the page: a
  * dispute's cards the dispute's page, a change only one side made the first
- * page that shows it.
+ * page that shows it — until the writer drops it on another page's stack.
  */
 
 export type CardPlace = 'stack' | 'bin' | 'pad'
@@ -192,19 +192,45 @@ export function placeOn(
   return withChapter(arr, chapter, (ch) => {
     const known = ids.filter((id) => ch.cards[id])
     if (known.length === 0) return ch
+    const items = placeCards(ch.items, index, known)
+    // Dropped back where they were: no move, so nothing for ⌘Z to undo.
+    const same =
+      known.every((id) => !(id in ch.off)) &&
+      items.length === ch.items.length &&
+      items.every((item, i) => item.id === ch.items[i].id)
+    if (same) return ch
     const off = { ...ch.off }
     for (const id of known) delete off[id]
-    return { ...ch, items: placeCards(ch.items, index, known), off }
+    return { ...ch, items, off }
   })
 }
 
-/** A card off the page (or moved between stack, bin and pad). Taken off the
- *  page, a change only one side made puts back what it replaced, once. */
-export function takeOff(arr: Arrangement, chapter: number, id: string, to: CardPlace): Arrangement {
+/**
+ * A card off the page (or moved between stack, bin and pad). Taken off the
+ * page, a change only one side made puts back what it replaced, once. Put on
+ * a stack from a page (`page`), it goes on that page's stack, the one it was
+ * dropped on: a card can show on two pages, and its first page may not be
+ * the one in front of the writer.
+ */
+export function takeOff(
+  arr: Arrangement,
+  chapter: number,
+  id: string,
+  to: CardPlace,
+  page?: string
+): Arrangement {
   return withChapter(arr, chapter, (ch) => {
-    if (!ch.cards[id] || (!isOn(ch, id) && ch.off[id] === to)) return ch
+    if (!ch.cards[id]) return ch
+    const rehome = to === 'stack' && page != null && ch.home[id] !== page
+    if (!isOn(ch, id) && ch.off[id] === to && !rehome) return ch
     const lifted = isOn(ch, id) ? liftCard(ch.items, ch.cards, id) : ch
-    return { ...ch, items: lifted.items, cards: lifted.cards, off: { ...ch.off, [id]: to } }
+    return {
+      ...ch,
+      items: lifted.items,
+      cards: lifted.cards,
+      off: { ...ch.off, [id]: to },
+      ...(rehome ? { home: { ...ch.home, [id]: page } } : {})
+    }
   })
 }
 
@@ -236,13 +262,19 @@ export function stackOf(ch: ProseChapter, pageId: string, side: MergeSide | 'bot
 }
 
 /** Where on the page a stack dropped "into the gap" lands: just after the
- *  gap and after any cards already placed right after it. */
+ *  gap and after the dispute's own cards already placed in it — never past a
+ *  card for the next paragraph, which belongs after the passage. */
 export function gapIndex(ch: ProseChapter, disputeId: string): number {
   const dispute = ch.merge.disputes.find((d) => d.id === disputeId)
   let at = dispute ? ch.items.findIndex((i) => i.id === dispute.gap) : -1
-  if (at === -1) return ch.items.length
+  if (!dispute || at === -1) return ch.items.length
+  const own = new Set([
+    ...dispute.local,
+    ...dispute.incoming,
+    ...(dispute.both ? [dispute.both] : [])
+  ])
   at++
-  while (at < ch.items.length && ch.items[at].kind === 'card') at++
+  while (at < ch.items.length && ch.items[at].kind === 'card' && own.has(ch.items[at].id)) at++
   return at
 }
 
@@ -394,4 +426,30 @@ export function recall(projectPath: string): Arrangement | undefined {
 
 export function forget(projectPath: string): void {
   remembered.delete(projectPath)
+  notes.delete(projectPath)
+}
+
+/**
+ * A word for the screen when it next comes up, for an answer that came back
+ * after it had gone (another novel brought forward while Finish was on its
+ * way): why it failed, or that the work changed under it. Read as the screen
+ * comes up and cleared once it is showing.
+ */
+export interface ScreenNote {
+  text: string
+  error: boolean
+}
+
+const notes = new Map<string, ScreenNote>()
+
+export function leaveNote(projectPath: string, note: ScreenNote): void {
+  notes.set(projectPath, note)
+}
+
+export function noteFor(projectPath: string): ScreenNote | undefined {
+  return notes.get(projectPath)
+}
+
+export function clearNote(projectPath: string): void {
+  notes.delete(projectPath)
 }

@@ -676,6 +676,9 @@ function App(): JSX.Element {
       // rather than Esc changing what's on screen twice in one keypress.
       if (e.key === 'Escape') {
         if (document.querySelector('.dialog-overlay')) return
+        // The merge screen's Esc is its own (Later): going back would move
+        // the view it covers, out of sight.
+        if (useWyrm.getState().syncConflicts != null) return
         // A control that uses Esc for itself — cancelling a rename, closing a
         // menu — stops it from reaching here, so one keypress never does two
         // things. Not `defaultPrevented`: ProseMirror prevents the default of
@@ -925,38 +928,44 @@ function App(): JSX.Element {
                     onToggleFocusMode={() => setFocusMode((v) => !v)}
                   >
                     <div className="window-body">
-                      {syncConflicts != null ? (
-                        // F-51: the merge screen takes the whole window, as
-                        // the board does — it needs the width for two stacks
-                        // and a page — until it is finished or set aside.
+                      {/* F-51: the merge screen covers the whole window, as
+                      the board does — it needs the width for two stacks and
+                      a page — until it is finished or set aside. What it
+                      covers stays mounted, inert: unmounted, the page's
+                      editor was gone when a merge landed (and came back with
+                      the text from before it, to be saved over the merge),
+                      and an entry's unsaved draft was thrown away. */}
+                      <div
+                        className={`window-panes${syncConflicts != null ? ' covered' : ''}`}
+                        inert={syncConflicts != null}
+                      >
+                        {/* The corkboard replaces the manuscript view rather than
+                        sitting beside it: the binder is the manuscript as a
+                        list and the board is the same scenes as cards, so
+                        showing both at once is the same information twice.
+                        The tools pinned to the board take its place. */}
+                        {!focusMode && boardOpen === false && <Binder />}
+                        <ErrorBoundary
+                          label="Story bible"
+                          onDismiss={() => useWyrm.getState().showDoc()}
+                        >
+                          <MainPane
+                            onTimeline={() => setTimelineOpen(true)}
+                            onPlotGraph={() => setPlotGraphOpen(true)}
+                            onPlotlines={() => setPlotlinesOpen(true)}
+                            onCharacterGraph={() => setCharacterGraphOpen(true)}
+                            onWorldMap={() => useWyrm.getState().showMap()}
+                          />
+                        </ErrorBoundary>
+                        {!focusMode && <EntityPanel />}
+                      </div>
+                      {syncConflicts != null && (
                         <ErrorBoundary
                           label="Combine changes"
                           onDismiss={() => useWyrm.getState().dismissConflicts()}
                         >
                           <MergeScreen />
                         </ErrorBoundary>
-                      ) : (
-                        <>
-                          {/* The corkboard replaces the manuscript view rather than
-                          sitting beside it: the binder is the manuscript as a
-                          list and the board is the same scenes as cards, so
-                          showing both at once is the same information twice.
-                          The tools pinned to the board take its place. */}
-                          {!focusMode && boardOpen === false && <Binder />}
-                          <ErrorBoundary
-                            label="Story bible"
-                            onDismiss={() => useWyrm.getState().showDoc()}
-                          >
-                            <MainPane
-                              onTimeline={() => setTimelineOpen(true)}
-                              onPlotGraph={() => setPlotGraphOpen(true)}
-                              onPlotlines={() => setPlotlinesOpen(true)}
-                              onCharacterGraph={() => setCharacterGraphOpen(true)}
-                              onWorldMap={() => useWyrm.getState().showMap()}
-                            />
-                          </ErrorBoundary>
-                          {!focusMode && <EntityPanel />}
-                        </>
                       )}
                     </div>
                     {!focusMode && (

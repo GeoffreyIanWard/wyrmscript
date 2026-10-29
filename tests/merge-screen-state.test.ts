@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import type { SyncConflict } from '../src/shared/types'
-import { bodyOf } from '../src/renderer/src/lib/mergePages'
+import { bodyOf, pageItems } from '../src/renderer/src/lib/mergePages'
 import {
   answerOf,
   arrange,
   canArrange,
   choose,
+  clearNote,
   dropIndex,
   forget,
   gapIndex,
   intoGap,
+  leaveNote,
   leftovers,
+  noteFor,
   pagesOf,
   placeOn,
   putBack,
@@ -232,6 +235,66 @@ describe('moves', () => {
     expect(takeOff(arr, 0, 'nope', 'bin')).toBe(arr)
     expect(placeOn(arr, 5, 0, ['x'])).toBe(arr)
   })
+
+  it('puts a stack into the gap before a card for the next paragraph, never after it', () => {
+    // This computer changed P1 and P2; the other changed P1 and, apart, P3,
+    // whose card sits on the page right after the gap.
+    const ps = (f: (i: number) => string): string => bodyOf([0, 1, 2, 3, 4].map(f))
+    let arr = arrange([
+      doc(
+        'documents/order.md',
+        ps((i) => `P${i}.`),
+        ps((i) => (i === 1 || i === 2 ? `P${i} mine.` : `P${i}.`)),
+        ps((i) => (i === 1 || i === 3 ? `P${i} theirs.` : `P${i}.`))
+      )
+    ])
+    const ch = prose(arr)
+    const gap = ch.items.findIndex((i) => i.kind === 'gap')
+    expect(ch.items[gap + 1]).toMatchObject({ kind: 'card' })
+    arr = intoGap(arr, 0, ch.merge.pages[0].id, 'local')
+    expect(answerOf(arr, 'now', () => 'x').choices[0]).toMatchObject({
+      body: body('P0.', 'P1 mine.', 'P2 mine.', 'P3 theirs.', 'P4.')
+    })
+  })
+
+  it('puts a card dropped on a stack on that page’s stack, though another page showed it first', () => {
+    // Two disputes (P1, P5) whose pages both show the other computer's P3.
+    const ps = (f: (i: number) => string): string =>
+      bodyOf(Array.from({ length: 9 }, (_, i) => f(i)))
+    let arr = arrange([
+      doc(
+        'documents/overlap.md',
+        ps((i) => `P${i}.`),
+        ps((i) => (i === 1 || i === 5 ? `P${i} mine.` : `P${i}.`)),
+        ps((i) => (i === 1 || i === 3 || i === 5 ? `P${i} theirs.` : `P${i}.`))
+      )
+    ])
+    const ch = prose(arr)
+    const [first, second] = ch.merge.pages
+    const only = Object.values(ch.cards).find((c) => c.only)!
+    const shows = (page: typeof first): boolean =>
+      pageItems(ch.items, page).shown.some((i) => i.id === only.id)
+    expect(shows(first) && shows(second)).toBe(true)
+    expect(ch.home[only.id]).toBe(first.id)
+    arr = takeOff(arr, 0, only.id, 'stack', second.id)
+    expect(stackOf(prose(arr), second.id, 'incoming')).toContain(only.id)
+    expect(stackOf(prose(arr), first.id, 'incoming')).not.toContain(only.id)
+    // Already there: no move.
+    expect(takeOff(arr, 0, only.id, 'stack', second.id)).toBe(arr)
+    // Put back from the bin's tray, with no page, it keeps the stack it had.
+    arr = takeOff(takeOff(arr, 0, only.id, 'bin'), 0, only.id, 'stack')
+    expect(stackOf(prose(arr), second.id, 'incoming')).toContain(only.id)
+  })
+
+  it('is no move to drop a card back where it was', () => {
+    const arr = arrange([FERRY])
+    const ch = prose(arr)
+    const at = ch.items.findIndex((i) => i.kind === 'card')
+    const id = ch.items[at].id
+    expect(placeOn(arr, 0, at, [id])).toBe(arr)
+    expect(placeOn(arr, 0, at + 1, [id])).toBe(arr)
+    expect(placeOn(arr, 0, at + 2, [id])).not.toBe(arr)
+  })
 })
 
 describe('the answer', () => {
@@ -344,5 +407,15 @@ describe('remembered while the app is open', () => {
     expect(recall('/novel')).toBe(arr)
     forget('/novel')
     expect(recall('/novel')).toBeUndefined()
+  })
+
+  it('keeps a word for the screen until it is read, and forgets it with the arrangement', () => {
+    leaveNote('/novel', { text: 'disk full', error: true })
+    expect(noteFor('/novel')).toEqual({ text: 'disk full', error: true })
+    clearNote('/novel')
+    expect(noteFor('/novel')).toBeUndefined()
+    leaveNote('/novel', { text: 'moved', error: false })
+    forget('/novel')
+    expect(noteFor('/novel')).toBeUndefined()
   })
 })

@@ -191,7 +191,8 @@ describe('deleteScrap', () => {
 describe('the pad in every palette', () => {
   it('draws highlight and selection in the palette’s inks, as the page does', async () => {
     const css = await fsp.readFile(join(__dirname, '../src/renderer/src/styles/retro.css'), 'utf8')
-    expect(css).toMatch(/^\.scrap-text mark \{/m)
+    // A rule of its own, or one it shares (the merge screen's cards).
+    expect(css).toMatch(/^\.scrap-text mark[ ,]/m)
     expect(css).toMatch(/\.scrap-text ::selection/)
     // Every palette that redraws the page's highlight redraws the pad's.
     const palettes = [...css.matchAll(/\[data-palette='([a-z-]+)'\] \.page mark/g)].map((m) => m[1])

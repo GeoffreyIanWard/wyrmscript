@@ -13,10 +13,13 @@ import {
   answerOf,
   arrange,
   choose,
+  clearNote,
   dropIndex,
   forget,
   intoGap,
+  leaveNote,
   leftovers,
+  noteFor,
   pagesOf,
   placeOn,
   putBack,
@@ -61,6 +64,11 @@ function newId(): string {
  * A fresh list while it is up (the versions moved under an answer) is laid
  * out again in place, keeping every chapter that has not changed as the
  * writer arranged it (`arrange`), and says why.
+ *
+ * App draws it over the window's own body, which stays mounted beneath it
+ * (inert), so the page keeps its editor, and anything half-typed in an entry
+ * its draft, while the writer arranges — and a merge that lands reaches the
+ * page as any sync's does.
  */
 export function MergeScreen(): JSX.Element | null {
   const project = useWyrm((s) => s.project)
@@ -121,7 +129,15 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
   const [wanted, setAt] = useState(0)
   const at = Math.min(wanted, Math.max(0, pages.length - 1))
   const [trayOpen, setTrayOpen] = useState<'bin' | 'pad' | null>(null)
-  const [note, setNote] = useState<string | null>(null)
+  // A word left by an answer that came back after the screen had gone.
+  const [note, setNote] = useState<string | null>(() => {
+    const left = noteFor(path)
+    return left && !left.error ? left.text : null
+  })
+  const [error, setError] = useState<string | null>(() => {
+    const left = noteFor(path)
+    return left?.error ? left.text : null
+  })
   // The store puts a fresh list on screen only when the versions moved under
   // an answer (a sync landing meanwhile leaves the list alone). It is laid
   // out again here, during render, as React has state follow a prop.
@@ -131,10 +147,11 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
     dispatch({ type: 'fresh', conflicts })
     setNote(MOVED)
   }
-  const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [drag, setDrag] = useState<(Drag & { target: Target | null }) | null>(null)
 
+  const rootRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const binRef = useRef<HTMLButtonElement>(null)
   const padRef = useRef<HTMLButtonElement>(null)
@@ -143,6 +160,12 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
   const bothRef = useRef<HTMLDivElement>(null)
   const pending = useRef<Drag | null>(null)
   const unlisten = useRef<(() => void) | null>(null)
+  // While Finish is on its way, nothing moves: the answer is what the screen
+  // showed when it was pressed, and a move made meanwhile would be shown and
+  // never sent. A ref as well as state, for handlers made before it changed.
+  const busyRef = useRef(false)
+  // Whether the screen is still up when an answer comes back.
+  const alive = useRef(true)
 
   // Kept while the app is open: Later, or another novel coming forward,
   // leaves what the writer arranged to come back to.
@@ -150,18 +173,36 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
     remember(path, arr)
   }, [path, arr])
 
+  useEffect(() => {
+    alive.current = true
+    // A word left for this screen has been read by now.
+    clearNote(path)
+    // The window's body is inert beneath the screen: focus left in it (the
+    // page, a field) comes here, so no key reaches what cannot be seen.
+    const root = rootRef.current
+    if (root && !root.contains(document.activeElement)) root.focus({ preventScroll: true })
+    return () => {
+      alive.current = false
+    }
+  }, [path])
+
   const move = (fn: (a: Arrangement) => Arrangement): void => {
+    if (busyRef.current) return
     setError(null)
     setNote(null)
     dispatch({ type: 'move', move: fn })
   }
 
   const later = (): void => {
+    if (busyRef.current) return
     useWyrm.getState().dismissConflicts()
   }
 
-  // ⌘Z undoes a move; Esc is Later, as it is "back" everywhere else. Both are
-  // this screen's while it is up, and nobody else's.
+  // ⌘Z undoes a move; Esc is Later, as it is "back" everywhere else (App's
+  // own Esc stands aside while the screen is up). Heard last, on the window:
+  // an open menu, guided help or a dialog takes its own Esc first and stops
+  // it. Mid-drag, Esc drops the card where it came from and ⌘Z waits — the
+  // drag is aimed at the page as it is drawn.
   const keysRef = useRef({ later, undo: () => dispatch({ type: 'undo' }) })
   useEffect(() => {
     keysRef.current = { later, undo: () => dispatch({ type: 'undo' }) }
@@ -169,24 +210,29 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (document.querySelector('.dialog-overlay')) return
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        keysRef.current.later()
-      } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        keysRef.current.undo()
+      const undoKey = (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z'
+      if (e.key !== 'Escape' && !undoKey) return
+      e.preventDefault()
+      // App's window listener may come after this one (it re-registers), and
+      // by then Later has taken the screen down and it would go back.
+      e.stopImmediatePropagation()
+      if (pending.current) {
+        if (e.key === 'Escape') unlisten.current?.()
+        return
       }
+      if (busyRef.current) return
+      if (e.key === 'Escape') keysRef.current.later()
+      else keysRef.current.undo()
     }
-    window.addEventListener('keydown', onKey, true)
+    window.addEventListener('keydown', onKey)
     return () => {
-      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('keydown', onKey)
       unlisten.current?.()
     }
   }, [])
 
   const finish = async (): Promise<void> => {
+    if (busyRef.current) return
     const blank = unchosen(arr)
     if (blank != null) {
       setAt(pages.findIndex((p) => p.chapter === blank))
@@ -194,19 +240,31 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
       return
     }
     const { choices, scraps } = answerOf(arr, new Date().toISOString(), newId)
+    busyRef.current = true
     setBusy(true)
     setError(null)
+    let failed: string | null = null
     try {
       const outcome = await useWyrm.getState().resolveConflicts(choices, scraps)
       if (outcome.status === 'merged') {
         forget(path)
       } else if (outcome.status === 'error' || outcome.status === 'offline') {
-        setError(outcome.detail)
+        failed = outcome.detail
+      } else if (outcome.status === 'conflicts' && !alive.current) {
+        // A screen that is up lays the fresh list out and says so itself.
+        leaveNote(path, { text: MOVED, error: false })
       }
     } catch (e) {
-      setError(errorMessage(e))
+      failed = errorMessage(e)
     } finally {
-      setBusy(false)
+      busyRef.current = false
+      if (alive.current) setBusy(false)
+    }
+    if (failed != null) {
+      // Said beside the buttons, or, if the screen went meanwhile, when it
+      // next comes up: a failure nobody sees is a failure the writer trusts.
+      if (alive.current) setError(failed)
+      else leaveNote(path, { text: failed, error: true })
     }
   }
 
@@ -232,6 +290,10 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
     }
     if (inside(binRef.current)) return { kind: 'bin' }
     if (inside(padRef.current)) return { kind: 'pad' }
+    // The page and stacks scroll inside the main area: past its edge (over
+    // the bars, or the foot away from the bin and pad) they are out of sight,
+    // and a drop there is on nothing.
+    if (!inside(mainRef.current)) return null
     const sheet = pageRef.current
     if (sheet && inside(sheet)) {
       const rects = [...sheet.querySelectorAll('[data-item]')].map((el) =>
@@ -260,28 +322,36 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
    * off the card is otherwise never heard. No capture is taken.
    */
   const press = (e: ReactPointerEvent, ids: string[], start: number): void => {
-    if (e.button !== 0 || !page || chapter?.kind !== 'prose') return
+    if (e.button !== 0 || !page?.page || chapter?.kind !== 'prose' || busyRef.current) return
     e.preventDefault()
     e.stopPropagation()
     const ch = chapter
+    const pageId = page.page.id
     const p: Drag = { chapter: page.chapter, ids, x: e.clientX, y: e.clientY, started: false }
     pending.current = p
+    // Where the pointer is now: the page can scroll under a still pointer.
+    let x = e.clientX
+    let y = e.clientY
+    const aim = (): void => setDrag({ ...p, x, y, target: targetAt(x, y, ch, ids, start) })
     const onMove = (ev: PointerEvent): void => {
+      x = ev.clientX
+      y = ev.clientY
       if (!p.started) {
-        if (Math.hypot(ev.clientX - p.x, ev.clientY - p.y) < 4) return
+        if (Math.hypot(x - p.x, y - p.y) < 4) return
         p.started = true
       }
-      setDrag({
-        ...p,
-        x: ev.clientX,
-        y: ev.clientY,
-        target: targetAt(ev.clientX, ev.clientY, ch, ids, start)
-      })
+      aim()
+    }
+    // A wheel scroll mid-drag sends no pointermove: aimed again, so the
+    // cursor stays under the pointer and the drop lands where it shows.
+    const onScroll = (): void => {
+      if (p.started) aim()
     }
     const stop = (): void => {
       document.removeEventListener('pointermove', onMove)
       document.removeEventListener('pointerup', onUp)
       document.removeEventListener('pointercancel', onCancel)
+      document.removeEventListener('scroll', onScroll, true)
       unlisten.current = null
       pending.current = null
       setDrag(null)
@@ -292,14 +362,16 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
       if (!target) return
       if (target.kind === 'page') move((a) => placeOn(a, p.chapter, target.index, ids))
       else {
+        // A stack on this page: the card goes on the stack it was dropped on.
         const to = target.kind === 'stack' ? 'stack' : target.kind
-        move((a) => ids.reduce((acc, id) => takeOff(acc, p.chapter, id, to), a))
+        move((a) => ids.reduce((acc, id) => takeOff(acc, p.chapter, id, to, pageId), a))
       }
     }
     const onCancel = (): void => stop()
     document.addEventListener('pointermove', onMove)
     document.addEventListener('pointerup', onUp)
     document.addEventListener('pointercancel', onCancel)
+    document.addEventListener('scroll', onScroll, true)
     unlisten.current = stop
   }
 
@@ -373,11 +445,18 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
               <div className="merge-cursor" style={{ top: drag.target.bar }} aria-hidden />
             )}
           </div>
-          {dispute?.both && both.length > 0 && (
+          {/* Drawn while the dispute offers the card, on the page or not, so
+              a placed Both edits card can be dragged back to it. */}
+          {dispute?.both && (
             <div
               className={`merge-both${drag?.target?.kind === 'stack' && chapter.cards[drag.ids[0]]?.side === 'both' ? ' hot' : ''}`}
               ref={bothRef}
             >
+              <div className="merge-stack-head">
+                <span className="merge-side">BOTH EDITS</span>
+                <span className="merge-when">Each computer’s change, in one paragraph</span>
+              </div>
+              {both.length === 0 && <div className="merge-empty">Nothing left here.</div>}
               {both.map((id) => (
                 <Card
                   key={id}
@@ -399,7 +478,7 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
     drag?.started && chapter?.kind === 'prose' ? drag.ids.map((id) => chapter.cards[id]) : []
 
   return (
-    <div className="terminal merge-screen">
+    <div className="terminal merge-screen" ref={rootRef} tabIndex={-1}>
       <div className="entity-main-bar merge-bar">
         <span className="entity-kind">COMBINE</span>
         <span className="row-title">Changes from two computers</span>
@@ -426,7 +505,9 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
           ›
         </button>
       </div>
-      <div className="merge-main">{body}</div>
+      <div className="merge-main" ref={mainRef} inert={busy}>
+        {body}
+      </div>
       <div className="merge-foot">
         <button
           ref={binRef}
@@ -450,12 +531,12 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
         <button
           type="button"
           className="btn"
-          disabled={undo.length === 0}
+          disabled={undo.length === 0 || busy}
           onClick={() => dispatch({ type: 'undo' })}
         >
           Undo
         </button>
-        <button type="button" className="btn" onClick={later}>
+        <button type="button" className="btn" disabled={busy} onClick={later}>
           Later
         </button>
         <button type="button" className="btn default" disabled={busy} onClick={() => void finish()}>
@@ -463,7 +544,7 @@ function Screen({ path, conflicts }: { path: string; conflicts: SyncConflict[] }
         </button>
       </div>
       {trayOpen && (
-        <div className="merge-tray">
+        <div className="merge-tray" inert={busy}>
           <div className="merge-tray-head">
             {trayOpen === 'bin'
               ? 'In the bin: kept until you finish, and in the history after.'
@@ -583,7 +664,7 @@ function Card({
 }): JSX.Element {
   return (
     <div
-      className={`merge-card${lifted ? ' lifted' : ''}`}
+      className={`merge-card${lifted ? ' lifted' : ''}${clip ? ' clipped' : ''}`}
       data-card={card.id}
       onPointerDown={onPress}
     >

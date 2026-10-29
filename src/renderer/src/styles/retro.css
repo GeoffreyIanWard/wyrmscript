@@ -540,6 +540,18 @@ button {
   flex: 1;
   min-height: 0;
   display: flex;
+  position: relative;
+}
+
+/* The binder, page and entity panel, as the window body's own children. The
+   merge screen covers them (F-51) without unmounting them: hidden and inert,
+   with the screen drawn over the top. */
+.window-panes {
+  display: contents;
+}
+
+.window-panes.covered {
+  visibility: hidden;
 }
 
 /* ---------- binder ---------- */
@@ -3869,6 +3881,14 @@ button.map-place-name {
   background: var(--paper);
 }
 
+/* The paper above resets `.btn:disabled`'s dither (same weight, later), which
+   left a disabled button an empty box: its label is transparent text. */
+.entity-main-bar .btn:disabled {
+  background: var(--dither-50) 0 0 / 2px 2px;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
 .entity-main-bar .row-title {
   padding: 2px 6px;
 }
@@ -3896,7 +3916,14 @@ button.map-place-name {
    either side, the bin and the pad below. Ink and paper only, with the app's
    hard offset shadow, so it reads in every palette. */
 .merge-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
   overflow: hidden;
+}
+
+.merge-screen:focus {
+  outline: none;
 }
 
 .merge-page-count {
@@ -4002,6 +4029,12 @@ button.map-place-name {
   top: -22px;
   z-index: 2;
   cursor: grab;
+}
+
+/* The clip's wire runs down the card's left edge: the words start clear of
+   it, so none are hidden and a press on them takes only this card. */
+.merge-card.clipped {
+  padding-left: 34px;
 }
 
 .merge-clip .paper-clip {
@@ -4348,7 +4381,8 @@ button.map-place-name {
 /* The page's highlight and selection, in the sheet's own two inks: without
    these the browser's yellow mark and blue selection show through, outside
    every palette. The phosphor palettes' inverse video follows below. */
-.scrap-text mark {
+.scrap-text mark,
+.merge-screen mark {
   background: var(--highlight-bg);
   color: inherit;
   box-shadow: 0 0 0 1px var(--ink);
@@ -4894,7 +4928,11 @@ button.map-place-name {
 [data-palette='green'] .scrap-text mark,
 [data-palette='amber'] .scrap-text mark,
 [data-palette='vaporwave'] .scrap-text mark,
-[data-palette='virtualwyrm'] .scrap-text mark {
+[data-palette='virtualwyrm'] .scrap-text mark,
+[data-palette='green'] .merge-screen mark,
+[data-palette='amber'] .merge-screen mark,
+[data-palette='vaporwave'] .merge-screen mark,
+[data-palette='virtualwyrm'] .merge-screen mark {
   background: var(--ink);
   color: var(--paper);
   text-shadow: none;
