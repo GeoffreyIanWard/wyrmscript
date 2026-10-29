@@ -72,7 +72,7 @@ export interface MergeCard {
   isNew: boolean
   /** The same words as the paragraph it replaced, styled differently. */
   restyled: boolean
-  /** Words the paragraph it replaced had, taken out. */
+  /** Words the paragraph it replaced had taken out, and none put in. */
   cut: boolean
   /** A change only this side made, placed on the page from the start. */
   only?: true
@@ -422,7 +422,7 @@ export function pairUp(before: string[], after: string[]): PairOp[] {
 type Mark = 'bold' | 'italic' | 'highlight'
 
 /** A paragraph's runs as the page draws it, before any change marks. */
-function styledRuns(markdown: string): CardRun[] {
+export function styledRuns(markdown: string): CardRun[] {
   const paragraph = markdownToDoc(markdown).content?.[0] as JSONContent | undefined
   const runs: CardRun[] = []
   for (const node of paragraph?.content ?? []) {
@@ -476,8 +476,8 @@ function markRuns(runs: CardRun[], changed: [number, number][]): CardRun[] {
  * A card for `para`, compared with the paragraph it replaced (`was`), or
  * with nothing when it is new. The added words are underlined — the words,
  * not the spaces at their edges — and so is a hard break that took the
- * place of a space; words the old paragraph had and this one lacks make it
- * `cut`.
+ * place of a space; a paragraph that only lost words (shortened, or split
+ * in two) is `cut`.
  */
 function makeCard(id: string, side: MergeCard['side'], para: Para, was: string | null): MergeCard {
   const styled = styledRuns(para.markdown)
@@ -495,11 +495,11 @@ function makeCard(id: string, side: MergeCard['side'], para: Para, was: string |
     }
   }
   const ranges: [number, number][] = []
-  let cut = false
+  let removed = false
   let at = 0
   for (const part of diffWordsWithSpace(plainOf(was), plainOf(para.markdown))) {
     if (part.removed) {
-      if (part.value.trim() !== '') cut = true
+      if (part.value.trim() !== '') removed = true
       continue
     }
     if (part.added) {
@@ -523,8 +523,10 @@ function makeCard(id: string, side: MergeCard['side'], para: Para, was: string |
     blanks: para.blanks,
     runs: markRuns(styled, ranges),
     isNew: false,
-    restyled: ranges.length === 0 && !cut && para.markdown !== was,
-    cut
+    restyled: ranges.length === 0 && !removed && para.markdown !== was,
+    // Only words taken out, none put in (shortened, or split in two): an
+    // edit that replaced words shows its new ones underlined instead.
+    cut: removed && ranges.length === 0
   }
 }
 

@@ -27,10 +27,9 @@ function settledWords(outcome: SyncOutcome): string {
  * (prose is the writer's to decide).
  *
  * It names what is waiting, from the last background sync that found it, and
- * Resolve… syncs again for a fresh list and opens the existing resolution
- * screen (`ConflictDialog`), which App puts up whenever `syncConflicts` is
- * set and which closes this drawer as it does. A visual merge, laying the
- * two versions out as cards to drag into place, is still being designed.
+ * Resolve… syncs again for a fresh list and opens the merge screen (F-51,
+ * `MergeScreen`), which App puts up in the window whenever `syncConflicts` is
+ * set, closing this drawer as it does.
  */
 export function SaveDrawerConflicts({ onShowGitHub }: { onShowGitHub: () => void }): JSX.Element {
   const syncStatus = useWyrm((s) => s.syncStatus)

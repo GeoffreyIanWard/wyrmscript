@@ -34,7 +34,7 @@ import { useWindowDrag } from './lib/useWindowDrag'
 import type { WindowGeometry } from '../../shared/types'
 import { SaveDrawer, type SaveDrawerTab } from './components/SaveDrawer'
 import { SaveLine } from './components/SaveLine'
-import { ConflictDialog } from './components/ConflictDialog'
+import { MergeScreen } from './components/MergeScreen'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchDialog } from './components/SearchDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -567,9 +567,9 @@ function App(): JSX.Element {
   // reaching into its DOM (F-07).
   const focusMenusRef = useRef<(() => void) | null>(null)
   const syncConflicts = useWyrm((s) => s.syncConflicts)
-  // The resolution screen and the drawer are both app-modal; when conflicts
-  // come up (Resolve…, Save Now, Sync Now), the drawer steps aside rather
-  // than leave two dialogs, and two focus traps, stacked (F-50 step 5).
+  // When conflicts come up (Resolve…, Save Now, Sync Now), the drawer steps
+  // aside for the merge screen (F-51), which takes the window: a dialog left
+  // over it would hide the screen it opened (F-50 step 5).
   useEffect(
     () =>
       useWyrm.subscribe((state, prev) => {
@@ -925,25 +925,39 @@ function App(): JSX.Element {
                     onToggleFocusMode={() => setFocusMode((v) => !v)}
                   >
                     <div className="window-body">
-                      {/* The corkboard replaces the manuscript view rather than
+                      {syncConflicts != null ? (
+                        // F-51: the merge screen takes the whole window, as
+                        // the board does — it needs the width for two stacks
+                        // and a page — until it is finished or set aside.
+                        <ErrorBoundary
+                          label="Combine changes"
+                          onDismiss={() => useWyrm.getState().dismissConflicts()}
+                        >
+                          <MergeScreen />
+                        </ErrorBoundary>
+                      ) : (
+                        <>
+                          {/* The corkboard replaces the manuscript view rather than
                           sitting beside it: the binder is the manuscript as a
                           list and the board is the same scenes as cards, so
                           showing both at once is the same information twice.
                           The tools pinned to the board take its place. */}
-                      {!focusMode && boardOpen === false && <Binder />}
-                      <ErrorBoundary
-                        label="Story bible"
-                        onDismiss={() => useWyrm.getState().showDoc()}
-                      >
-                        <MainPane
-                          onTimeline={() => setTimelineOpen(true)}
-                          onPlotGraph={() => setPlotGraphOpen(true)}
-                          onPlotlines={() => setPlotlinesOpen(true)}
-                          onCharacterGraph={() => setCharacterGraphOpen(true)}
-                          onWorldMap={() => useWyrm.getState().showMap()}
-                        />
-                      </ErrorBoundary>
-                      {!focusMode && <EntityPanel />}
+                          {!focusMode && boardOpen === false && <Binder />}
+                          <ErrorBoundary
+                            label="Story bible"
+                            onDismiss={() => useWyrm.getState().showDoc()}
+                          >
+                            <MainPane
+                              onTimeline={() => setTimelineOpen(true)}
+                              onPlotGraph={() => setPlotGraphOpen(true)}
+                              onPlotlines={() => setPlotlinesOpen(true)}
+                              onCharacterGraph={() => setCharacterGraphOpen(true)}
+                              onWorldMap={() => useWyrm.getState().showMap()}
+                            />
+                          </ErrorBoundary>
+                          {!focusMode && <EntityPanel />}
+                        </>
+                      )}
                     </div>
                     {!focusMode && (
                       <StatusBar onOpenSaveTo={(focus, tab) => openSaveTo(tab ?? 'save', focus)} />
@@ -1167,11 +1181,6 @@ function App(): JSX.Element {
         {searchOpen && (
           <ErrorBoundary label="Find in Project" onDismiss={() => setSearchOpen(false)}>
             <SearchDialog onClose={() => setSearchOpen(false)} />
-          </ErrorBoundary>
-        )}
-        {syncConflicts != null && (
-          <ErrorBoundary label="Sync" onDismiss={() => useWyrm.getState().dismissConflicts()}>
-            <ConflictDialog />
           </ErrorBoundary>
         )}
         {versionDialog !== null && (

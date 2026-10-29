@@ -593,9 +593,10 @@ export interface BoardSticker {
 /**
  * F-51: how a scrap came to be on the scratch pad. `cut` is Move to Scratch
  * Pad from the editor; `local` and `incoming` are cards kept from a merge,
- * this computer's and the other one's. A note written on the pad has none.
+ * this computer's and the other one's, and `both` the card combining both
+ * edits. A note written on the pad has none.
  */
-export const SCRAP_HOWS = ['cut', 'local', 'incoming'] as const
+export const SCRAP_HOWS = ['cut', 'local', 'incoming', 'both'] as const
 export type ScrapHow = (typeof SCRAP_HOWS)[number]
 
 /**

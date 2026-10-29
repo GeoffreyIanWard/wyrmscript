@@ -32,7 +32,7 @@ export const HELP_TOPICS: Record<string, HelpTopic> = {
   },
   'resolve-conflicts': {
     title: 'Resolve',
-    body: 'Looks again for passages changed one way here and another way on your other computer, and opens them side by side so you can choose. Nothing is lost while they wait: both versions are kept.'
+    body: 'Looks again for passages changed one way here and another way on your other computer, and opens them on the merge screen, where you put each chapter back together from both versions. Nothing is lost while they wait: both versions are kept.'
   },
   'save-removable': {
     title: 'Removable drive',
