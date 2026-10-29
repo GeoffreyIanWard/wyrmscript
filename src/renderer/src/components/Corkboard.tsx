@@ -50,15 +50,18 @@ interface Thread {
   key: string
   a: Point
   b: Point
-  /** The card the string runs from, for focus once it is pulled. */
+  /** The cards `a`'s and `b`'s pins are in: focus goes to the first once the
+   *  string is pulled, and a press on a pin drags its own card. */
   fromId: string
+  toId: string
   /** The label as written, and as shown (a relationship's has a direction). */
   text?: string
   shown?: string
-  /** What a screen reader hears for the tag with the tool down: the arrow
-   *  alone says nothing, and nothing else on the tag says who it joins. */
-  readable: string
-  pinName: string
+  /** Who it joins, for its pins, its tag and the status line: the arrow on a
+   *  tag alone says nothing, and nothing else on it says who it joins. */
+  named: string
+  /** What Delete does to it, said wherever Delete is offered. */
+  removal: string
   labelName: string
   /** Which side a short string's tag goes (`tagPlace`). */
   side?: -1 | 1
@@ -72,6 +75,15 @@ type Draft =
   | { kind: 'new'; from: StringEnd; to: StringEnd; between: 'characters' | 'cards' }
   | { kind: 'string'; id: string }
   | { kind: 'relationship'; id: string }
+
+/**
+ * Whether Esc is the chosen string's to let go of (I-23): one is chosen, and
+ * the key is headed for the board, which hears it. Anywhere else nothing on
+ * the board would, so the tool's and the sticker's Esc keep it.
+ */
+const chosenTakesEsc = (e: KeyboardEvent): boolean =>
+  document.querySelector('.board-string.chosen') != null &&
+  (e.target as Element | null)?.closest?.('.corkboard') != null
 
 const ARROWS: Record<string, Direction | undefined> = {
   ArrowUp: 'up',
@@ -281,6 +293,8 @@ export function Corkboard({
       // The merge screen over the board (F-51) has the Esc too: the board is
       // out of sight beneath it.
       if (document.querySelector('.dialog-overlay, .sticker-picker, .merge-screen')) return
+      // A chosen string is let go first, as it is with the string tool up.
+      if (chosenTakesEsc(e)) return
       e.preventDefault()
       e.stopPropagation()
       setStickerKind(null)
@@ -297,6 +311,14 @@ export function Corkboard({
   const [draft, setDraft] = useState<Draft | null>(null)
   const [draftText, setDraftText] = useState('')
   const [draftProblem, setDraftProblem] = useState<string | null>(null)
+  /**
+   * The string chosen by a click on one of its pins or its tag (I-23), with
+   * the tool up or down, the way a click chooses a shape on the map: Delete
+   * then takes it down, Esc lets it go, and a second click on its tag
+   * changes the label. Its key, not the thread: a string that goes (pulled
+   * elsewhere, or its card off the board) leaves nothing chosen.
+   */
+  const [chosen, setChosen] = useState<string | null>(null)
   useEffect(() => {
     if (!stringMode) return
     const onKey = (e: KeyboardEvent): void => {
@@ -308,6 +330,10 @@ export function Corkboard({
       if (document.querySelector('.dialog-overlay, .merge-screen')) return
       // The label field takes its own Esc (cancel the string), below.
       if ((e.target as Element | null)?.closest?.('.string-label-input')) return
+      // A chosen string is let go first, by the board's own keys (below),
+      // when the key is headed for the board: read from the page, as this
+      // listener runs before anything changes it.
+      if (chosenTakesEsc(e)) return
       // Stopped as well as handled: Esc is also "back", and putting the
       // string tool down should not also walk the writer off the board.
       e.preventDefault()
@@ -540,14 +566,6 @@ export function Corkboard({
     // where that is true. The binder is hidden in this view, so these are also
     // what replaces it.
     <div className="corkboard-tools" data-help="board-tools">
-      {/* Said aloud, not shown: the waiting pin is on screen already, but a
-          keyboard writer who pinned with Return has nothing else telling
-          them the board is waiting for a second card. */}
-      <span className="sr-only" role="status">
-        {stringMode && pending
-          ? `Pinned to ${placed.find((c) => c.id === pending.cardId)?.title ?? 'a card'}. Choose a second card to run the string, or Esc to pull the pin.`
-          : ''}
-      </span>
       <button
         type="button"
         className="board-tool"
@@ -760,7 +778,7 @@ export function Corkboard({
    * redirected the whole gesture to this wrapper and the button never saw
    * its click.
    */
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>, card: PlacedCard): void => {
+  const onPointerDown = (e: ReactPointerEvent<Element>, card: PlacedCard): void => {
     if (e.button !== 0) return
     // Cleared on every fresh press, not left standing. A drag that ends over
     // a *different* card has no click to consume it — the browser fires that
@@ -1002,12 +1020,13 @@ export function Corkboard({
           a: pts[0],
           b: pts[1],
           fromId: str.from.cardId,
+          toId: str.to.cardId,
           text: str.label,
           shown: str.label,
-          readable: `"${str.label ?? ''}", a string between ${titleOf(str.from.cardId)} and ${titleOf(str.to.cardId)}`,
           // Named for the keyboard and screen readers: a pin is otherwise
-          // only a dot, and "pull this pin" says nothing about which string.
-          pinName: `Pull the string from ${titleOf(str.from.cardId)} to ${titleOf(str.to.cardId)}`,
+          // only a dot, and "this pin" says nothing about which string.
+          named: `string${str.label ? ` "${str.label}"` : ''} from ${titleOf(str.from.cardId)} to ${titleOf(str.to.cardId)}`,
+          removal: 'Delete removes it',
           labelName: str.label
             ? `Change the label "${str.label}"`
             : `Label the string from ${titleOf(str.from.cardId)} to ${titleOf(str.to.cardId)}`,
@@ -1026,10 +1045,11 @@ export function Corkboard({
       b,
       side,
       fromId: rel.fromId,
+      toId: rel.toId,
       text: rel.label,
       shown: directedLabel(rel.label, a, b),
-      readable: `${titleOf(rel.fromId)} is "${rel.label}" ${titleOf(rel.toId)}`,
-      pinName: `Pull the relationship "${rel.label}" from ${titleOf(rel.fromId)} to ${titleOf(rel.toId)}. It leaves the Character Graph too.`,
+      named: `relationship "${rel.label}" from ${titleOf(rel.fromId)} to ${titleOf(rel.toId)}`,
+      removal: 'Delete removes it, from the Character Graph too',
       labelName: `Change the relationship "${rel.label}" from ${titleOf(rel.fromId)} to ${titleOf(rel.toId)}`,
       pull: () => deleteRelationship(rel),
       edit: { kind: 'relationship' as const, id: rel.id },
@@ -1037,6 +1057,66 @@ export function Corkboard({
       colour: colourOf(rel)
     }))
   ]
+
+  const chosenThread = threads.find((t) => t.key === chosen) ?? null
+
+  /**
+   * A press on a pin or a tag chooses its string, and takes focus with it,
+   * so the board's keys hear Delete and Esc whatever the pointer pressed.
+   */
+  const choose = (t: Thread, el: HTMLElement | SVGElement): void => {
+    // Focus first: its own handler lets go of any other string, and must
+    // not undo this choice by running after it.
+    el.focus()
+    setChosen(t.key)
+  }
+
+  /** Tab onto another string's pin or tag: only one string is ever chosen. */
+  const letGoOfOthers = (t: Thread): void => {
+    if (chosen != null && chosen !== t.key) setChosen(null)
+  }
+
+  const removeThread = (t: Thread): void => {
+    setChosen(null)
+    // The pin or tag is about to go, and focus with it to <body>: land on
+    // the card the string ran from instead.
+    faceOf(t.fromId)?.focus()
+    void t.pull()
+  }
+
+  /**
+   * The board's own keys, heard wherever focus is on it — a click on a pin
+   * with the tool down gives it focus, but on a card or a tool the chosen
+   * string is still the one Delete means, as on the map (I-19).
+   */
+  const onBoardKey = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const target = e.target as Element
+    // A field, a dialog or the picker over the board has its own keys.
+    if (
+      target.closest?.(
+        'input, textarea, [contenteditable="true"], .dialog-overlay, .sticker-picker'
+      )
+    )
+      return
+    if (e.key === 'Escape' && chosenThread) {
+      // Stopped as well as handled: Esc is also "back", and letting go of a
+      // string should not also walk the writer off the board.
+      e.preventDefault()
+      e.stopPropagation()
+      setChosen(null)
+      return
+    }
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return
+    if (e.metaKey || e.ctrlKey || e.altKey) return
+    // A pin with focus means its own string, chosen or not — it is drawn
+    // thickened — and anywhere else, the chosen one.
+    const key = target.closest?.('.board-pin')?.getAttribute('data-thread') ?? chosen
+    const t = threads.find((x) => x.key === key)
+    if (!t) return
+    e.preventDefault()
+    e.stopPropagation()
+    removeThread(t)
+  }
 
   /** Where the label field sits, and the string it belongs to. */
   const draftAt = ((): { a: Point; b: Point } | null => {
@@ -1177,8 +1257,34 @@ export function Corkboard({
         if (e.target !== e.currentTarget && e.target !== boardEl.current) return
         void createBoardSticker(stickerKind, colour, onCork(boardPoint(e)))
       }}
+      onKeyDown={onBoardKey}
+      // A press anywhere but on a string lets go of the chosen one: the cork,
+      // a card, a tool.
+      onPointerDownCapture={(e) => {
+        if (!(e.target as Element).closest?.('.board-pin, .string-label, .string-label-field'))
+          setChosen(null)
+      }}
+      // So does focus leaving the board — but not the window losing it
+      // (Cmd-Tab, a menu), which is not the writer going anywhere.
+      onBlur={(e) => {
+        const to = e.relatedTarget
+        if (to instanceof Node && e.currentTarget.contains(to)) return
+        if (to == null && !document.hasFocus()) return
+        setChosen(null)
+      }}
     >
       {tools}
+      {/* Said aloud, not shown: the waiting pin and the chosen string are on
+          screen already, but a keyboard writer who pinned with Return has
+          nothing else telling them the board is waiting for a second card,
+          nor anyone what Delete will do. */}
+      <span className="sr-only" role="status">
+        {chosenThread
+          ? `Selected the ${chosenThread.named}. ${chosenThread.removal}; Esc lets go.`
+          : stringMode && pending
+            ? `Pinned to ${placed.find((c) => c.id === pending.cardId)?.title ?? 'a card'}. Choose a second card to run the string, or Esc to pull the pin.`
+            : ''}
+      </span>
       <div
         className={`corkboard-board${stacked ? ' stacked' : ''}${stringMode ? ' stringing' : ''}${stickerKind ? ' sticking' : ''}`}
         ref={boardEl}
@@ -1322,8 +1428,8 @@ export function Corkboard({
         ))}
         {/* The strings, drawn over the cards. The layer itself takes no
             pointer events, so cards under it still drag; only the pin heads
-            do, and only while the string tool is up, so a pin can be pulled
-            without a pin being something you can accidentally pull. */}
+            do, tool up or down, and a click on one only chooses its string
+            (I-23) — taking it down is Delete, never a slip of the pointer. */}
         <svg
           className={`board-strings${stringMode ? ' live' : ''}`}
           aria-hidden={!stringMode}
@@ -1333,7 +1439,7 @@ export function Corkboard({
           {threads.map((t) => (
             <g
               key={t.key}
-              className={`board-string colour-${t.colour}${t.relationship ? ' relationship' : ''}`}
+              className={`board-string colour-${t.colour}${t.relationship ? ' relationship' : ''}${chosenThread === t ? ' chosen' : ''}`}
               role="listitem"
             >
               <path d={stringPath(t.a, t.b)} />
@@ -1342,32 +1448,47 @@ export function Corkboard({
                   key={i}
                   className="board-pin"
                   data-help="board-pin"
+                  data-thread={t.key}
                   cx={pt.x}
                   cy={pt.y}
                   r={5}
-                  // Reachable from the keyboard only while the tool is up, as
-                  // they are clickable only then: with it down, pins are
-                  // decoration and a card under one must stay easy to reach.
-                  tabIndex={stringMode ? 0 : undefined}
+                  // In the tab order only while the tool is up, where the
+                  // keyboard works the strings; with it down Tab goes card to
+                  // card, but a pin still takes the focus a click gives it, so
+                  // the Delete after the click reaches its string.
+                  tabIndex={stringMode ? 0 : -1}
                   role={stringMode ? 'button' : undefined}
-                  aria-label={stringMode ? t.pinName : undefined}
-                  onClick={() => {
-                    if (stringMode) void t.pull()
+                  aria-label={
+                    stringMode
+                      ? `The ${t.named}${chosenThread === t ? `, selected. ${t.removal}.` : `. Return selects it; ${t.removal}.`}`
+                      : undefined
+                  }
+                  onFocus={() => letGoOfOthers(t)}
+                  // The pin is in a card: pressed and dragged, the card comes
+                  // with it, as it would from anywhere else on its face.
+                  onPointerDown={(e) => {
+                    const card = placed.find((c) => c.id === (i === 0 ? t.fromId : t.toId))
+                    if (card) onPointerDown(e, card)
+                  }}
+                  onClick={(e) => {
+                    // The end of a drag that began on the pin is the drag's.
+                    if (suppressClick.current) {
+                      suppressClick.current = false
+                      return
+                    }
+                    choose(t, e.currentTarget)
                   }}
                   onKeyDown={(e) => {
-                    if (!stringMode) return
-                    if (!['Enter', ' ', 'Delete', 'Backspace'].includes(e.key)) return
+                    // Delete is the board's (above), as it is for a tag.
+                    if (e.key !== 'Enter' && e.key !== ' ') return
                     e.preventDefault()
-                    // The pin is about to go, and focus with it to <body>:
-                    // land on the card the string ran from instead.
-                    faceOf(t.fromId)?.focus()
-                    void t.pull()
+                    choose(t, e.currentTarget)
                   }}
                 >
                   <title>
                     {t.relationship
-                      ? 'Pull this pin to remove the relationship'
-                      : 'Pull this pin to remove the string'}
+                      ? 'Click to select the relationship; Delete removes it'
+                      : 'Click to select the string; Delete removes it'}
                   </title>
                 </circle>
               ))}
@@ -1389,7 +1510,10 @@ export function Corkboard({
           )}
         </svg>
         {/* Labels are HTML over the string layer, not SVG text: a tag sized
-            to its words, and with the tool up a real button to change it. */}
+            to its words, and a real button. A written tag chooses its
+            string first, as a pin does, and changes the label once chosen;
+            an empty one, shown only with the tool up, is there to be
+            written on. In the tab order only with the tool up, as pins are. */}
         <div className="board-labels">
           {threads.map((t) => {
             if (
@@ -1402,15 +1526,32 @@ export function Corkboard({
             const at = tagPlace(t.a, t.b, t.side)
             const style = { left: at.x, top: at.y }
             if (!t.shown && !stringMode) return null
-            return stringMode ? (
+            const isChosen = chosenThread === t
+            const choosing = !!t.shown && !isChosen
+            return (
               <button
                 key={t.key}
                 type="button"
-                className={`string-label colour-${t.colour} at-${at.anchor}${t.shown ? '' : ' empty'}${t.relationship ? ' relationship' : ''}`}
+                className={`string-label colour-${t.colour} at-${at.anchor}${t.shown ? '' : ' empty'}${t.relationship ? ' relationship' : ''}${isChosen ? ' chosen' : ''}`}
                 data-help="string-label"
+                data-thread={t.key}
                 style={style}
-                aria-label={t.labelName}
-                onClick={() => {
+                tabIndex={stringMode ? undefined : -1}
+                aria-label={choosing ? `Select the ${t.named}` : t.labelName}
+                title={
+                  choosing
+                    ? `Click to select the ${t.relationship ? 'relationship' : 'string'}`
+                    : isChosen
+                      ? `Click to change the label; ${t.removal}`
+                      : 'Click to label the string'
+                }
+                onFocus={() => letGoOfOthers(t)}
+                onClick={(e) => {
+                  if (choosing) {
+                    choose(t, e.currentTarget)
+                    return
+                  }
+                  setChosen(null)
                   setDraft(t.edit)
                   setDraftText(t.text ?? '')
                   setDraftProblem(null)
@@ -1418,15 +1559,6 @@ export function Corkboard({
               >
                 {t.shown ?? '+ label'}
               </button>
-            ) : (
-              <span
-                key={t.key}
-                className={`string-label colour-${t.colour} at-${at.anchor}${t.relationship ? ' relationship' : ''}`}
-                style={style}
-              >
-                <span aria-hidden="true">{t.shown}</span>
-                <span className="sr-only">{t.readable}</span>
-              </span>
             )
           })}
           {draft && draftAt && (

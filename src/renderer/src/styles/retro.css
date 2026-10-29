@@ -5997,8 +5997,8 @@ button.map-place-name {
 }
 
 /* The string layer (F-46). Over the cards, inert to the pointer: cards under
-   it still drag. Only the pin heads take clicks, and only while the string
-   tool is up. */
+   it still drag. Only the pin heads take clicks, tool up or down: a click
+   chooses the string (I-23), and a press dragged moves the card it is in. */
 .board-strings {
   position: absolute;
   inset: 0;
@@ -6053,15 +6053,17 @@ button.map-place-name {
   stroke-width: 1.5px;
 }
 
-.board-strings.live .board-pin {
+.board-string .board-pin {
   pointer-events: auto;
   cursor: pointer;
 }
 
 /* Which pin the keyboard is on, drawn by the SVG itself — an outline on a
    <circle> varies by engine — and the string it would pull, thickened, so
-   Delete never pulls a string the writer could not see was chosen. */
-.board-strings.live .board-pin:focus {
+   Delete never pulls a string the writer could not see was chosen. A pin
+   clicked with the tool down has focus too, but shows it as its string
+   chosen (below), not as a ring. */
+.board-string .board-pin:focus {
   outline: none;
 }
 
@@ -6075,6 +6077,17 @@ button.map-place-name {
   stroke-width: 4px;
 }
 
+/* The chosen string: thickened, as the keyboard's is, with both its pins
+   ringed in ink, so it is plain which string Delete will take down. */
+.board-string.chosen path {
+  stroke-width: 4px;
+}
+
+.board-string.chosen .board-pin {
+  stroke: var(--ink);
+  stroke-width: 2.5px;
+}
+
 /* A string being labelled: drawn, but not yet made. */
 .board-string-draft {
   fill: none;
@@ -6086,8 +6099,8 @@ button.map-place-name {
 
 /* Labels sit on the string at its middle, as a tag tied to it: paper, a
    rule in the string's own colour, the chrome face. HTML over the string
-   layer so a tag fits its words; with the tool down they are text and take
-   no clicks, so a card under a label still drags. */
+   layer so a tag fits its words, and a button: a click chooses its string,
+   and a second click changes the label. */
 .board-labels {
   position: absolute;
   inset: 0;
@@ -6135,7 +6148,19 @@ button.map-place-name {
 
 button.string-label {
   pointer-events: auto;
+  cursor: pointer;
+}
+
+/* Chosen, a click on it writes: the caret says so before it is pressed. An
+   empty one is only ever there to be written on. */
+button.string-label.chosen,
+button.string-label.empty {
   cursor: text;
+}
+
+button.string-label.chosen {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
 }
 
 /* An unlabelled string, with the tool up: room to write one. */

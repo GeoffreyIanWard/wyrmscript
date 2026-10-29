@@ -61,7 +61,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: '⌥ + arrows', what: 'Nudge the card (⇧ for a bigger step)' },
       { keys: 'Return', what: 'Open the card, or pin it with the string tool up' },
       { keys: '⇧Return', what: 'Turn a scene card over' },
-      { keys: 'Delete', what: 'Pull the focused pin, with the string tool up' }
+      { keys: 'Delete', what: 'Remove the selected string (click a pin or its label)' }
     ]
   },
   {
