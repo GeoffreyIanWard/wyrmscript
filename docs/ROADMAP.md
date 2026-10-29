@@ -1118,7 +1118,7 @@ The other mock-up spelled the state out in words ("Saved 2 min ago · 3 places")
 - ⌘S runs Create Save Point.
 - The writer says whether a drive is removable, and the app only guesses.
 
-### F-51 · Resolving conflicts, visually 🔨
+### F-51 · Resolving conflicts, visually ✅ shipped
 
 Split out of F-50 (2026-10-28), whose Conflicts tab opens today's resolution screen: one passage at a time, keep mine, keep theirs, or keep both as a variant.
 
@@ -1219,7 +1219,22 @@ Split out of F-50 (2026-10-28), whose Conflicts tab opens today's resolution scr
    - **Later, or Esc,** sets the screen aside and keeps the arrangement while the app is open. An open menu or guided help takes its own Esc first, and Esc with a card in hand puts the card back. Resolve… brings it back, with every chapter that hasn't changed since as the writer left it.
    - **A fresh list** (the work changed under Finish) is laid out again in place, keeping every chapter that hasn't changed, and says why. A failed Finish says why beside the buttons and keeps the arrangement.
    - The arrangement and every move on it are pure (`lib/mergeScreen.ts`); the screen draws them and turns drags into moves.
-5. **The keyboard and guided help.** Tab moves between the stacks and the page, ↑ and ↓ move the cursor between paragraphs, Return places, Delete bins, and S sends to the scratch pad. Every control gets help, the clip first.
+5. **The keyboard and guided help** ✅.
+   - **Getting round.** Tab goes between the stacks and the page, one stop each, coming back to the card last left there; ↑ and ↓ go between the cards in one. A stack of more than one card has its clip above its top card, so ↑ from the top card reaches it.
+   - **Picking up and placing.** Return (or Space) picks up the card, or from the clip the whole stack, and a cursor shows on the page where it would go: where the card is, for one already on the page, so Return at once is no move; where it was taken from, for a change only one side made; or just after the gap, as All into the gap puts it. ↑ and ↓ move the cursor between the paragraphs, passing over the card's own place in one press, and Return puts the cards there. The card in hand is raised from its place, words still showing.
+   - **Putting down.** Esc puts what is in hand back and keeps the screen up; ⌘Z waits while anything is in hand. Tab, a click elsewhere, turning the page or a press of the pointer puts it down too; switching to another program does not.
+   - **Bin and pad.** Delete (or the Mac's delete) bins the card in focus or in hand, and S keeps it on the scratch pad, from a stack or the page; from the clip, the whole stack goes.
+   - **Focus is never left nowhere.** It follows a card onto the page, and a card ⌘Z moves; after a bin it goes on to the next card, or to the stack or page itself once it is empty. A button that goes with what it moved (Into the gap, Put back) hands focus on, a tray's Put back only once the key is up. Finish takes focus back when its answer leaves it nowhere, and the screen gives focus back to where the writer was as it goes.
+   - **The hint line** says what the keys do for a card, for the clip, and with cards in hand.
+   - **Guided help** covers every control on the screen, the clip first; a test fails if a button or card falls back to the screen's own explanation. The ⌘/ legend has a Combining changes group.
+   - **Tidied in passing.** A clipped stack's heading has room for the clip when it wraps onto two lines.
+   - **Fixes from the adversarial review** (8 confirmed, 6 distinct):
+     - A held Return no longer picks a card up, puts it down and picks it up again; only the arrows repeat, and a held Delete or S takes one card.
+     - A click on a card gives it focus, so the keys act on the card the writer last touched, not one focused before; a card dragged and dropped keeps focus as it does from the keys.
+     - Focus stays on the screen when ⌘Z takes away the button that had it (a tray's Put back, Into the gap), and when Undo, ‹ or › turns itself off; a focus moved once the key is up is never taken back from where the writer has put it meanwhile.
+     - The cursor stays in sight when ↑ scrolls the page up.
+     - Guided help says the Both edits card is both computers' edits, not one computer's paragraph.
+     - The test that Finish takes focus back now fails without the code it tests.
 
 ## Known issues
 

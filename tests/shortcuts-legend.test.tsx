@@ -67,9 +67,23 @@ describe('the legend agrees with the app', () => {
   })
 
   it('does not list the same key twice', () => {
-    // Two rows for one key means one of them is wrong.
-    const keys = ALL_SHORTCUTS.map((s) => s.keys)
-    expect(new Set(keys).size).toBe(keys.length)
+    // Two rows for one key means one of them is wrong — among the keys the
+    // app answers to everywhere, and within one view's group. Two views may
+    // each give a key a meaning there (Return on the corkboard opens a card,
+    // on the merge screen picks one up), but never one the app already
+    // gives it everywhere.
+    const everywhere = SHORTCUT_GROUPS.filter((g) => !g.view).flatMap((g) =>
+      g.items.map((s) => s.keys)
+    )
+    expect(new Set(everywhere).size).toBe(everywhere.length)
+    for (const group of SHORTCUT_GROUPS.filter((g) => g.view)) {
+      const keys = group.items.map((s) => s.keys)
+      expect(new Set(keys).size, group.title).toBe(keys.length)
+      expect(
+        keys.filter((k) => everywhere.includes(k)),
+        group.title
+      ).toEqual([])
+    }
   })
 
   it('covers the keys that no menu mentions', () => {

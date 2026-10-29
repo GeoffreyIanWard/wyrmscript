@@ -11,6 +11,9 @@ import {
   forget,
   gapIndex,
   intoGap,
+  keySpots,
+  keyStart,
+  keyStep,
   leaveNote,
   leftovers,
   noteFor,
@@ -386,6 +389,52 @@ describe('the drop cursor', () => {
     expect(dropIndex(rects, 56)).toBe(2)
     expect(dropIndex(rects, 200)).toBe(3)
     expect(dropIndex([], 10)).toBe(0)
+  })
+})
+
+describe('the keyboard’s cursor', () => {
+  // The page reads: One, the gap, Three, the one-sided change (c0), Five.
+  const arr = arrange([FERRY])
+  const ch = prose(arr)
+  const page = ch.merge.pages[0]
+
+  it('can put cards off the page at every boundary of the page', () => {
+    const { start, shown } = pageItems(ch.items, page)
+    expect([start, shown.length]).toEqual([0, 5])
+    expect(keySpots(ch, page, ['d0.i0'])).toEqual([0, 1, 2, 3, 4, 5])
+  })
+
+  it('counts just before and just after a card on the page as one place, where it is', () => {
+    // c0 is the fourth item: before it and after it leave the page as it is.
+    expect(keySpots(ch, page, ['c0'])).toEqual([0, 1, 2, 3, 5])
+  })
+
+  it('starts a dispute’s cards just after the gap, as All into the gap puts them', () => {
+    expect(keyStart(ch, page, ['d0.l0'])).toBe(gapIndex(ch, 'd0'))
+    expect(keyStart(ch, page, ['d0.l0'])).toBe(2)
+  })
+
+  it('starts a card on the page where it is, so Return at once is no move', () => {
+    const at = keyStart(ch, page, ['c0'])
+    expect(at).toBe(3)
+    expect(placeOn(arr, 0, at, ['c0'])).toBe(arr)
+  })
+
+  it('starts a one-sided change that was taken off where it was taken from', () => {
+    const off = prose(takeOff(arr, 0, 'c0', 'stack'))
+    // What it replaced is back as the fourth item; the card goes in front of it.
+    expect(off.items[3].id).toBe('c0.back0')
+    expect(keyStart(off, page, ['c0'])).toBe(3)
+  })
+
+  it('steps one place up or down, and stays put at the top and the foot', () => {
+    const spots = keySpots(ch, page, ['c0'])
+    expect(keyStep(spots, 3, 1)).toBe(5)
+    expect(keyStep(spots, 5, 1)).toBe(5)
+    expect(keyStep(spots, 5, -1)).toBe(3)
+    expect(keyStep(spots, 0, -1)).toBe(0)
+    // Somewhere no longer a place (the page changed under it): the top.
+    expect(keyStep(spots, 4, 1)).toBe(0)
   })
 })
 

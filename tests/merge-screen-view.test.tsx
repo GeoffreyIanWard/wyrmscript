@@ -10,6 +10,8 @@ import { bodyOf } from '../src/renderer/src/lib/mergePages'
 import { forget, recall } from '../src/renderer/src/lib/mergeScreen'
 import { useWyrm, __disposeAll } from '../src/renderer/src/store'
 import { MergeScreen } from '../src/renderer/src/components/MergeScreen'
+import { HelpLayer } from '../src/renderer/src/components/HelpLayer'
+import { HELP_TOPICS } from '../src/renderer/src/lib/help'
 
 /**
  * F-51 step 4: the merge screen as the writer meets it. Stacks either side
@@ -117,6 +119,10 @@ const finishButton = (): HTMLButtonElement =>
 beforeEach(() => {
   vi.restoreAllMocks()
   if (demoPath) forget(demoPath)
+  // Every key a test pressed is up before the next: lib/keys.ts keeps what
+  // is held for afterKeysUp, and a keydown with no keyup would hold focus
+  // moves back for good. It lets go of them all when the window blurs.
+  fireEvent.blur(window)
 })
 
 afterEach(() => {
@@ -416,6 +422,414 @@ describe('moving cards', () => {
   })
 })
 
+describe('the keyboard', () => {
+  /** A card's (or a clip's) place on the keyboard's way round. */
+  const navOf = (el: Element | null): string =>
+    el instanceof HTMLElement ? `${el.dataset.nav}:${el.dataset.key}` : ''
+  const focused = (): string => navOf(document.activeElement)
+  const focus = (key: string, region?: string): void =>
+    act(() =>
+      document
+        .querySelector<HTMLElement>(`[data-nav${region ? `="${region}"` : ''}][data-key="${key}"]`)!
+        .focus()
+    )
+  // Down and, unless it is held, up again, as a real press is.
+  const press = (key: string, init: KeyboardEventInit = {}): void =>
+    act(() => {
+      const target = document.activeElement!
+      fireEvent.keyDown(target, { key, ...init })
+      if (!init.repeat) fireEvent.keyUp(target, { key, ...init })
+    })
+  const cursor = (): Element | null => document.querySelector('.merge-cursor-slot')
+  const hint = (): string => document.querySelector('.merge-hint')!.textContent ?? ''
+  const count = (name: RegExp): string => screen.getByRole('button', { name }).textContent ?? ''
+
+  it('gives each stack and the page one tab stop, and ↑ ↓ go between the cards in one', async () => {
+    await show([FERRY])
+    const stops = (): string[] =>
+      [...document.querySelectorAll('[data-nav]')]
+        .filter((el) => (el as HTMLElement).tabIndex === 0)
+        .map(navOf)
+    // Each at its top card; the clip is above that.
+    expect(stops()).toEqual(['local:d0.l0', 'page:c0', 'incoming:d0.i0'])
+    focus('d0.l0')
+    expect(hint()).toMatch(/^Return picks the card up\. Delete bins it; S keeps it/)
+    press('ArrowDown')
+    expect(focused()).toBe('local:d0.l1')
+    press('ArrowDown')
+    expect(focused()).toBe('local:d0.l1')
+    press('ArrowUp')
+    press('ArrowUp')
+    expect(focused()).toBe('local:clip')
+    expect(hint()).toMatch(/^The clip: Return picks up the whole stack/)
+    press('ArrowUp')
+    expect(focused()).toBe('local:clip')
+    // Tab comes back to the stack where the writer left it.
+    expect(stops()).toEqual(['local:clip', 'page:c0', 'incoming:d0.i0'])
+  })
+
+  it('picks a card up with Return, moves the cursor with ↑ ↓, and puts it down with Return', async () => {
+    await show([FERRY])
+    focus('d0.i0')
+    press('Enter')
+    // Just after the gap, as All into the gap would put it.
+    expect(cursor()!.previousElementSibling!.className).toBe('merge-gap')
+    expect(document.querySelector('[data-key="d0.i0"]')!.classList.contains('held')).toBe(true)
+    expect(hint()).toMatch(/^In hand: ↑ ↓ move the cursor, Return puts it there/)
+    press('ArrowUp')
+    expect(cursor()!.nextElementSibling!.className).toBe('merge-gap')
+    press('Enter')
+    expect(cursor()).toBeNull()
+    expect(pageKinds()).toEqual([
+      'merge-text',
+      'card:d0.i0',
+      'merge-gap',
+      'merge-text',
+      'card:c0',
+      'merge-text'
+    ])
+    // Focus went with the card.
+    expect(focused()).toBe('page:d0.i0')
+    expect((screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('puts what is in hand back on Esc and keeps the screen up; ⌘Z waits meanwhile', async () => {
+    await show([FERRY])
+    focus('d0.l1')
+    press('Delete')
+    expect(count(/^Bin/)).toBe('Bin · 1')
+    focus('d0.i0')
+    press('Enter')
+    press('ArrowDown')
+    press('z', { metaKey: true })
+    expect(count(/^Bin/)).toBe('Bin · 1')
+    expect(cursor()).not.toBeNull()
+    press('Escape')
+    expect(cursor()).toBeNull()
+    expect(stackCards('incoming')).toEqual(['d0.i0'])
+    expect(state().syncConflicts).toEqual([FERRY])
+    // With nothing in hand, ⌘Z undoes and Esc is Later.
+    press('z', { metaKey: true })
+    expect(count(/^Bin/)).toBe('Bin · 0')
+    press('Escape')
+    expect(state().syncConflicts).toBeNull()
+  })
+
+  it('bins with Delete and keeps on the pad with S, and focus goes on to the next card', async () => {
+    await show([FERRY])
+    focus('d0.l0')
+    press('Delete')
+    expect(count(/^Bin/)).toBe('Bin · 1')
+    expect(stackCards('local')).toEqual(['d0.l1'])
+    expect(focused()).toBe('local:d0.l1')
+    press('s')
+    expect(count(/^Scratch Pad/)).toBe('Scratch Pad · 1')
+    expect(stackCards('local')).toEqual([])
+    // Nothing left in the stack: the stack itself, never nowhere.
+    expect((document.activeElement as HTMLElement).dataset.place).toBe('local')
+    // From the page too, and what a one-sided change replaced comes back.
+    focus('c0')
+    press('Backspace')
+    expect(count(/^Bin/)).toBe('Bin · 2')
+    expect(document.querySelector('.merge-page')!.textContent).toContain('Four was here.')
+    expect((document.activeElement as HTMLElement).dataset.place).toBe('page')
+  })
+
+  it('takes a whole stack by its clip, into the page or into the bin', async () => {
+    await show([FERRY])
+    focus('d0.l0')
+    press('ArrowUp')
+    press('Enter')
+    expect(hint()).toMatch(/Return puts them there, Esc puts them back/)
+    expect(document.querySelectorAll('.merge-card.held')).toHaveLength(2)
+    press('Enter')
+    expect(pageKinds().slice(1, 4)).toEqual(['merge-gap', 'card:d0.l0', 'card:d0.l1'])
+    expect(focused()).toBe('page:d0.l0')
+    // ⌘Z puts them back, and focus follows the card it was on.
+    press('z', { metaKey: true })
+    expect(stackCards('local')).toEqual(['d0.l0', 'd0.l1'])
+    expect(focused()).toBe('local:d0.l0')
+    focus('clip', 'local')
+    press('Delete')
+    expect(count(/^Bin/)).toBe('Bin · 2')
+    expect(stackCards('local')).toEqual([])
+  })
+
+  it('moves a card on the page along it, and Return where it is, is no move', async () => {
+    await show([FERRY])
+    focus('c0')
+    press('Enter')
+    expect((cursor()!.nextElementSibling as HTMLElement).dataset.card).toBe('c0')
+    press('Enter')
+    expect((screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(focused()).toBe('page:c0')
+    press('Enter')
+    // One press passes the card: just after it is where it is.
+    press('ArrowDown')
+    expect(cursor()!.previousElementSibling!.textContent).toBe('Five.')
+    press('Enter')
+    expect(pageKinds().slice(-2)).toEqual(['merge-text', 'card:c0'])
+  })
+
+  it('puts down what is in hand on Tab, a click elsewhere, a turn of the page, or a press of the pointer', async () => {
+    await show([FERRY, BINDER])
+    focus('d0.i0')
+    press('Enter')
+    press('Tab')
+    expect(cursor()).toBeNull()
+    focus('d0.i0')
+    press('Enter')
+    focus('c0')
+    expect(cursor()).toBeNull()
+    focus('d0.i0')
+    press('Enter')
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Next page' })))
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Previous page' })))
+    expect(cursor()).toBeNull()
+    focus('d0.i0')
+    press('Enter')
+    await act(async () => pointer(document.querySelector('[data-card="c0"]')!, 'pointerdown', 5, 5))
+    expect(cursor()).toBeNull()
+    await act(async () => pointer(document, 'pointerup', 5, 5))
+    // Even a press on the card in hand: the pointer has it now.
+    focus('d0.i0')
+    press('Enter')
+    await act(async () =>
+      pointer(document.querySelector('[data-key="d0.i0"]')!, 'pointerdown', 5, 5)
+    )
+    expect(cursor()).toBeNull()
+    await act(async () => pointer(document, 'pointerup', 5, 5))
+  })
+
+  it('puts down what is in hand when a fresh list comes up, or Finish is pressed', async () => {
+    await show([FERRY])
+    focus('d0.i0')
+    press('Enter')
+    act(() =>
+      useWyrm.setState({
+        syncConflicts: [{ ...FERRY, remoteBody: FERRY.remoteBody + '\nSix.\n' }],
+        conflictHeads: { local: 'l0cal', remote: 'moved' }
+      })
+    )
+    expect(hint()).toMatch(/^Your work changed/)
+    expect(cursor()).toBeNull()
+    focus('d0.i0')
+    press('Enter')
+    vi.spyOn(api, 'resolveSyncConflicts').mockImplementation(() => new Promise(() => {}))
+    await act(async () => fireEvent.click(finishButton()))
+    expect(finishButton().textContent).toBe('Combining…')
+    expect(cursor()).toBeNull()
+  })
+
+  it('leaves focus on the screen when a button goes with what it moved', async () => {
+    await show([FERRY])
+    act(() => fireEvent.click(screen.getByText('All into the gap')))
+    expect(focused()).toBe('page:d0.l0')
+    // The tray's Put back: focus to the next one once the key is up.
+    focus('d0.i0')
+    press('Delete')
+    focus('c0')
+    press('Delete')
+    act(() => fireEvent.click(screen.getByRole('button', { name: /^Bin/ })))
+    const [first] = screen.getAllByRole('button', { name: 'Put back' })
+    act(() => first.focus())
+    // Return goes down and presses it; only once it is up does focus move
+    // on, or Chromium would press the next one with it.
+    act(() => {
+      fireEvent.keyDown(first, { key: 'Enter' })
+      fireEvent.click(first)
+    })
+    await act(async () => new Promise((r) => setTimeout(r, 10)))
+    const next = screen.getByRole('button', { name: 'Put back' })
+    expect(document.activeElement).not.toBe(next)
+    act(() => {
+      fireEvent.keyUp(window, { key: 'Enter' })
+    })
+    await waitFor(() => expect(document.activeElement).toBe(next))
+    // Focus put somewhere else before the key is up is left there.
+    act(() => next.focus())
+    act(() => {
+      fireEvent.keyDown(next, { key: 'Enter' })
+      fireEvent.click(next)
+    })
+    focus('d0.l1')
+    act(() => {
+      fireEvent.keyUp(window, { key: 'Enter' })
+    })
+    await act(async () => new Promise((r) => setTimeout(r, 10)))
+    expect(focused()).toBe('page:d0.l1')
+  })
+
+  it('leaves focus on the page when a removed paragraph is put back', async () => {
+    await show([
+      {
+        ...FERRY,
+        baseBody: body('A.', 'Going.', 'B.', 'Kept here.', 'C.'),
+        localBody: body('A.', 'Going, edited.', 'B.', 'Kept here.', 'C.'),
+        remoteBody: body('A.', 'B.', 'C.')
+      }
+    ])
+    const putBack = screen.getByText('Put back')
+    act(() => putBack.focus())
+    act(() => fireEvent.click(putBack))
+    expect((document.activeElement as HTMLElement).dataset.place).toBe('page')
+  })
+
+  it('picks up or puts down once a press: a held Return does not do both', async () => {
+    await show([FERRY])
+    focus('d0.i0')
+    press('Enter')
+    press('Enter', { repeat: true })
+    press('Enter', { repeat: true })
+    expect(cursor()).not.toBeNull()
+    expect(stackCards('incoming')).toEqual(['d0.i0'])
+    // The arrows still repeat; the next real press puts it down.
+    press('ArrowUp', { repeat: true })
+    expect(cursor()!.nextElementSibling!.className).toBe('merge-gap')
+    press('Enter')
+    expect(pageKinds().slice(0, 3)).toEqual(['merge-text', 'card:d0.i0', 'merge-gap'])
+    // Nor does a held Delete take card after card.
+    focus('d0.l0')
+    press('Delete')
+    press('Delete', { repeat: true })
+    expect(count(/^Bin/)).toBe('Bin · 1')
+    expect(stackCards('local')).toEqual(['d0.l1'])
+  })
+
+  it('keeps focus on the screen when ⌘Z takes away the button that had it', async () => {
+    await show([FERRY])
+    const screenEl = document.querySelector('.merge-screen')
+    // A tray's Put back, whose row the undo takes away: the tray keeps it.
+    focus('d0.i0')
+    press('Delete')
+    act(() => fireEvent.click(screen.getByRole('button', { name: /^Bin/ })))
+    act(() => screen.getByRole('button', { name: 'Put back' }).focus())
+    press('z', { metaKey: true })
+    expect(stackCards('incoming')).toEqual(['d0.i0'])
+    await waitFor(() => expect(document.activeElement).toBe(document.querySelector('.merge-tray')))
+    // Into the gap, whose stack the undo empties: the stack keeps it. The
+    // card is binned and put back, so ⌘Z takes it from the stack again.
+    focus('d0.i0')
+    press('Delete')
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Put back' })))
+    act(() => screen.getByText('Into the gap').focus())
+    press('z', { metaKey: true })
+    expect(stackCards('incoming')).toEqual([])
+    expect(screen.queryByText('Into the gap')).toBeNull()
+    await waitFor(() =>
+      expect((document.activeElement as HTMLElement).dataset.place).toBe('incoming')
+    )
+    expect(screenEl!.contains(document.activeElement)).toBe(true)
+  })
+
+  it('keeps focus on the screen when Undo, ‹ or › turns itself off', async () => {
+    await show([FERRY, BINDER])
+    const root = document.querySelector('.merge-screen')
+    focus('d0.l0')
+    press('Delete')
+    press('Delete')
+    expect(count(/^Bin/)).toBe('Bin · 2')
+    const undoButton = screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement
+    act(() => undoButton.focus())
+    // Still on with a move left to undo: it keeps its focus.
+    act(() => fireEvent.click(undoButton))
+    await act(async () => new Promise((r) => setTimeout(r, 10)))
+    expect(document.activeElement).toBe(undoButton)
+    // Off with nothing left: the screen takes it.
+    act(() => fireEvent.click(undoButton))
+    expect(undoButton.disabled).toBe(true)
+    await waitFor(() => expect(document.activeElement).toBe(root))
+    const next = screen.getByRole('button', { name: 'Next page' }) as HTMLButtonElement
+    act(() => next.focus())
+    act(() => fireEvent.click(next))
+    expect(next.disabled).toBe(true)
+    await waitFor(() => expect(document.activeElement).toBe(root))
+    const prev = screen.getByRole('button', { name: 'Previous page' }) as HTMLButtonElement
+    act(() => prev.focus())
+    act(() => fireEvent.click(prev))
+    expect(prev.disabled).toBe(true)
+    await waitFor(() => expect(document.activeElement).toBe(root))
+  })
+
+  it('gives focus to the card the pointer presses, and keeps it with the card it drops', async () => {
+    await show([FERRY])
+    focus('d0.l0')
+    await act(async () => pointer(document.querySelector('[data-key="c0"]')!, 'pointerdown', 5, 5))
+    await act(async () => pointer(document, 'pointerup', 5, 5))
+    expect(focused()).toBe('page:c0')
+    // The keys act on the card pressed, not the one focused before it.
+    press('Delete')
+    expect(count(/^Bin/)).toBe('Bin · 1')
+    expect(stackCards('local')).toEqual(['d0.l0', 'd0.l1'])
+    // A card dropped on the page keeps focus there; one dropped in the bin
+    // hands it on to the next card in its stack.
+    const sheet = document.querySelector('.merge-page')!
+    box(sheet, 300, 0, 400, 400)
+    ;[...sheet.querySelectorAll('[data-item]')].forEach((el, k) =>
+      box(el, 320, 20 + k * 60, 360, 40)
+    )
+    await drag(document.querySelector('[data-key="d0.i0"]')!, 500, 71)
+    expect(focused()).toBe('page:d0.i0')
+    box(screen.getByRole('button', { name: /^Bin/ }), 0, 700, 80, 30)
+    await drag(document.querySelector('[data-key="d0.l0"]')!, 40, 715)
+    expect(count(/^Bin/)).toBe('Bin · 2')
+    expect(focused()).toBe('local:d0.l1')
+  })
+})
+
+describe('guided help', () => {
+  it('explains the clip, and every control on the screen for itself', async () => {
+    await show([FERRY, BINDER])
+    act(() => fireEvent.click(screen.getByRole('button', { name: /^Bin/ })))
+    render(<HelpLayer />)
+    act(() => useWyrm.getState().setHelpMode(true))
+    onTestFinished(() => useWyrm.setState({ helpMode: false }))
+    await act(async () => {
+      fireEvent.mouseMove(document.querySelector('.merge-clip')!)
+    })
+    expect(document.querySelector('.help-tip-title')!.textContent).toBe(
+      HELP_TOPICS['merge-clip'].title
+    )
+    // Not one control on either kind of page is left to the screen's own
+    // explanation.
+    const unexplained = (): string[] =>
+      [...document.querySelectorAll('.merge-screen button, .merge-screen [data-nav]')]
+        .filter((el) => el.closest('[data-help]')!.getAttribute('data-help') === 'merge-screen')
+        .map((el) => el.textContent || el.getAttribute('aria-label') || el.className)
+    expect(unexplained()).toEqual([])
+    act(() => useWyrm.getState().setHelpMode(false))
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Next page' })))
+    expect(document.querySelector('.merge-choice')).not.toBeNull()
+    expect(unexplained()).toEqual([])
+  })
+
+  it('says the Both edits card is both computers’ edits, not one computer’s paragraph', async () => {
+    await show([
+      {
+        ...FERRY,
+        baseBody: body('The cat sat on the mat today.'),
+        localBody: body('The black cat sat on the mat today.'),
+        remoteBody: body('The cat sat on the red mat today.')
+      }
+    ])
+    render(<HelpLayer />)
+    act(() => useWyrm.getState().setHelpMode(true))
+    onTestFinished(() => useWyrm.setState({ helpMode: false }))
+    await act(async () => {
+      fireEvent.mouseMove(document.querySelector('.merge-both .merge-card')!)
+    })
+    expect(document.querySelector('.help-tip-title')!.textContent).toBe(
+      HELP_TOPICS['merge-both'].title
+    )
+    await act(async () => {
+      fireEvent.mouseMove(document.querySelector('.merge-stack .merge-card')!)
+    })
+    expect(document.querySelector('.help-tip-title')!.textContent).toBe(
+      HELP_TOPICS['merge-card'].title
+    )
+  })
+})
+
 describe('Later', () => {
   it('sets the screen aside, keeps the conflicts waiting, and keeps the arrangement for next time', async () => {
     const path = await show([FERRY])
@@ -595,6 +1009,15 @@ describe('Finish', () => {
     act(() => {
       fireEvent.keyDown(window, { key: 'z', metaKey: true })
     })
+    // Nor from the keyboard: nothing is picked up, binned or kept.
+    const c0 = document.querySelector('[data-key="c0"]') as HTMLElement
+    act(() => c0.focus())
+    for (const key of ['Enter', 'Delete', 's']) {
+      act(() => {
+        fireEvent.keyDown(c0, { key })
+      })
+    }
+    expect(document.querySelector('.merge-cursor-slot')).toBeNull()
     expect(pageKinds()).toEqual(shown)
     expect((screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: 'Later' }) as HTMLButtonElement).disabled).toBe(true)
@@ -613,6 +1036,25 @@ describe('Finish', () => {
         'Five.'
       )
     })
+  })
+
+  it('gives focus back to Finish when an answer leaves it nowhere', async () => {
+    await show([FERRY])
+    vi.spyOn(api, 'resolveSyncConflicts').mockImplementation(async () => {
+      // As Chromium does while Finish is off and the main area inert: focus
+      // goes to the body. jsdom keeps it on a disabled button, so it is
+      // taken there by a field that goes.
+      const away = document.createElement('input')
+      document.body.append(away)
+      away.focus()
+      away.remove()
+      expect(document.activeElement).toBe(document.body)
+      return { status: 'error', detail: 'disk full' }
+    })
+    act(() => finishButton().focus())
+    await act(async () => fireEvent.click(finishButton()))
+    expect(screen.getByRole('alert').textContent).toBe('disk full')
+    await waitFor(() => expect(document.activeElement).toBe(finishButton()))
   })
 
   it('says what became of an answer that came back after the screen had gone', async () => {
@@ -713,6 +1155,20 @@ describe('in the window', () => {
     expect(document.querySelector('.entity-dirty')).not.toBeNull()
   })
 
+  it('gives focus back to where the writer was as it goes', async () => {
+    await app()
+    act(() => useWyrm.getState().showEntity(state().entities[0].id))
+    const name = document.querySelector('.entity-main .text-field') as HTMLInputElement
+    act(() => name.focus())
+    conflictsUp()
+    expect(document.activeElement).toBe(document.querySelector('.merge-screen'))
+    act(() => {
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    })
+    expect(document.querySelector('.merge-screen')).toBeNull()
+    expect(document.activeElement).toBe(name)
+  })
+
   it('takes Esc from the board beneath it, though the board’s string tool is up', async () => {
     demoPath ??= (await api.getLastProjectPath())!
     const docs = await api.readAllDocs(demoPath)
@@ -789,6 +1245,11 @@ describe('styles', () => {
 
   it('keeps the dither on a disabled button in the bar, so it is not an empty box', () => {
     expect(rule('.entity-main-bar .btn:disabled')).toMatch(/background-clip: text/)
+  })
+
+  it('scrolls the keyboard’s cursor into sight with room for its line, drawn above its slot', () => {
+    expect(rule('.merge-cursor-slot')).toMatch(/height: 0;[\s\S]*scroll-margin: 40px 0/)
+    expect(rule('.merge-cursor-slot .merge-cursor')).toMatch(/top: -7px/)
   })
 
   it('hides what the screen covers without taking it out of the page', () => {

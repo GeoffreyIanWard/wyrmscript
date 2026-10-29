@@ -21,6 +21,10 @@ export interface Shortcut {
 
 export interface ShortcutGroup {
   title: string
+  /** Keys that mean this in one view only, so another view's group may use
+   *  the same key for something else there. Never a key the app answers to
+   *  everywhere. */
+  view?: boolean
   items: Shortcut[]
 }
 
@@ -50,6 +54,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
   {
     title: 'On the corkboard',
+    view: true,
     items: [
       { keys: '⌥⌘N', what: 'Add a card' },
       { keys: '← → ↑ ↓', what: 'To the nearest card that way' },
@@ -57,6 +62,17 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: 'Return', what: 'Open the card, or pin it with the string tool up' },
       { keys: '⇧Return', what: 'Turn a scene card over' },
       { keys: 'Delete', what: 'Pull the focused pin, with the string tool up' }
+    ]
+  },
+  {
+    title: 'Combining changes',
+    view: true,
+    items: [
+      { keys: 'Tab', what: 'Between the stacks and the page' },
+      { keys: '↑ ↓', what: 'To the next card, or move the cursor with a card in hand' },
+      { keys: 'Return', what: 'Pick up the card, or put it at the cursor (Esc puts it back)' },
+      { keys: 'Delete', what: 'Into the bin' },
+      { keys: 'S', what: 'Onto the scratch pad' }
     ]
   },
   {
