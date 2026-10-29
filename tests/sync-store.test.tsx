@@ -18,6 +18,9 @@ const CONFLICT: SyncConflict = {
   remoteBody: 'theirs'
 }
 
+/** The versions a list of conflicts was made from (F-51). */
+const HEADS = { local: 'l0cal', remote: 'rem0te' }
+
 async function openConnected(): Promise<string> {
   const path = (await api.getLastProjectPath())!
   const info = (await api.openProjectPath(path))!
@@ -42,7 +45,11 @@ afterEach(() => {
     booted: false,
     syncStatus: null,
     syncConflicts: null,
-    syncNeedsAttention: false
+    conflictHeads: null,
+    syncNeedsAttention: false,
+    parked: {},
+    openPaths: [],
+    stale: false
   })
 })
 
@@ -68,7 +75,11 @@ describe('sync in the store', () => {
 
   it('background conflicts raise the quiet flag and never open the dialog', async () => {
     await openConnected()
-    vi.spyOn(api, 'syncNow').mockResolvedValue({ status: 'conflicts', conflicts: [CONFLICT] })
+    vi.spyOn(api, 'syncNow').mockResolvedValue({
+      status: 'conflicts',
+      conflicts: [CONFLICT],
+      heads: HEADS
+    })
 
     await useWyrm.getState().syncNow(false)
 
@@ -78,7 +89,11 @@ describe('sync in the store', () => {
 
   it('a sync the writer asked for opens the resolution screen', async () => {
     await openConnected()
-    vi.spyOn(api, 'syncNow').mockResolvedValue({ status: 'conflicts', conflicts: [CONFLICT] })
+    vi.spyOn(api, 'syncNow').mockResolvedValue({
+      status: 'conflicts',
+      conflicts: [CONFLICT],
+      heads: HEADS
+    })
 
     await useWyrm.getState().syncNow(true)
 
@@ -88,7 +103,11 @@ describe('sync in the store', () => {
 
   it('deciding later keeps the door open without touching anything', async () => {
     await openConnected()
-    vi.spyOn(api, 'syncNow').mockResolvedValue({ status: 'conflicts', conflicts: [CONFLICT] })
+    vi.spyOn(api, 'syncNow').mockResolvedValue({
+      status: 'conflicts',
+      conflicts: [CONFLICT],
+      heads: HEADS
+    })
     await useWyrm.getState().syncNow(true)
 
     useWyrm.getState().dismissConflicts()
@@ -99,7 +118,11 @@ describe('sync in the store', () => {
 
   it('resolving clears the conflict state and reloads the project', async () => {
     await openConnected()
-    vi.spyOn(api, 'syncNow').mockResolvedValue({ status: 'conflicts', conflicts: [CONFLICT] })
+    vi.spyOn(api, 'syncNow').mockResolvedValue({
+      status: 'conflicts',
+      conflicts: [CONFLICT],
+      heads: HEADS
+    })
     await useWyrm.getState().syncNow(true)
     const reload = vi.spyOn(api, 'openProjectPath')
 
@@ -122,5 +145,158 @@ describe('sync in the store', () => {
     window.dispatchEvent(new Event('online'))
 
     await vi.waitFor(() => expect(syncNow).toHaveBeenCalled())
+  })
+})
+
+describe('while the resolution screen is up (F-51)', () => {
+  async function screenUp(): Promise<string> {
+    const path = await openConnected()
+    vi.spyOn(api, 'syncNow').mockResolvedValueOnce({
+      status: 'conflicts',
+      conflicts: [CONFLICT],
+      heads: HEADS
+    })
+    await useWyrm.getState().syncNow(true)
+    expect(useWyrm.getState().syncConflicts).toEqual([CONFLICT])
+    expect(useWyrm.getState().conflictHeads).toEqual(HEADS)
+    return path
+  }
+
+  it('never fetches: a sync, asked for or automatic, answers with the list already on screen', async () => {
+    const path = await screenUp()
+    const network = vi.spyOn(api, 'syncNow')
+    network.mockClear()
+    expect(await useWyrm.getState().syncNow(true)).toEqual({
+      status: 'conflicts',
+      conflicts: [CONFLICT],
+      heads: HEADS
+    })
+    await dirty(path)
+    await useWyrm.getState().commitNow('A checkpoint while arranging')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(network).not.toHaveBeenCalled()
+    // And nothing about it moved the screen or raised the quiet flag.
+    expect(useWyrm.getState().syncConflicts).toEqual([CONFLICT])
+    expect(useWyrm.getState().syncNeedsAttention).toBe(false)
+  })
+
+  it('answers against the versions the list came from, with the scraps to keep', async () => {
+    const path = await screenUp()
+    const resolve = vi
+      .spyOn(api, 'resolveSyncConflicts')
+      .mockResolvedValue({ status: 'merged', at: Date.now(), pushed: true })
+    const scrap = {
+      id: 'k1',
+      body: 'Kept.\n',
+      created: 'c',
+      modified: 'm',
+      how: 'incoming' as const
+    }
+    await useWyrm
+      .getState()
+      .resolveConflicts([{ path: CONFLICT.path, resolution: 'arranged', body: 'Mine.\n' }], [scrap])
+    expect(resolve).toHaveBeenCalledWith(path, {
+      choices: [{ path: CONFLICT.path, resolution: 'arranged', body: 'Mine.\n' }],
+      pinned: HEADS,
+      scraps: [scrap]
+    })
+    expect(useWyrm.getState().syncConflicts).toBeNull()
+    expect(useWyrm.getState().conflictHeads).toBeNull()
+  })
+
+  it('puts the fresh list on screen when the versions moved under the answer', async () => {
+    await screenUp()
+    const fresh = { ...CONFLICT, localBody: 'typed since' }
+    const moved = { local: 'newer', remote: 'rem0te' }
+    vi.spyOn(api, 'resolveSyncConflicts').mockResolvedValue({
+      status: 'conflicts',
+      conflicts: [fresh],
+      heads: moved,
+      moved: true
+    })
+    const outcome = await useWyrm
+      .getState()
+      .resolveConflicts([{ path: CONFLICT.path, resolution: 'mine' }])
+    expect(outcome).toMatchObject({ status: 'conflicts', moved: true })
+    expect(useWyrm.getState().syncConflicts).toEqual([fresh])
+    expect(useWyrm.getState().conflictHeads).toEqual(moved)
+  })
+
+  it('keeps the screen up when the answer fails, so nothing the writer arranged is dropped', async () => {
+    await screenUp()
+    vi.spyOn(api, 'resolveSyncConflicts').mockResolvedValue({
+      status: 'error',
+      detail: 'disk full'
+    })
+    await useWyrm.getState().resolveConflicts([{ path: CONFLICT.path, resolution: 'mine' }])
+    expect(useWyrm.getState().syncConflicts).toEqual([CONFLICT])
+    expect(useWyrm.getState().conflictHeads).toEqual(HEADS)
+  })
+
+  it('records the answer on the novel that gave it, when another came forward meanwhile', async () => {
+    const path = await screenUp()
+    useWyrm.setState({ openPaths: [path] })
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    vi.spyOn(api, 'resolveSyncConflicts').mockImplementation(async () => {
+      await held
+      return { status: 'merged', at: Date.now(), pushed: true }
+    })
+    const answering = useWyrm
+      .getState()
+      .resolveConflicts([{ path: CONFLICT.path, resolution: 'mine' }])
+    await new Promise((r) => setTimeout(r, 0))
+    await useWyrm.getState().openAnotherProject()
+    const other = useWyrm.getState().project!.path
+    expect(other).not.toBe(path)
+    useWyrm.setState({ syncConflicts: [CONFLICT], conflictHeads: { local: 'x', remote: 'y' } })
+    release()
+    await answering
+    // The novel in front keeps its own screen; the one that answered is done,
+    // and re-read when it comes back.
+    expect(useWyrm.getState().syncConflicts).toEqual([CONFLICT])
+    const answered = useWyrm.getState().parked[path]
+    expect(answered.syncConflicts).toBeNull()
+    expect(answered.conflictHeads).toBeNull()
+    expect(answered.stale).toBe(true)
+  })
+
+  it('keeps the list on screen when a sync already on its way lands after the screen came up', async () => {
+    await openConnected()
+    const later = { ...CONFLICT, remoteBody: 'rewritten again' }
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    const network = vi
+      .spyOn(api, 'syncNow')
+      .mockResolvedValueOnce({ status: 'conflicts', conflicts: [CONFLICT], heads: HEADS })
+      .mockImplementationOnce(async () => {
+        await held
+        return {
+          status: 'conflicts',
+          conflicts: [later],
+          heads: { local: 'l0cal', remote: 'newer' }
+        }
+      })
+    // Save Now and Sync Now overlap: both are past the pause before either lands.
+    const first = useWyrm.getState().syncNow(true)
+    const second = useWyrm.getState().syncNow(true)
+    await first
+    expect(useWyrm.getState().conflictHeads).toEqual(HEADS)
+    release()
+    await second
+    expect(network).toHaveBeenCalledTimes(2)
+    expect(useWyrm.getState().syncConflicts).toEqual([CONFLICT])
+    expect(useWyrm.getState().conflictHeads).toEqual(HEADS)
+  })
+
+  it('syncs again once the screen is answered or set aside', async () => {
+    await screenUp()
+    useWyrm.getState().dismissConflicts()
+    expect(useWyrm.getState().conflictHeads).toBeNull()
+    const network = vi
+      .spyOn(api, 'syncNow')
+      .mockResolvedValue({ status: 'up-to-date', at: Date.now() })
+    await useWyrm.getState().syncNow(true)
+    expect(network).toHaveBeenCalled()
   })
 })

@@ -1059,17 +1059,59 @@ export interface SyncConflict {
   localBody: string | null
   /** Body text on the other device; null means it was deleted there. */
   remoteBody: string | null
+  /** F-51: the body before either device changed it; null when it did not
+   *  exist then (both added it). What the merge screen lines the two up
+   *  against. */
+  baseBody: string | null
+  /** F-51: when each side last changed this file (ms), so the screen can
+   *  say "This computer · today 2:14 pm". Null when unknown. */
+  localAt: number | null
+  remoteAt: number | null
+}
+
+/** F-51: the two versions a list of conflicts was made from. A resolution is
+ *  only ever applied against these: if either has moved since, the writer
+ *  arranged text that no longer matches, and gets a fresh list instead. */
+export interface SyncHeads {
+  local: string
+  remote: string
 }
 
 /** `both` keeps this device's text and shelves the other's as a variant (docs only). */
 export type ConflictResolution = 'mine' | 'theirs' | 'both'
+
+/**
+ * F-51: the writer's answer for one conflicted file. `arranged` is the merge
+ * screen's: the prose as the writer put it together (a stored body), for a
+ * document, story-bible entry or scrap; its details (title, tags, synopsis)
+ * still merge field by field, as in a clean sync.
+ */
+export type ConflictChoice =
+  | { path: string; resolution: ConflictResolution }
+  | { path: string; resolution: 'arranged'; body: string }
+
+/** F-51: everything a resolution carries: a choice for every conflicted file,
+ *  the versions they were made against, and the scraps to keep on the
+ *  scratch pad, written in the same combined save point. */
+export interface ConflictAnswer {
+  choices: ConflictChoice[]
+  pinned: SyncHeads
+  scraps?: Scrap[]
+}
 
 export type SyncOutcome =
   | { status: 'up-to-date'; at: number }
   | { status: 'pushed'; at: number }
   | { status: 'pulled'; at: number; pushed: boolean }
   | { status: 'merged'; at: number; pushed: boolean }
-  | { status: 'conflicts'; conflicts: SyncConflict[] }
+  | {
+      status: 'conflicts'
+      conflicts: SyncConflict[]
+      /** The versions the list was made from; a resolution names them. */
+      heads: SyncHeads
+      /** The list is fresh because the versions moved under a resolution. */
+      moved?: true
+    }
   | { status: 'offline'; detail: string }
   | { status: 'error'; detail: string }
 
@@ -1248,10 +1290,7 @@ export interface WyrmApi {
   /** Record "keep everything local" as a deliberate choice (F-01). */
   setLocalOnly(path: string): Promise<SyncStatus>
   syncNow(path: string): Promise<SyncOutcome>
-  resolveSyncConflicts(
-    path: string,
-    choices: { path: string; resolution: ConflictResolution }[]
-  ): Promise<SyncOutcome>
+  resolveSyncConflicts(path: string, answer: ConflictAnswer): Promise<SyncOutcome>
 
   /**
    * F-39: real OS fullscreen — the thing that actually covers the Windows

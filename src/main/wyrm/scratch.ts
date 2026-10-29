@@ -69,13 +69,17 @@ function parseScrapFile(raw: string): Scrap {
   }
 }
 
-export async function writeScrap(projectPath: string, scrap: Scrap): Promise<void> {
-  const path = scrapPath(projectPath, scrap.id)
-  // It arrives over IPC, so the shape is not a given.
+/**
+ * A scrap's file, exactly as written to `scratch/<id>.md`: the one place
+ * that says what a scrap looks like on disk, for the pad and for a merge
+ * that keeps cards on the pad (F-51 step 3) alike. Refuses anything that is
+ * not a scrap — it arrives over IPC, so the shape is not a given.
+ */
+export function scrapFileText(scrap: Scrap): string {
+  assertPlainId(scrap.id, 'scrap')
   if (typeof scrap.body !== 'string' || typeof scrap.created !== 'string') {
     throw new Error('Not a scrap')
   }
-  await fsp.mkdir(scratchDir(projectPath), { recursive: true })
   const meta: ScrapFrontmatter = {
     id: scrap.id,
     created: scrap.created,
@@ -87,7 +91,19 @@ export async function writeScrap(projectPath: string, scrap: Scrap): Promise<voi
     ...(isText(scrap.fromTitle) ? { fromTitle: scrap.fromTitle } : {})
   }
   const body = scrap.body.endsWith('\n') ? scrap.body : scrap.body + '\n'
-  await fsp.writeFile(path, matter.stringify(body, meta), 'utf8')
+  return matter.stringify(body, meta)
+}
+
+/** Where a scrap lives in the project, as the repository names it. */
+export function scrapRepoPath(id: string): string {
+  assertPlainId(id, 'scrap')
+  return `${SCRATCH_DIR}/${id}.md`
+}
+
+export async function writeScrap(projectPath: string, scrap: Scrap): Promise<void> {
+  const text = scrapFileText(scrap)
+  await fsp.mkdir(scratchDir(projectPath), { recursive: true })
+  await fsp.writeFile(scrapPath(projectPath, scrap.id), text, 'utf8')
 }
 
 /**

@@ -8,6 +8,7 @@ import type {
   BinderNode,
   BoardString,
   BoardSticker,
+  ConflictAnswer,
   Scrap,
   CommitInfo,
   DeviceCodeInfo,
@@ -774,9 +775,13 @@ export function createMockApi(): WyrmApi {
       sync.set(path, { ...settings, lastSyncAt: at, pendingSync: false })
       return first ? { status: 'pushed', at } : { status: 'up-to-date', at }
     },
-    async resolveSyncConflicts(path: string): Promise<SyncOutcome> {
+    async resolveSyncConflicts(path: string, answer: ConflictAnswer): Promise<SyncOutcome> {
       const settings = sync.get(path)
       const at = Date.now()
+      // As the engine does: kept cards land on the pad with the merge.
+      for (const scrap of answer.scraps ?? []) {
+        mustGet(path).scraps.set(scrap.id, { ...scrap, modified: new Date(at).toISOString() })
+      }
       if (settings) sync.set(path, { ...settings, lastSyncAt: at, pendingSync: false })
       return { status: 'merged', at, pushed: true }
     },

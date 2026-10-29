@@ -133,6 +133,32 @@ describe('a background project reaches its drives', () => {
     vi.useRealTimers()
   })
 
+  it('does not sync while its resolution screen is up (F-51), but still saves', async () => {
+    vi.useFakeTimers()
+    const { parked } = await openTwo()
+    configureParked(parked, { sync: true })
+    const state = useWyrm.getState()
+    useWyrm.setState({
+      parked: {
+        ...state.parked,
+        [parked]: {
+          ...state.parked[parked],
+          syncConflicts: [],
+          conflictHeads: { local: 'l', remote: 'r' }
+        }
+      }
+    })
+    makeParkedDirty(parked)
+    const commit = vi.mocked(api.commit)
+    const sync = vi.spyOn(api, 'syncNow').mockResolvedValue({ status: 'pushed', at: 1 })
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 100)
+
+    expect(commit).toHaveBeenCalledWith(parked, expect.any(String))
+    expect(sync).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
   it('does not sync a local-only project', async () => {
     vi.useFakeTimers()
     const { parked } = await openTwo()

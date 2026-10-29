@@ -66,6 +66,12 @@ export function ConflictDialog(): JSX.Element | null {
       .then((outcome) => {
         if (outcome.status === 'error' || outcome.status === 'offline') {
           setError(outcome.detail)
+        } else if (outcome.status === 'conflicts') {
+          // The work changed while the writer was choosing (F-51): the fresh
+          // list is on screen now, and the old choices answer a different one.
+          setChoices(new Map())
+          setSelected(0)
+          setError('Your work changed while you were choosing. Here is what is waiting now.')
         }
       })
       .catch((e: unknown) => setError(errorMessage(e)))

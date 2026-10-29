@@ -125,7 +125,7 @@ const api: WyrmApi = {
   disconnectSync: (path) => ipcRenderer.invoke('sync:disconnect', path),
   setLocalOnly: (path) => ipcRenderer.invoke('sync:localOnly', path),
   syncNow: (path) => ipcRenderer.invoke('sync:now', path),
-  resolveSyncConflicts: (path, choices) => ipcRenderer.invoke('sync:resolve', path, choices),
+  resolveSyncConflicts: (path, answer) => ipcRenderer.invoke('sync:resolve', path, answer),
 
   toggleFullScreen: () => ipcRenderer.invoke('window:toggleFullScreen'),
   setTitleBarOverlay: (color, symbolColor) =>

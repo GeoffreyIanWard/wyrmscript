@@ -18,8 +18,9 @@ import type {
   StringEnd,
   CompileMap,
   CompileOptions,
-  ConflictResolution,
+  ConflictChoice,
   SyncConflict,
+  SyncHeads,
   SyncOutcome,
   SaveSettingsPatch,
   WindowGeometry,
@@ -209,6 +210,7 @@ export const SLICE_KEYS = [
   'dailyStats',
   'syncStatus',
   'syncConflicts',
+  'conflictHeads',
   'syncNeedsAttention',
   'waitingConflicts',
   'syncProblem',
@@ -436,8 +438,12 @@ interface WyrmState {
 
   /** GitHub sync (Phase 5). */
   syncStatus: SyncStatus | null
-  /** Conflicts awaiting the writer — non-null renders the resolution screen. */
+  /** Conflicts awaiting the writer — non-null renders the resolution screen,
+   *  and, while it is up, this project does not sync (F-51): the writer is
+   *  arranging text against two versions, and a sync would move one. */
   syncConflicts: SyncConflict[] | null
+  /** F-51: the versions `syncConflicts` was made from; the answer names them. */
+  conflictHeads: SyncHeads | null
   /** A background sync found conflicts; surfaced quietly, never as a popup. */
   syncNeedsAttention: boolean
   /**
@@ -497,9 +503,13 @@ interface WyrmState {
   setLocalOnly(): Promise<void>
   /** interactive: a person asked — conflicts may open the resolution screen. */
   syncNow(interactive?: boolean): Promise<SyncOutcome>
-  resolveConflicts(
-    choices: { path: string; resolution: ConflictResolution }[]
-  ): Promise<SyncOutcome>
+  /**
+   * The writer's answer to the conflicts on screen, against the versions they
+   * were made from; `scraps` are kept on the scratch pad in the same combined
+   * save point (F-51). A `conflicts` outcome is a fresh list: the versions
+   * moved, and it is on screen in place of the old one.
+   */
+  resolveConflicts(choices: ConflictChoice[], scraps?: Scrap[]): Promise<SyncOutcome>
   dismissConflicts(): void
 
   /** Backup configuration for the open project; null until loaded (F-01). */
@@ -1099,6 +1109,7 @@ function emptySlice(): ProjectSlice {
     dailyStats: [],
     syncStatus: null,
     syncConflicts: null,
+    conflictHeads: null,
     syncNeedsAttention: false,
     waitingConflicts: null,
     syncProblem: null,
@@ -1447,7 +1458,12 @@ export const useWyrm = create<WyrmState>((set, get) => {
       const ids = slice.backupSettings.targets.map((t) => t.id)
       void writingTo(path, ids, () => api.backupNow(path)).catch(() => {})
     }
-    if (isConnected(slice.syncStatus) && slice.backupSettings?.sendToGithub !== false) {
+    if (
+      isConnected(slice.syncStatus) &&
+      slice.backupSettings?.sendToGithub !== false &&
+      // Its resolution screen is up (F-51): no sync until it is answered.
+      !slice.syncConflicts
+    ) {
       void syncParked(path)
     }
   }
@@ -1515,6 +1531,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
       viewHistory: [],
       syncStatus: null,
       syncConflicts: null,
+      conflictHeads: null,
       syncNeedsAttention: false,
       waitingConflicts: null,
       syncProblem: null,
@@ -1609,6 +1626,7 @@ export const useWyrm = create<WyrmState>((set, get) => {
     dailyStats: [],
     syncStatus: null,
     syncConflicts: null,
+    conflictHeads: null,
     syncNeedsAttention: false,
     waitingConflicts: null,
     syncProblem: null,
@@ -2246,9 +2264,15 @@ export const useWyrm = create<WyrmState>((set, get) => {
     },
 
     async syncNow(interactive = true) {
-      const { project } = get()
+      const { project, syncConflicts, conflictHeads } = get()
       if (!project) throw new Error('No project is open')
       const path = project.path
+      // The resolution screen is up (F-51): the writer is arranging text
+      // against two versions, and a fetch would move one under them. Nothing
+      // goes to the network; the answer is the list already on screen.
+      if (syncConflicts && conflictHeads) {
+        return { status: 'conflicts', conflicts: syncConflicts, heads: conflictHeads }
+      }
       await get().flushSave()
       let outcome: SyncOutcome
       try {
@@ -2275,22 +2299,29 @@ export const useWyrm = create<WyrmState>((set, get) => {
       // about what is waiting: keep the list rather than call it resolved.
       const reached = outcome.status !== 'offline' && outcome.status !== 'error'
       const pulled = outcome.status === 'pulled' || outcome.status === 'merged'
-      patchSliceAt(path, () => ({
+      patchSliceAt(path, (slice) => ({
         syncProblem: syncProblemOf(outcome),
-        ...(outcome.status === 'conflicts'
-          ? // The page is sacred: only a sync the writer asked for, on the
-            // novel in front, may put a dialog on screen. Anything else
-            // leaves the quiet flag and the list for the Conflicts tab.
-            interactive && here
-            ? {
-                syncConflicts: outcome.conflicts,
-                syncNeedsAttention: false,
-                waitingConflicts: null
-              }
-            : { syncNeedsAttention: true, waitingConflicts: outcome.conflicts }
-          : reached
-            ? { syncNeedsAttention: false, waitingConflicts: null }
-            : {}),
+        ...(slice.syncConflicts
+          ? // The resolution screen came up while this sync was on its way
+            // (F-51): its list and versions are what the writer is choosing
+            // against, and stay. If this sync moved a version, the answer is
+            // refused with a fresh list, as it should be.
+            {}
+          : outcome.status === 'conflicts'
+            ? // The page is sacred: only a sync the writer asked for, on the
+              // novel in front, may put a dialog on screen. Anything else
+              // leaves the quiet flag and the list for the Conflicts tab.
+              interactive && here
+              ? {
+                  syncConflicts: outcome.conflicts,
+                  conflictHeads: outcome.heads,
+                  syncNeedsAttention: false,
+                  waitingConflicts: null
+                }
+              : { syncNeedsAttention: true, waitingConflicts: outcome.conflicts }
+            : reached
+              ? { syncNeedsAttention: false, waitingConflicts: null }
+              : {}),
         // Pulled into a novel no longer in front: re-read it when it comes
         // back, as a background sync does.
         ...(pulled && !here ? { stale: true } : {})
@@ -2302,22 +2333,48 @@ export const useWyrm = create<WyrmState>((set, get) => {
       return outcome
     },
 
-    async resolveConflicts(choices) {
-      const { project } = get()
+    async resolveConflicts(choices, scraps) {
+      const { project, conflictHeads } = get()
       if (!project) throw new Error('No project is open')
-      const outcome = await api.resolveSyncConflicts(project.path, choices)
+      if (!conflictHeads) throw new Error('There is nothing waiting to be resolved.')
+      const path = project.path
+      await get().flushSave()
+      const outcome = await api.resolveSyncConflicts(path, {
+        choices,
+        pinned: conflictHeads,
+        ...(scraps && scraps.length > 0 ? { scraps } : {})
+      })
+      // Recorded on the project that resolved, wherever it is now.
+      const here = get().project?.path === path
       if (outcome.status === 'merged') {
-        set({ syncConflicts: null, syncNeedsAttention: false, waitingConflicts: null })
-        await reloadAfterRemoteChange()
+        patchSliceAt(path, () => ({
+          syncConflicts: null,
+          conflictHeads: null,
+          syncNeedsAttention: false,
+          waitingConflicts: null,
+          ...(here ? {} : { stale: true })
+        }))
+        if (here) await reloadAfterRemoteChange()
+      } else if (outcome.status === 'conflicts') {
+        // The versions moved under the answer: the fresh list replaces the old.
+        patchSliceAt(path, () => ({
+          syncConflicts: outcome.conflicts,
+          conflictHeads: outcome.heads
+        }))
       }
-      await get().loadSyncStatus()
+      if (get().project?.path === path) await get().loadSyncStatus()
       return outcome
     },
 
     dismissConflicts() {
       // Declining to decide is allowed — nothing has been changed, and the
       // quiet flag keeps the door open for later.
-      set({ syncConflicts: null, syncNeedsAttention: true, waitingConflicts: get().syncConflicts })
+      set({
+        syncConflicts: null,
+        conflictHeads: null,
+        syncNeedsAttention: true,
+        waitingConflicts: get().syncConflicts
+      })
     },
 
     async loadBackupSettings() {
