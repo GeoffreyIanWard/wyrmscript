@@ -1180,7 +1180,25 @@ Split out of F-50 (2026-10-28), whose Conflicts tab opens today's resolution scr
    - **Throw Away…** asks first, and makes a save point, so the text stays in the history.
    - **Edit → Move to Scratch Pad (⇧⌘X)** puts the selection on the pad, and only then takes it off the page, following any typing meanwhile. If the passage itself changed, or another document came forward during the write, the passage stays on the page as well: twice is recoverable, a wrong cut is not. Shift must really be held, so with Caps Lock on, ⌘X stays an ordinary cut. It acts only with the page itself in focus, so a selection hidden behind a tag or rename field is never moved, and a held key moves once.
    - **Never in the book.** Find in Project searches the pad. Compile, the word counts, stats and the corkboard never read it.
-2. **Laying out the pages.** Pure and DOM-free (`lib/mergePages.ts`): paragraphs from the three versions, the disputes as pages with their context, one-sided changes placed and marked, the underlines and New tags, deletions, the Both edits card, and composing a chapter's text back from an arrangement. All of it tested without a screen.
+2. **Laying out the pages** ✅. Pure and DOM-free (`lib/mergePages.ts`), and tested without a screen, including 300 random pairs of edits checked for the module's promises.
+   - **Lining up.** The three versions are lined up paragraph by paragraph (`threeWay`), counting only paragraphs with words in them.
+     - Changes that overlap, or start at the same place, are one passage.
+     - So are changes that meet end to start where both add text: two additions at one place have no order of their own, and taking both would double what both added.
+     - Changes that meet without both adding (an edit beside an edit, a deletion beside anything) are separate.
+     - Paragraphs one side changed next to each other are one change, so a dispute takes in a neighbouring paragraph that side also changed.
+   - **Blank lines** belong to the paragraph after them and travel with it. A change to them is spacing, never a dispute and never a page: it is taken from whichever side made it, this computer's when both did.
+   - **Pairing.** Within a changed passage, each new paragraph is paired with the old one it edits (`pairUp`, the most alike, in order). Paragraphs rewritten past recognition still pair with the one they replaced, in order, as a diff's replace does.
+   - **What goes where.** What neither side changed, or both changed alike, is fixed text.
+     - A change only one side made is placed already, a card per paragraph, marked "only changed there". Taking a card off brings back exactly the paragraph it replaced, once; an added paragraph's card brings nothing back.
+     - A paragraph only one side deleted is a struck "removed there" line, which can be put back with its blank lines.
+     - A passage both changed differently is a dispute: a gap, a stack for each side, the side that deleted it outright (if one did), and the Both edits card when it applies.
+   - **Cards.** Each card is one paragraph, styled as the page styles it, and underlined against the paragraph it replaced.
+     - The words that changed are underlined (spaces at their edges excepted), and so is a hard break put where a space was.
+     - A paragraph with nothing from before is **New**, tagged instead of underlined.
+     - One with the same words but different styling is **restyled**, and one that lost words (shortened, or split in two) is **cut**.
+   - **Both edits.** Offered only for a dispute of one paragraph a side, when a word-by-word line-up of it is clean, the result is neither side's paragraph, and it reads back through the editor as exactly itself (a stray marker in a hand-edited file would not).
+   - **Pages.** Every dispute is a page, with two paragraphs either side, stopping at another dispute's gap. A page's edges are always items that never move (text or a gap), so cards placed at its top or bottom stay on it. Every change only one side made that no dispute's page shows gets a **review** page, nearby ones sharing one, so no prose merges unseen. The same paragraph added in two different places is two changes, each shown.
+   - **Composing.** `placeCards` (a card already on the page moves rather than copies), `liftCard`, `restoreRemoved` and `composeChapter` give back the stored text exactly as the editor writes it, blank lines included. Windows line endings read as the editor reads them, and a line of non-breaking spaces is the paragraph the editor keeps it as.
 3. **The engine's new answer.** A conflict carries the text from before and when each side was written. Resolving takes arranged text and scraps, and a chapter's details (title, tags, synopsis) still merge field by field, as in a clean sync; only the prose is arranged. A resolve refuses if either version has moved, and background sync pauses while the screen is open.
 4. **The screen.** The view, the stacks and their clips, the page and its cursor, the bin, the scratch pad, ⌘Z, Finish and Later, and the simple pages for what isn't prose. It replaces today's resolution dialog.
 5. **The keyboard and guided help.** Tab moves between the stacks and the page, ↑ and ↓ move the cursor between paragraphs, Return places, Delete bins, and S sends to the scratch pad. Every control gets help, the clip first.
